@@ -120,7 +120,7 @@ def fetch_page(
                 f"likely IP-level block. Body: {r.text[:200]!r} (rule_hint={rule_hdr})"
             )
 
-        if r.status_code in (429, 503):
+        if r.status_code in (429, 502, 503, 504):
             if attempt >= len(backoff_schedule):
                 r.raise_for_status()
             retry_after = r.headers.get("Retry-After")
