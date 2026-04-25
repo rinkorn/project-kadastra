@@ -1,27 +1,17 @@
 import numpy as np
 import polars as pl
 
-from kadastra.etl.haversine import EARTH_RADIUS_METERS
+from kadastra.ports.road_graph import RoadGraphPort
 
 _FAR_SENTINEL_M = 1.0e9
-
-
-def _haversine_matrix(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """Pairwise haversine distance in meters; a is (n, 2), b is (m, 2); returns (n, m)."""
-    rlat1 = np.radians(a[:, 0:1])
-    rlon1 = np.radians(a[:, 1:2])
-    rlat2 = np.radians(b[:, 0:1].T)
-    rlon2 = np.radians(b[:, 1:2].T)
-    dlat = rlat2 - rlat1
-    dlon = rlon2 - rlon1
-    h = np.sin(dlat / 2) ** 2 + np.cos(rlat1) * np.cos(rlat2) * np.sin(dlon / 2) ** 2
-    return 2 * EARTH_RADIUS_METERS * np.arcsin(np.sqrt(h))
 
 
 def compute_object_metro_features(
     objects: pl.DataFrame,
     stations: pl.DataFrame,
     entrances: pl.DataFrame,
+    *,
+    road_graph: RoadGraphPort,
 ) -> pl.DataFrame:
     n = objects.height
     if n == 0:
@@ -34,22 +24,49 @@ def compute_object_metro_features(
             ]
         )
 
-    obj_coords = objects.select(["lat", "lon"]).to_numpy()
+    obj_coords = [
+        (float(lat), float(lon))
+        for lat, lon in zip(
+            objects["lat"].to_list(), objects["lon"].to_list(), strict=True
+        )
+    ]
 
     if stations.is_empty():
         dist_min_stations = np.full(n, _FAR_SENTINEL_M, dtype=np.float64)
         cnt_stations_1km = np.zeros(n, dtype=np.int64)
     else:
-        d = _haversine_matrix(obj_coords, stations.select(["lat", "lon"]).to_numpy())
+        station_coords = [
+            (float(lat), float(lon))
+            for lat, lon in zip(
+                stations["lat"].to_list(),
+                stations["lon"].to_list(),
+                strict=True,
+            )
+        ]
+        d = road_graph.distance_matrix_m(obj_coords, station_coords)
         dist_min_stations = d.min(axis=1)
+        dist_min_stations = np.where(
+            np.isinf(dist_min_stations), _FAR_SENTINEL_M, dist_min_stations
+        )
         cnt_stations_1km = (d < 1000.0).sum(axis=1).astype(np.int64)
 
     if entrances.is_empty():
         dist_min_entrances = np.full(n, _FAR_SENTINEL_M, dtype=np.float64)
         cnt_entrances_500m = np.zeros(n, dtype=np.int64)
     else:
-        d = _haversine_matrix(obj_coords, entrances.select(["lat", "lon"]).to_numpy())
+        entrance_coords = [
+            (float(lat), float(lon))
+            for lat, lon in zip(
+                entrances["lat"].to_list(),
+                entrances["lon"].to_list(),
+                strict=True,
+            )
+        ]
+        d = road_graph.distance_matrix_m(obj_coords, entrance_coords)
         dist_min_entrances = d.min(axis=1)
+        dist_min_entrances = np.where(
+            np.isinf(dist_min_entrances), _FAR_SENTINEL_M, dist_min_entrances
+        )
         cnt_entrances_500m = (d < 500.0).sum(axis=1).astype(np.int64)
 
     return objects.with_columns(

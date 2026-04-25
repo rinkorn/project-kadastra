@@ -9,6 +9,7 @@ from kadastra.etl.object_metro_features import compute_object_metro_features
 from kadastra.etl.object_neighbor_features import compute_object_neighbor_features
 from kadastra.etl.object_road_features import compute_object_road_features
 from kadastra.ports.raw_data import RawDataPort
+from kadastra.ports.road_graph import RoadGraphPort
 from kadastra.ports.valuation_object_reader import ValuationObjectReaderPort
 from kadastra.ports.valuation_object_store import ValuationObjectStorePort
 
@@ -24,6 +25,7 @@ class BuildObjectFeatures:
         roads_key: str,
         neighbor_radius_m: float,
         road_radius_m: float,
+        road_graph: RoadGraphPort,
     ) -> None:
         self._reader = reader
         self._store = store
@@ -33,6 +35,7 @@ class BuildObjectFeatures:
         self._roads_key = roads_key
         self._neighbor_radius_m = neighbor_radius_m
         self._road_radius_m = road_radius_m
+        self._road_graph = road_graph
 
     def execute(self, region_code: str, asset_classes: list[AssetClass]) -> None:
         stations = pl.read_csv(
@@ -56,7 +59,9 @@ class BuildObjectFeatures:
             else next(iter(slices.values()))
         )
 
-        enriched = compute_object_metro_features(combined, stations, entrances)
+        enriched = compute_object_metro_features(
+            combined, stations, entrances, road_graph=self._road_graph
+        )
         enriched = compute_object_road_features(
             enriched, ways, radius_m=self._road_radius_m
         )

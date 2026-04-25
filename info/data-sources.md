@@ -24,6 +24,7 @@ prefix:   Kadatastr/
 | `metro/metro_entrances.csv` | Входы метро (68 шт) | |
 | `metro/metro_kazan_raw.json` | Сырой ответ Overpass API | |
 | `tatarstan_major_roads/tatarstan_major_roads.json` | Крупные дороги Татарстана (Overpass JSON) | 16 МБ. |
+| `osm/kazan_walking_network.json` | **Сырая Overpass JSON-выгрузка пешеходной сети Казанской агломерации** (`highway=*` без motorway/trunk/construction/proposed; bbox ≈ 30 км буфер). Источник для графа путевых расстояний ([ADR-0011](decisions/0011-graph-based-distance-features.md)). | ~50 МБ; запрос делается [scripts/download_walking_network.py](../scripts/download_walking_network.py); затем [scripts/build_road_graph_artifact.py](../scripts/build_road_graph_artifact.py) превращает в parquet edges-таблицу. |
 | `nspd/buildings-kazan/page-NNNN.json` | **Здания ЕГРН (NSPD L36049), фильтр адрес ⊂ «Казань»** | 460 страниц по 200 объектов + 1 хвост (64 объекта) = **91 864 здания**. ~204 МБ. Сырая GeoJSON-выдача bulk attrib-search v3 + `_state.json` с прогрессом. См. [info/nspd-api.md](nspd-api.md) — там полный гайд по тому, как мы это получили. |
 | `nspd/landplots-kazan/page-NNNN.json` | **Земельные участки ЕГРН (NSPD L36048), фильтр адрес ⊂ «Казань»** | 1000 страниц + 1 хвост (19 объектов) = **199 819 участков**. ~514 МБ. Каждый объект содержит полигон в EPSG:3857, кадастровый номер, площадь и **реальную кадастровую стоимость** (`cost_value` ₽ и `cost_index` ₽/м²). |
 
@@ -58,3 +59,5 @@ prefix:   Kadatastr/
 | `data/gold/targets/region={code}/resolution={r}/data.parquet` | Синтетический таргет ([ADR-0004](decisions/0004-synthetic-target.md)) | нет (gitignore) |
 | `data/models/{run_name}_{ts}/` | Локальные артефакты тренировки baseline ([ADR-0005](decisions/0005-baseline-training.md)) — `params.json`, `metrics.json`, `model.cbm`. Используется когда `MLFLOW_ENABLED=False`. | нет (gitignore) |
 | `data/gold/predictions/region={code}/resolution={r}/data.parquet` | Снимок предсказаний модели на сетке ([ADR-0006](decisions/0006-inference-and-map.md)). Колонки: `h3_index`, `resolution`, `predicted_value`. | нет (gitignore) |
+| `data/raw/osm/kazan_walking_network.json` | Сырая Overpass-выгрузка пешеходной сети ([ADR-0011](decisions/0011-graph-based-distance-features.md)). Локально кэшируется, чтобы не дёргать Overpass на каждый rebuild. | нет (gitignore) |
+| `data/silver/road_graph/edges.parquet` | Edges-таблица графа `(from_lat, from_lon, to_lat, to_lon, length_m)`. Грузится eager-loadом в `NetworkxRoadGraph` через `Settings.road_graph_edges_path`. | нет (gitignore) |

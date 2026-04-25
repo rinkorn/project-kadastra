@@ -1,12 +1,38 @@
 import json
 from dataclasses import dataclass
 
+import numpy as np
 import polars as pl
 
 from kadastra.domain.asset_class import AssetClass
+from kadastra.etl.haversine import haversine_meters
+from kadastra.ports.road_graph import RoadGraphPort
 from kadastra.usecases.build_object_features import BuildObjectFeatures
 
 KAZAN_LAT, KAZAN_LON = 55.7887, 49.1221
+
+
+class _HaversineRoadGraph(RoadGraphPort):
+    """Test fake: returns euclidean haversine, ignores topology.
+
+    Lets BuildObjectFeatures tests focus on routing/wiring without
+    needing a real graph. Real graph behavior is covered in
+    test_object_metro_features and test_networkx_road_graph.
+    """
+
+    def distance_matrix_m(
+        self,
+        from_coords: list[tuple[float, float]],
+        to_coords: list[tuple[float, float]],
+    ) -> np.ndarray:
+        out = np.empty((len(from_coords), len(to_coords)), dtype=np.float64)
+        for i, (la1, lo1) in enumerate(from_coords):
+            for j, (la2, lo2) in enumerate(to_coords):
+                out[i, j] = haversine_meters(la1, lo1, la2, lo2)
+        return out
+
+
+_FAKE_GRAPH = _HaversineRoadGraph()
 
 
 def _objects_for(ac: AssetClass) -> pl.DataFrame:
@@ -112,6 +138,7 @@ def _usecase(
         roads_key="roads.json",
         neighbor_radius_m=500.0,
         road_radius_m=500.0,
+        road_graph=_FAKE_GRAPH,
     )
 
 

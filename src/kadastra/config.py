@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     nspd_silver_store_path: Path = Path("data/silver/nspd")
     nspd_buildings_raw_dir: Path = Path("data/raw/nspd/buildings-kazan")
     nspd_landplots_raw_dir: Path = Path("data/raw/nspd/landplots-kazan")
+
+    road_graph_edges_path: Path = Path("data/silver/road_graph/edges.parquet")
     model_registry_path: Path = Path("data/models")
     catboost_iterations: int = 500
     catboost_learning_rate: float = 0.05
