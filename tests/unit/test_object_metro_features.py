@@ -287,3 +287,52 @@ def test_no_stations_yields_inf_distance_and_zero_counts() -> None:
     # finite but very large, so downstream models treat it as "far".
     assert result["dist_metro_m"][0] > 1e6
     assert result["dist_entrance_m"][0] > 1e6
+
+
+def test_disconnected_object_yields_far_sentinel_not_inf() -> None:
+    """If an object's nearest graph component has no path to any station,
+    the road graph returns inf for that pair. CatBoost's split logic
+    handles NaN cleanly but not inf — and we already use a finite
+    'far sentinel' (1e9 m) for the empty-stations branch. Treating
+    a disconnected object the same way keeps the downstream contract
+    consistent: dist_metro_m is always finite (NaN only when we say
+    so explicitly).
+    """
+
+    class _DisconnectedGraph(RoadGraphPort):
+        """Returns inf for every pair — simulates total disconnect."""
+
+        def distance_matrix_m(
+            self,
+            from_coords: list[tuple[float, float]],
+            to_coords: list[tuple[float, float]],
+        ) -> np.ndarray:
+            return np.full(
+                (len(from_coords), len(to_coords)), np.inf, dtype=np.float64
+            )
+
+    objects = _objects(
+        [
+            {
+                "object_id": "way/1",
+                "asset_class": "house",
+                "lat": KAZAN_LAT,
+                "lon": KAZAN_LON,
+                "levels": None,
+                "flats": None,
+            }
+        ]
+    )
+    stations = _points([{"lat": KAZAN_LAT + 0.5, "lon": KAZAN_LON + 0.5}])
+    entrances = _points([{"lat": KAZAN_LAT + 0.5, "lon": KAZAN_LON + 0.5}])
+
+    result = compute_object_metro_features(
+        objects, stations, entrances, road_graph=_DisconnectedGraph()
+    )
+
+    assert np.isfinite(result["dist_metro_m"][0])
+    assert np.isfinite(result["dist_entrance_m"][0])
+    assert result["dist_metro_m"][0] > 1e6
+    assert result["dist_entrance_m"][0] > 1e6
+    assert result["count_stations_1km"][0] == 0
+    assert result["count_entrances_500m"][0] == 0
