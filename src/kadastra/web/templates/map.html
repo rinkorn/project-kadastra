@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>kadastra — Tatarstan hex features</title>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.0.0/dist/maplibre-gl.css">
+  <script src="https://unpkg.com/maplibre-gl@5.0.0/dist/maplibre-gl.js"></script>
+  <script src="https://unpkg.com/deck.gl@9.1.0/dist.min.js"></script>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; }
+    #map { position: absolute; top: 56px; bottom: 0; left: 0; right: 0; }
+    .panel {
+      position: absolute; top: 0; left: 0; right: 0; height: 56px;
+      display: flex; align-items: center; gap: 12px;
+      padding: 0 16px;
+      background: #1f2937; color: #fff; z-index: 10;
+    }
+    .panel select, .panel input {
+      padding: 6px 8px; border-radius: 4px; border: 1px solid #4b5563;
+      background: #111827; color: #fff;
+    }
+    .panel .stat { margin-left: auto; opacity: 0.85; font-size: 14px; }
+    .legend {
+      position: absolute; bottom: 16px; left: 16px;
+      background: rgba(31, 41, 55, 0.9); color: #fff;
+      padding: 8px 12px; border-radius: 6px; font-size: 12px; z-index: 10;
+    }
+    .legend .gradient { width: 200px; height: 8px; margin-top: 4px;
+      background: linear-gradient(to right, #2c7bb6, #abd9e9, #ffffbf, #fdae61, #d7191c);
+    }
+    .legend .ticks { display: flex; justify-content: space-between; margin-top: 2px; }
+  </style>
+</head>
+<body>
+  <div class="panel">
+    <strong>kadastra</strong>
+    <label>Feature:
+      <select id="feature">
+        {% for f in features %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Resolution:
+      <select id="resolution">
+        <option value="7">7 (~5 km²)</option>
+        <option value="8" selected>8 (~0.7 km²)</option>
+      </select>
+    </label>
+    <span class="stat" id="stat"></span>
+  </div>
+  <div id="map"></div>
+  <div class="legend">
+    <div id="legend-feature"></div>
+    <div class="gradient"></div>
+    <div class="ticks"><span id="legend-min">min</span><span id="legend-max">max</span></div>
+  </div>
+
+<script>
+const map = new maplibregl.Map({
+  container: 'map',
+  style: {
+    version: 8,
+    sources: {
+      osm: {
+        type: 'raster',
+        tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+        tileSize: 256,
+        attribution: '© OpenStreetMap contributors'
+      }
+    },
+    layers: [{ id: 'osm', type: 'raster', source: 'osm' }]
+  },
+  center: [49.1, 55.8],
+  zoom: 8
+});
+
+const deckOverlay = new deck.MapboxOverlay({
+  interleaved: false,
+  layers: []
+});
+map.addControl(deckOverlay);
+
+function colorRamp(t) {
+  // Inferno-ish: dark blue -> light blue -> yellow -> orange -> red
+  const stops = [
+    [44, 123, 182],
+    [171, 217, 233],
+    [255, 255, 191],
+    [253, 174, 97],
+    [215, 25, 28]
+  ];
+  const k = Math.min(Math.max(t, 0), 1) * (stops.length - 1);
+  const i = Math.floor(k);
+  const f = k - i;
+  const a = stops[i];
+  const b = stops[Math.min(i + 1, stops.length - 1)];
+  return [
+    Math.round(a[0] + (b[0] - a[0]) * f),
+    Math.round(a[1] + (b[1] - a[1]) * f),
+    Math.round(a[2] + (b[2] - a[2]) * f),
+    180
+  ];
+}
+
+async function refresh() {
+  const feature = document.getElementById('feature').value;
+  const resolution = parseInt(document.getElementById('resolution').value, 10);
+  const stat = document.getElementById('stat');
+  stat.textContent = 'loading…';
+  try {
+    const r = await fetch(`/api/hex_features?resolution=${resolution}&feature=${encodeURIComponent(feature)}`);
+    if (!r.ok) {
+      stat.textContent = `error ${r.status}`;
+      return;
+    }
+    const payload = await r.json();
+    const data = payload.data;
+    if (data.length === 0) {
+      stat.textContent = '0 hexes';
+      deckOverlay.setProps({ layers: [] });
+      return;
+    }
+    let min = Infinity, max = -Infinity;
+    for (const d of data) { if (d.value < min) min = d.value; if (d.value > max) max = d.value; }
+    const scale = max - min || 1;
+    const layer = new deck.H3HexagonLayer({
+      id: 'hex',
+      data,
+      getHexagon: d => d.hex,
+      getFillColor: d => colorRamp((d.value - min) / scale),
+      stroked: false,
+      extruded: false,
+      pickable: true
+    });
+    deckOverlay.setProps({
+      layers: [layer],
+      getTooltip: ({ object }) => object && `${feature}: ${object.value}`
+    });
+    document.getElementById('legend-feature').textContent = feature;
+    document.getElementById('legend-min').textContent = min.toFixed(2);
+    document.getElementById('legend-max').textContent = max.toFixed(2);
+    stat.textContent = `${data.length.toLocaleString()} hexes`;
+  } catch (e) {
+    stat.textContent = `error: ${e.message}`;
+  }
+}
+
+document.getElementById('feature').addEventListener('change', refresh);
+document.getElementById('resolution').addEventListener('change', refresh);
+map.on('load', refresh);
+</script>
+</body>
+</html>

@@ -9,11 +9,14 @@ authors = [
 requires-python = ">=3.13"
 dependencies = [
     "boto3>=1.42.96",
+    "fastapi>=0.136.1",
     "h3>=4.4.2",
     "httpx>=0.28.1",
+    "jinja2>=3.1.6",
     "polars>=1.40.1",
     "pydantic-settings>=2.14.0",
     "shapely>=2.1.2",
+    "uvicorn>=0.46.0",
 ]
 
 [build-system]
@@ -45,6 +48,8 @@ reportMissingTypeStubs = false
 reportUnknownMemberType = "none"
 reportUnknownVariableType = "none"
 reportUnknownArgumentType = "none"
+# FastAPI route handlers look unused to pyright; the decorator does the registration.
+reportUnusedFunction = "none"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

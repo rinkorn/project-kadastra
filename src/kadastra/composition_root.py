@@ -1,14 +1,21 @@
+from pathlib import Path
+
+from fastapi import FastAPI
+
 from kadastra.adapters.local_geojson_region_boundary import LocalGeoJsonRegionBoundary
 from kadastra.adapters.parquet_coverage_store import ParquetCoverageStore
 from kadastra.adapters.parquet_feature_store import ParquetFeatureStore
 from kadastra.adapters.parquet_gold_feature_store import ParquetGoldFeatureStore
 from kadastra.adapters.s3_raw_data import S3RawData
+from kadastra.api.routes import make_api_router
 from kadastra.config import Settings
 from kadastra.usecases.build_buildings_features import BuildBuildingsFeatures
 from kadastra.usecases.build_gold_features import BuildGoldFeatures
 from kadastra.usecases.build_metro_features import BuildMetroFeatures
 from kadastra.usecases.build_region_coverage import BuildRegionCoverage
 from kadastra.usecases.build_road_features import BuildRoadFeatures
+from kadastra.usecases.get_hex_features import GetHexFeatures
+from kadastra.web.routes import make_web_router
 
 
 class Container:
@@ -74,3 +81,16 @@ class Container:
             gold_store=ParquetGoldFeatureStore(s.gold_store_path),
             feature_sets=s.gold_feature_sets,
         )
+
+    def build_get_hex_features(self) -> GetHexFeatures:
+        return GetHexFeatures(ParquetGoldFeatureStore(self._settings.gold_store_path))
+
+
+def create_app(settings: Settings) -> FastAPI:
+    container = Container(settings)
+    templates_dir = Path(__file__).parent / "web" / "templates"
+
+    app = FastAPI(title="kadastra")
+    app.include_router(make_api_router(container.build_get_hex_features(), settings.region_code))
+    app.include_router(make_web_router(templates_dir))
+    return app
