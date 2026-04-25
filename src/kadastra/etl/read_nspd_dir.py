@@ -59,9 +59,27 @@ _LANDPLOTS_SCHEMA: dict[str, pl.DataType] = {
 }
 
 
+def _iter_features(directory: Path) -> Iterable[dict[str, Any]]:
+    for page in sorted(directory.glob("page-*.json")):
+        payload = json.loads(page.read_text(encoding="utf-8"))
+        for feature in payload.get("data", {}).get("features", []):
+            yield feature
+
+
+def _read_dir(
+    directory: Path,
+    parse: Callable[[dict[str, Any]], dict[str, Any]],
+    schema: dict[str, pl.DataType],
+) -> pl.DataFrame:
+    rows: list[dict[str, Any]] = [parse(f) for f in _iter_features(directory)]
+    if not rows:
+        return pl.DataFrame(schema=schema)
+    return pl.DataFrame(rows, schema=schema)
+
+
 def read_nspd_buildings_dir(directory: Path) -> pl.DataFrame:
-    raise NotImplementedError
+    return _read_dir(directory, parse_nspd_building_feature, _BUILDINGS_SCHEMA)
 
 
 def read_nspd_landplots_dir(directory: Path) -> pl.DataFrame:
-    raise NotImplementedError
+    return _read_dir(directory, parse_nspd_landplot_feature, _LANDPLOTS_SCHEMA)
