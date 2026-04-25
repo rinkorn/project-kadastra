@@ -1,7 +1,9 @@
 from kadastra.adapters.local_geojson_region_boundary import LocalGeoJsonRegionBoundary
 from kadastra.adapters.parquet_coverage_store import ParquetCoverageStore
+from kadastra.adapters.parquet_feature_store import ParquetFeatureStore
 from kadastra.adapters.s3_raw_data import S3RawData
 from kadastra.config import Settings
+from kadastra.usecases.build_metro_features import BuildMetroFeatures
 from kadastra.usecases.build_region_coverage import BuildRegionCoverage
 
 
@@ -30,4 +32,14 @@ class Container:
             endpoint_url=s.s3_endpoint_url,
             region=s.s3_region,
             addressing_style=s.s3_addressing_style,
+        )
+
+    def build_metro_features(self) -> BuildMetroFeatures:
+        s = self._settings
+        return BuildMetroFeatures(
+            coverage_reader=ParquetCoverageStore(s.coverage_store_path),
+            raw_data=self.build_s3_raw_data(),
+            feature_store=ParquetFeatureStore(s.feature_store_path),
+            stations_key=s.metro_stations_key,
+            entrances_key=s.metro_entrances_key,
         )
