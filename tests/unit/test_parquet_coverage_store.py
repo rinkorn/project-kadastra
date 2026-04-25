@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import polars as pl
+import pytest
 
 from kadastra.adapters.parquet_coverage_store import ParquetCoverageStore
 
@@ -57,3 +58,22 @@ def test_save_with_no_cells_creates_no_files(tmp_path: Path) -> None:
     store.save("RU-TA", [])
 
     assert list(tmp_path.iterdir()) == []
+
+
+def test_load_returns_dataframe_with_h3_index_and_resolution(tmp_path: Path) -> None:
+    store = ParquetCoverageStore(tmp_path)
+    store.save("RU-TA", [("h_a", 8), ("h_b", 8), ("h_c", 10)])
+
+    df = store.load("RU-TA", 8)
+
+    assert set(df.columns) == {"h3_index", "resolution"}
+    assert sorted(df["h3_index"].to_list()) == ["h_a", "h_b"]
+    assert df["resolution"].unique().to_list() == [8]
+
+
+def test_load_for_missing_resolution_raises(tmp_path: Path) -> None:
+    store = ParquetCoverageStore(tmp_path)
+    store.save("RU-TA", [("h_a", 8)])
+
+    with pytest.raises(FileNotFoundError):
+        store.load("RU-TA", 9)

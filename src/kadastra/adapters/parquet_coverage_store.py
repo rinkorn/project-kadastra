@@ -19,3 +19,6 @@ class ParquetCoverageStore:
             partition.mkdir(parents=True, exist_ok=True)
             df = pl.DataFrame({"h3_index": sorted(indices)})
             df.write_parquet(partition / "data.parquet")
+
+    def load(self, region_code: str, resolution: int) -> pl.DataFrame:
+        raise NotImplementedError
