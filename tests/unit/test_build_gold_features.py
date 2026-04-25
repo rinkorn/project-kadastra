@@ -37,17 +37,16 @@ def test_execute_joins_all_feature_sets_into_gold() -> None:
     buildings = pl.DataFrame(
         {"h3_index": ["h1", "h2"], "resolution": [8, 8], "building_count": [3, 0]}
     )
+    gold_store = FakeGoldStore()
 
     usecase = BuildGoldFeatures(
         coverage_reader=FakeCoverageReader({8: coverage}),
         feature_reader=FakeFeatureReader(
             {(8, "metro"): metro, (8, "buildings"): buildings}
         ),
-        gold_store=FakeGoldStore(),
+        gold_store=gold_store,
         feature_sets=["metro", "buildings"],
     )
-    gold_store = usecase._gold_store
-    assert isinstance(gold_store, FakeGoldStore)
 
     usecase.execute("RU-TA", resolutions=[8])
 
