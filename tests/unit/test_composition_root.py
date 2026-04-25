@@ -221,12 +221,27 @@ def test_container_builds_build_valuation_objects(tmp_path: Path) -> None:
 
 
 def test_container_builds_build_object_features(tmp_path: Path) -> None:
+    import polars as pl
+
     from kadastra.usecases.build_object_features import BuildObjectFeatures
+
+    edges_path = tmp_path / "edges.parquet"
+    edges_path.parent.mkdir(parents=True, exist_ok=True)
+    pl.DataFrame(
+        {
+            "from_lat": [55.78],
+            "from_lon": [49.12],
+            "to_lat": [55.79],
+            "to_lon": [49.13],
+            "length_m": [100.0],
+        }
+    ).write_parquet(edges_path)
 
     settings = Settings(
         region_boundary_path=tmp_path / "b.geojson",
         coverage_store_path=tmp_path / "c",
         valuation_object_store_path=tmp_path / "objects",
+        road_graph_edges_path=edges_path,
         s3_endpoint_url="https://example.com",
         s3_bucket="b",
         s3_access_key="k",

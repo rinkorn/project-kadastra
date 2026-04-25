@@ -7,12 +7,14 @@ from kadastra.adapters.local_model_loader import LocalModelLoader
 from kadastra.adapters.local_model_registry import LocalModelRegistry
 from kadastra.adapters.mlflow_model_loader import MLflowModelLoader
 from kadastra.adapters.mlflow_model_registry import MLflowModelRegistry
+from kadastra.adapters.networkx_road_graph import NetworkxRoadGraph
 from kadastra.adapters.parquet_coverage_store import ParquetCoverageStore
 from kadastra.adapters.parquet_feature_store import ParquetFeatureStore
 from kadastra.adapters.parquet_gold_feature_store import ParquetGoldFeatureStore
 from kadastra.adapters.parquet_nspd_silver_store import ParquetNspdSilverStore
 from kadastra.adapters.parquet_valuation_object_store import ParquetValuationObjectStore
 from kadastra.adapters.s3_raw_data import S3RawData
+from kadastra.ports.road_graph import RoadGraphPort
 from kadastra.api.routes import make_api_router
 from kadastra.config import Settings
 from kadastra.ml.train import CatBoostParams
@@ -201,6 +203,9 @@ class Container:
             ),
         )
 
+    def build_road_graph(self) -> RoadGraphPort:
+        return NetworkxRoadGraph.from_parquet(self._settings.road_graph_edges_path)
+
     def build_object_features(self) -> BuildObjectFeatures:
         s = self._settings
         store = ParquetValuationObjectStore(s.valuation_object_store_path)
@@ -213,6 +218,7 @@ class Container:
             roads_key=s.roads_key,
             neighbor_radius_m=s.object_neighbor_radius_m,
             road_radius_m=s.object_road_radius_m,
+            road_graph=self.build_road_graph(),
         )
 
     def build_object_synthetic_target(self) -> BuildObjectSyntheticTarget:
