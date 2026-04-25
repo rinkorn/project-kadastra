@@ -14,10 +14,20 @@ the rest of the quartet sees.
 
 from __future__ import annotations
 
+import pickle
+
 import numpy as np
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.linear_model import LinearRegression
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder
 
 
 class NaiveLinearQuartetModel:
+    def __init__(self) -> None:
+        self._pipeline: Pipeline | None = None
+
     def fit(
         self,
         X: np.ndarray,
@@ -25,14 +35,44 @@ class NaiveLinearQuartetModel:
         *,
         cat_feature_indices: list[int] | None = None,
     ) -> None:
-        raise NotImplementedError
+        cat_idx = list(cat_feature_indices or [])
+        n_cols = X.shape[1]
+        num_idx = [i for i in range(n_cols) if i not in set(cat_idx)]
+
+        transformers: list[tuple[str, object, list[int]]] = []
+        if num_idx:
+            transformers.append(
+                ("num", SimpleImputer(strategy="median"), num_idx)
+            )
+        if cat_idx:
+            transformers.append(
+                (
+                    "cat",
+                    OneHotEncoder(handle_unknown="ignore", sparse_output=False),
+                    cat_idx,
+                )
+            )
+
+        preprocessor = ColumnTransformer(transformers)
+        pipeline = Pipeline(
+            steps=[("pre", preprocessor), ("lr", LinearRegression())]
+        )
+        pipeline.fit(X, y)
+        self._pipeline = pipeline
 
     def predict(self, X: np.ndarray) -> np.ndarray:
-        raise NotImplementedError
+        if self._pipeline is None:
+            raise RuntimeError("NaiveLinearQuartetModel.predict before fit")
+        preds = self._pipeline.predict(X)
+        return np.asarray(preds, dtype=np.float64)
 
     def serialize(self) -> bytes:
-        raise NotImplementedError
+        if self._pipeline is None:
+            raise RuntimeError("NaiveLinearQuartetModel.serialize before fit")
+        return pickle.dumps(self._pipeline)
 
     @classmethod
     def deserialize(cls, blob: bytes) -> NaiveLinearQuartetModel:
-        raise NotImplementedError
+        instance = cls()
+        instance._pipeline = pickle.loads(blob)
+        return instance
