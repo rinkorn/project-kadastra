@@ -30,4 +30,30 @@ _OUTPUT_SCHEMA = {
 def build_road_graph_edges_from_overpass(
     payload: dict[str, Any],
 ) -> pl.DataFrame:
-    raise NotImplementedError
+    rows: list[dict[str, float]] = []
+    for element in payload.get("elements", []):
+        if element.get("type") != "way":
+            continue
+        geometry = element.get("geometry")
+        if not geometry or len(geometry) < 2:
+            continue
+        for prev, curr in zip(geometry, geometry[1:], strict=False):
+            from_lat = float(prev["lat"])
+            from_lon = float(prev["lon"])
+            to_lat = float(curr["lat"])
+            to_lon = float(curr["lon"])
+            rows.append(
+                {
+                    "from_lat": from_lat,
+                    "from_lon": from_lon,
+                    "to_lat": to_lat,
+                    "to_lon": to_lon,
+                    "length_m": haversine_meters(
+                        from_lat, from_lon, to_lat, to_lon
+                    ),
+                }
+            )
+
+    if not rows:
+        return pl.DataFrame(schema=_OUTPUT_SCHEMA)
+    return pl.DataFrame(rows, schema=_OUTPUT_SCHEMA)
