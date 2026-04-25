@@ -129,7 +129,7 @@ def test_emits_one_save_per_requested_class() -> None:
     )
 
     _usecase(store, raw).execute(
-        "RU-KAZAN-AGG", asset_classes=list(AssetClass)
+        "RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT, AssetClass.HOUSE, AssetClass.COMMERCIAL]
     )
 
     saved_classes = sorted(c.asset_class.value for c in store.calls)
@@ -232,7 +232,7 @@ def test_neighbor_counts_see_all_classes() -> None:
     )
 
     _usecase(store, raw).execute(
-        "RU-KAZAN-AGG", asset_classes=list(AssetClass)
+        "RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT, AssetClass.HOUSE, AssetClass.COMMERCIAL]
     )
 
     saved_apt = next(c for c in store.calls if c.asset_class is AssetClass.APARTMENT).df
@@ -265,7 +265,7 @@ def test_handles_empty_partition_gracefully() -> None:
     )
 
     _usecase(store, raw).execute(
-        "RU-KAZAN-AGG", asset_classes=list(AssetClass)
+        "RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT, AssetClass.HOUSE, AssetClass.COMMERCIAL]
     )
 
     saved = {c.asset_class: c.df for c in store.calls}

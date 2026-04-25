@@ -83,7 +83,7 @@ def test_appends_target_column_for_each_class() -> None:
     )
     usecase = BuildObjectSyntheticTarget(reader=store, store=store, seed=42)
 
-    usecase.execute("RU-KAZAN-AGG", asset_classes=list(AssetClass))
+    usecase.execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT, AssetClass.HOUSE, AssetClass.COMMERCIAL])
 
     assert len(store.calls) == 3
     for call in store.calls:

@@ -5,3 +5,4 @@ class AssetClass(StrEnum):
     APARTMENT = "apartment"
     HOUSE = "house"
     COMMERCIAL = "commercial"
+    LANDPLOT = "landplot"
