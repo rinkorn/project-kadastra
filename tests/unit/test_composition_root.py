@@ -5,8 +5,11 @@ import pytest
 from kadastra.adapters.s3_raw_data import S3RawData
 from kadastra.composition_root import Container
 from kadastra.config import Settings
+from kadastra.adapters.local_model_registry import LocalModelRegistry
+from kadastra.adapters.mlflow_model_registry import MLflowModelRegistry
 from kadastra.usecases.build_region_coverage import BuildRegionCoverage
 from kadastra.usecases.build_synthetic_target import BuildSyntheticTarget
+from kadastra.usecases.train_valuation_model import TrainValuationModel
 
 
 def test_container_builds_region_coverage_usecase(tmp_path: Path) -> None:
@@ -80,3 +83,61 @@ def test_settings_has_synthetic_target_defaults() -> None:
         "data/gold/targets"
     )
     assert settings.synthetic_target_seed == 42
+
+
+def test_settings_has_training_defaults() -> None:
+    settings = Settings()
+
+    assert settings.model_registry_path.as_posix().endswith("data/models")
+    assert settings.catboost_iterations > 0
+    assert 0 < settings.catboost_learning_rate < 1
+    assert settings.catboost_depth > 0
+    assert settings.train_n_splits >= 2
+    assert settings.train_parent_resolution >= 0
+
+
+def test_container_builds_train_valuation_model_with_local_registry_when_mlflow_disabled(
+    tmp_path: Path,
+) -> None:
+    settings = Settings(
+        region_boundary_path=tmp_path / "b.geojson",
+        coverage_store_path=tmp_path / "c",
+        gold_store_path=tmp_path / "gold",
+        synthetic_target_store_path=tmp_path / "targets",
+        model_registry_path=tmp_path / "models",
+        mlflow_enabled=False,
+    )
+    container = Container(settings)
+
+    usecase = container.build_train_valuation_model()
+
+    assert isinstance(usecase, TrainValuationModel)
+    # Concretely, the adapter inside should be LocalModelRegistry
+    assert isinstance(container.build_model_registry(), LocalModelRegistry)
+
+
+def test_container_builds_mlflow_registry_when_enabled(tmp_path: Path) -> None:
+    settings = Settings(
+        region_boundary_path=tmp_path / "b.geojson",
+        coverage_store_path=tmp_path / "c",
+        mlflow_enabled=True,
+        mlflow_tracking_uri=f"file:{tmp_path / 'mlruns'}",
+    )
+    container = Container(settings)
+
+    registry = container.build_model_registry()
+
+    assert isinstance(registry, MLflowModelRegistry)
+
+
+def test_container_raises_when_mlflow_enabled_but_uri_missing(tmp_path: Path) -> None:
+    settings = Settings(
+        region_boundary_path=tmp_path / "b.geojson",
+        coverage_store_path=tmp_path / "c",
+        mlflow_enabled=True,
+        mlflow_tracking_uri=None,
+    )
+    container = Container(settings)
+
+    with pytest.raises(RuntimeError, match="MLFLOW_TRACKING_URI"):
+        container.build_model_registry()

@@ -45,3 +45,4 @@ prefix:   Kadatastr/
 | `data/silver/features/...` | Hex-агрегаты признаков | нет (gitignore) |
 | `data/gold/features/region={code}/resolution={r}/data.parquet` | Финальная feature-таблица для модели | нет (gitignore) |
 | `data/gold/targets/region={code}/resolution={r}/data.parquet` | Синтетический таргет ([ADR-0004](decisions/0004-synthetic-target.md)) | нет (gitignore) |
+| `data/models/{run_name}_{ts}/` | Локальные артефакты тренировки baseline ([ADR-0005](decisions/0005-baseline-training.md)) — `params.json`, `metrics.json`, `model.cbm`. Используется когда `MLFLOW_ENABLED=False`. | нет (gitignore) |
