@@ -3,7 +3,9 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from kadastra.adapters.local_geojson_region_boundary import LocalGeoJsonRegionBoundary
+from kadastra.adapters.local_model_loader import LocalModelLoader
 from kadastra.adapters.local_model_registry import LocalModelRegistry
+from kadastra.adapters.mlflow_model_loader import MLflowModelLoader
 from kadastra.adapters.mlflow_model_registry import MLflowModelRegistry
 from kadastra.adapters.parquet_coverage_store import ParquetCoverageStore
 from kadastra.adapters.parquet_feature_store import ParquetFeatureStore
@@ -12,6 +14,7 @@ from kadastra.adapters.s3_raw_data import S3RawData
 from kadastra.api.routes import make_api_router
 from kadastra.config import Settings
 from kadastra.ml.train import CatBoostParams
+from kadastra.ports.model_loader import ModelLoaderPort
 from kadastra.ports.model_registry import ModelRegistryPort
 from kadastra.usecases.build_buildings_features import BuildBuildingsFeatures
 from kadastra.usecases.build_gold_features import BuildGoldFeatures
@@ -20,8 +23,11 @@ from kadastra.usecases.build_region_coverage import BuildRegionCoverage
 from kadastra.usecases.build_road_features import BuildRoadFeatures
 from kadastra.usecases.build_synthetic_target import BuildSyntheticTarget
 from kadastra.usecases.get_hex_features import GetHexFeatures
+from kadastra.usecases.infer_valuation import InferValuation
 from kadastra.usecases.train_valuation_model import TrainValuationModel
 from kadastra.web.routes import make_web_router
+
+_RUN_NAME_PREFIX = "catboost-baseline-res"
 
 
 class Container:
@@ -89,7 +95,11 @@ class Container:
         )
 
     def build_get_hex_features(self) -> GetHexFeatures:
-        return GetHexFeatures(ParquetGoldFeatureStore(self._settings.gold_store_path))
+        s = self._settings
+        return GetHexFeatures(
+            ParquetGoldFeatureStore(s.gold_store_path),
+            prediction_reader=ParquetGoldFeatureStore(s.predictions_store_path),
+        )
 
     def build_synthetic_target(self) -> BuildSyntheticTarget:
         s = self._settings
@@ -127,6 +137,28 @@ class Container:
             params=params,
             n_splits=s.train_n_splits,
             parent_resolution=s.train_parent_resolution,
+        )
+
+    def build_model_loader(self) -> ModelLoaderPort:
+        s = self._settings
+        if s.mlflow_enabled:
+            if not s.mlflow_tracking_uri:
+                raise RuntimeError(
+                    "MLFLOW_TRACKING_URI is required when MLFLOW_ENABLED=True"
+                )
+            return MLflowModelLoader(
+                tracking_uri=s.mlflow_tracking_uri,
+                experiment_name=s.mlflow_experiment_name,
+            )
+        return LocalModelLoader(s.model_registry_path)
+
+    def build_infer_valuation(self) -> InferValuation:
+        s = self._settings
+        return InferValuation(
+            model_loader=self.build_model_loader(),
+            gold_reader=ParquetGoldFeatureStore(s.gold_store_path),
+            prediction_store=ParquetGoldFeatureStore(s.predictions_store_path),
+            run_name_prefix=_RUN_NAME_PREFIX,
         )
 
 

@@ -46,3 +46,4 @@ prefix:   Kadatastr/
 | `data/gold/features/region={code}/resolution={r}/data.parquet` | Финальная feature-таблица для модели | нет (gitignore) |
 | `data/gold/targets/region={code}/resolution={r}/data.parquet` | Синтетический таргет ([ADR-0004](decisions/0004-synthetic-target.md)) | нет (gitignore) |
 | `data/models/{run_name}_{ts}/` | Локальные артефакты тренировки baseline ([ADR-0005](decisions/0005-baseline-training.md)) — `params.json`, `metrics.json`, `model.cbm`. Используется когда `MLFLOW_ENABLED=False`. | нет (gitignore) |
+| `data/gold/predictions/region={code}/resolution={r}/data.parquet` | Снимок предсказаний модели на сетке ([ADR-0006](decisions/0006-inference-and-map.md)). Колонки: `h3_index`, `resolution`, `predicted_value`. | нет (gitignore) |

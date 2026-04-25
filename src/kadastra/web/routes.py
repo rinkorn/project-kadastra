@@ -5,6 +5,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 DEFAULT_FEATURES = [
+    "predicted_value",
     "building_count",
     "building_count_apartments",
     "building_count_detached",

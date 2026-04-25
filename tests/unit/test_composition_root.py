@@ -2,13 +2,16 @@ from pathlib import Path
 
 import pytest
 
+from kadastra.adapters.local_model_loader import LocalModelLoader
+from kadastra.adapters.local_model_registry import LocalModelRegistry
+from kadastra.adapters.mlflow_model_loader import MLflowModelLoader
+from kadastra.adapters.mlflow_model_registry import MLflowModelRegistry
 from kadastra.adapters.s3_raw_data import S3RawData
 from kadastra.composition_root import Container
 from kadastra.config import Settings
-from kadastra.adapters.local_model_registry import LocalModelRegistry
-from kadastra.adapters.mlflow_model_registry import MLflowModelRegistry
 from kadastra.usecases.build_region_coverage import BuildRegionCoverage
 from kadastra.usecases.build_synthetic_target import BuildSyntheticTarget
+from kadastra.usecases.infer_valuation import InferValuation
 from kadastra.usecases.train_valuation_model import TrainValuationModel
 
 
@@ -141,3 +144,47 @@ def test_container_raises_when_mlflow_enabled_but_uri_missing(tmp_path: Path) ->
 
     with pytest.raises(RuntimeError, match="MLFLOW_TRACKING_URI"):
         container.build_model_registry()
+
+
+def test_settings_has_predictions_store_default() -> None:
+    settings = Settings()
+
+    assert settings.predictions_store_path.as_posix().endswith("data/gold/predictions")
+
+
+def test_container_builds_local_model_loader_when_mlflow_disabled(tmp_path: Path) -> None:
+    settings = Settings(
+        region_boundary_path=tmp_path / "b.geojson",
+        coverage_store_path=tmp_path / "c",
+        model_registry_path=tmp_path / "models",
+        mlflow_enabled=False,
+    )
+    container = Container(settings)
+
+    assert isinstance(container.build_model_loader(), LocalModelLoader)
+
+
+def test_container_builds_mlflow_model_loader_when_enabled(tmp_path: Path) -> None:
+    settings = Settings(
+        region_boundary_path=tmp_path / "b.geojson",
+        coverage_store_path=tmp_path / "c",
+        mlflow_enabled=True,
+        mlflow_tracking_uri=f"file:{tmp_path / 'mlruns'}",
+    )
+    container = Container(settings)
+
+    assert isinstance(container.build_model_loader(), MLflowModelLoader)
+
+
+def test_container_builds_infer_valuation(tmp_path: Path) -> None:
+    settings = Settings(
+        region_boundary_path=tmp_path / "b.geojson",
+        coverage_store_path=tmp_path / "c",
+        gold_store_path=tmp_path / "gold",
+        predictions_store_path=tmp_path / "preds",
+        model_registry_path=tmp_path / "models",
+        mlflow_enabled=False,
+    )
+    container = Container(settings)
+
+    assert isinstance(container.build_infer_valuation(), InferValuation)
