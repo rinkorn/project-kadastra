@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     synthetic_target_store_path: Path = Path("data/gold/targets")
     synthetic_target_seed: int = 42
 
+    predictions_store_path: Path = Path("data/gold/predictions")
     model_registry_path: Path = Path("data/models")
     catboost_iterations: int = 500
     catboost_learning_rate: float = 0.05
