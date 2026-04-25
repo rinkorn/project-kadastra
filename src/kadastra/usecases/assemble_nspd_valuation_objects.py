@@ -36,6 +36,11 @@ _OUTPUT_SCHEMA: dict[str, type[pl.DataType] | pl.DataType] = {
     "materials": pl.Utf8,
     "cost_value_rub": pl.Float64,
     "synthetic_target_rub_per_m2": pl.Float64,
+    # ADR-0015: keep cad_num + readable_address in gold so the
+    # municipality features can join against ГАР and parse address
+    # fallbacks downstream in BuildObjectFeatures.
+    "cad_num": pl.Utf8,
+    "readable_address": pl.Utf8,
 }
 
 
