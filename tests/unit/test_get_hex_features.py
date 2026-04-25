@@ -45,3 +45,31 @@ def test_raises_keyerror_for_unknown_feature() -> None:
 
     with pytest.raises(KeyError, match="not in gold table"):
         usecase.execute("RU-TA", 8, "nope")
+
+
+def _predictions_df() -> pl.DataFrame:
+    return pl.DataFrame(
+        {
+            "h3_index": ["h_a", "h_b"],
+            "resolution": [8, 8],
+            "predicted_value": [12345.0, 6789.0],
+        }
+    )
+
+
+def test_predicted_value_is_served_from_prediction_reader() -> None:
+    usecase = GetHexFeatures(
+        FakeGoldReader({8: _gold_df()}),
+        prediction_reader=FakeGoldReader({8: _predictions_df()}),
+    )
+
+    result = usecase.execute("RU-TA", 8, "predicted_value")
+
+    assert {(r["hex"], r["value"]) for r in result} == {("h_a", 12345.0), ("h_b", 6789.0)}
+
+
+def test_predicted_value_raises_when_prediction_reader_missing() -> None:
+    usecase = GetHexFeatures(FakeGoldReader({8: _gold_df()}))
+
+    with pytest.raises(KeyError, match="predicted_value"):
+        usecase.execute("RU-TA", 8, "predicted_value")
