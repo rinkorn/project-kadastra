@@ -11,7 +11,12 @@ class ParquetNspdSilverStore:
         return self._base_path / f"region={region_code}" / f"source={source}"
 
     def save(self, region_code: str, source: str, df: pl.DataFrame) -> None:
-        raise NotImplementedError
+        partition = self._partition_dir(region_code, source)
+        partition.mkdir(parents=True, exist_ok=True)
+        df.write_parquet(partition / "data.parquet")
 
     def load(self, region_code: str, source: str) -> pl.DataFrame:
-        raise NotImplementedError
+        path = self._partition_dir(region_code, source) / "data.parquet"
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        return pl.read_parquet(path)
