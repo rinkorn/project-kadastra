@@ -32,13 +32,13 @@ def test_spearman_corr_perfect_positive() -> None:
     y_pred = np.array([1.5, 1.6, 2.5, 3.5, 9.0])
     # Both arrays are strictly increasing → ρ = 1.0 even though the
     # absolute values disagree.
-    assert spearman_corr(y_true, y_pred) == 1.0
+    assert math.isclose(spearman_corr(y_true, y_pred), 1.0, abs_tol=1e-9)
 
 
 def test_spearman_corr_perfect_negative() -> None:
     y_true = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
     y_pred = np.array([5.0, 4.0, 3.0, 2.0, 1.0])
-    assert spearman_corr(y_true, y_pred) == -1.0
+    assert math.isclose(spearman_corr(y_true, y_pred), -1.0, abs_tol=1e-9)
 
 
 def test_spearman_corr_robust_to_monotone_transform() -> None:
@@ -47,7 +47,11 @@ def test_spearman_corr_robust_to_monotone_transform() -> None:
     y_true = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
     y_pred_a = np.array([2.0, 4.0, 5.0, 7.0, 9.0])
     y_pred_b = y_pred_a**2
-    assert spearman_corr(y_true, y_pred_a) == spearman_corr(y_true, y_pred_b)
+    assert math.isclose(
+        spearman_corr(y_true, y_pred_a),
+        spearman_corr(y_true, y_pred_b),
+        abs_tol=1e-12,
+    )
 
 
 def test_percentile_asymmetry_unbiased_predictor_zero_skew() -> None:

@@ -11,11 +11,17 @@ returns plain Python types — the use case marshals them into the
 from __future__ import annotations
 
 import numpy as np
+from scipy.stats import spearmanr
 
 
 def spearman_corr(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     """Spearman rank correlation between two 1-D arrays."""
-    raise NotImplementedError
+    result = spearmanr(y_true, y_pred)
+    # SciPy returns SignificanceResult (or tuple-shaped fallback);
+    # both expose ``.statistic`` at runtime, but the published stubs
+    # don't surface it. Pull through __getattr__ to keep both runtime
+    # behavior and pyright happy.
+    return float(getattr(result, "statistic"))  # noqa: B009
 
 
 def percentile_asymmetry(
@@ -33,7 +39,32 @@ def percentile_asymmetry(
       ``y_true`` is in the bottom 10 % AND ``y_pred > y_true``.
     - ``frac_underpredicted_in_top_decile`` — symmetric on the top.
     """
-    raise NotImplementedError
+    out: dict[str, float] = {}
+    for p in (10, 25, 50, 75, 90):
+        out[f"p{p}_pred_minus_true"] = float(
+            np.percentile(y_pred, p) - np.percentile(y_true, p)
+        )
+
+    bottom_threshold = float(np.percentile(y_true, 10))
+    top_threshold = float(np.percentile(y_true, 90))
+    bottom_mask = y_true <= bottom_threshold
+    top_mask = y_true >= top_threshold
+
+    if bottom_mask.any():
+        out["frac_overpredicted_in_bottom_decile"] = float(
+            np.mean(y_pred[bottom_mask] > y_true[bottom_mask])
+        )
+    else:
+        out["frac_overpredicted_in_bottom_decile"] = 0.0
+
+    if top_mask.any():
+        out["frac_underpredicted_in_top_decile"] = float(
+            np.mean(y_pred[top_mask] < y_true[top_mask])
+        )
+    else:
+        out["frac_underpredicted_in_top_decile"] = 0.0
+
+    return out
 
 
 def simplification_loss_pp(black_mape: float, simpler_mape: float) -> float:
@@ -43,4 +74,4 @@ def simplification_loss_pp(black_mape: float, simpler_mape: float) -> float:
     return is in percentage points (2.45 == 2.45 pp). Positive when
     the simpler model is worse, which is the usual direction.
     """
-    raise NotImplementedError
+    return (simpler_mape - black_mape) * 100.0
