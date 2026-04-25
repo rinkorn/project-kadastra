@@ -19,9 +19,12 @@ from __future__ import annotations
 
 import io
 import json
+from collections.abc import Mapping
+from typing import Any
 
 import numpy as np
 import polars as pl
+from catboost import CatBoostRegressor
 
 from kadastra.domain.asset_class import AssetClass
 from kadastra.ml.train import CatBoostParams
@@ -38,16 +41,16 @@ class _FakeReader:
 
 class _FakeRegistry:
     def __init__(self) -> None:
-        self.runs: list[dict] = []
+        self.runs: list[dict[str, Any]] = []
 
     def log_run(
         self,
         *,
         run_name: str,
-        params,
-        metrics,
-        model,
-        artifacts=None,
+        params: Mapping[str, Any],
+        metrics: Mapping[str, float],
+        model: CatBoostRegressor,
+        artifacts: Mapping[str, bytes] | None = None,
     ) -> str:
         self.runs.append(
             {

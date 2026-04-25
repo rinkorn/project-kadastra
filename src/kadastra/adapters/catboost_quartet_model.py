@@ -56,6 +56,17 @@ class CatBoostQuartetModel:
         preds = self._model.predict(X)
         return np.asarray(preds, dtype=np.float64)
 
+    def unwrap(self) -> CatBoostRegressor:
+        """Expose the underlying CatBoostRegressor.
+
+        TrainQuartet passes the final-fit Black Box through
+        ModelRegistryPort.log_run as the run's primary ``model``;
+        the registry adapters expect a CatBoostRegressor by type.
+        """
+        if self._model is None:
+            raise RuntimeError("CatBoostQuartetModel.unwrap before fit")
+        return self._model
+
     def serialize(self) -> bytes:
         if self._model is None:
             raise RuntimeError("CatBoostQuartetModel.serialize before fit")
