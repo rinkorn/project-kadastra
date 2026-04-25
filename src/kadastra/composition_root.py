@@ -6,6 +6,7 @@ from kadastra.config import Settings
 from kadastra.usecases.build_buildings_features import BuildBuildingsFeatures
 from kadastra.usecases.build_metro_features import BuildMetroFeatures
 from kadastra.usecases.build_region_coverage import BuildRegionCoverage
+from kadastra.usecases.build_road_features import BuildRoadFeatures
 
 
 class Container:
@@ -52,4 +53,13 @@ class Container:
             raw_data=self.build_s3_raw_data(),
             feature_store=ParquetFeatureStore(s.feature_store_path),
             buildings_key=s.buildings_key,
+        )
+
+    def build_road_features(self) -> BuildRoadFeatures:
+        s = self._settings
+        return BuildRoadFeatures(
+            coverage_reader=ParquetCoverageStore(s.coverage_store_path),
+            raw_data=self.build_s3_raw_data(),
+            feature_store=ParquetFeatureStore(s.feature_store_path),
+            roads_key=s.roads_key,
         )

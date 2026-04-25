@@ -23,3 +23,4 @@ class Settings(BaseSettings):
     metro_stations_key: str = "Kadatastr/metro/metro_stations.csv"
     metro_entrances_key: str = "Kadatastr/metro/metro_entrances.csv"
     buildings_key: str = "Kadatastr/rosreestr/osm_buildings_kazan.csv"
+    roads_key: str = "Kadatastr/tatarstan_major_roads/tatarstan_major_roads.json"
