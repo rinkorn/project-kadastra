@@ -26,7 +26,7 @@ import polars as pl
 from kadastra.etl.relative_features import compute_relative_features
 
 
-def _df(rows: list[dict[str, float]]) -> pl.DataFrame:
+def _df(rows: list[dict[str, object]]) -> pl.DataFrame:
     schema = {
         "object_id": pl.Utf8,
         "lat": pl.Float64,
@@ -126,7 +126,8 @@ def test_isolated_object_yields_self_relative_and_count_one() -> None:
     assert lonely["count_p7"] == 1
     assert lonely["dist_metro_m__rel_p7_diff_med"] == 0.0
     assert lonely["dist_metro_m__rel_p7_ratio_med"] == 1.0
-    assert math.isnan(lonely["dist_metro_m__rel_p7_z_iqr"])
+    z = lonely["dist_metro_m__rel_p7_z_iqr"]
+    assert z is None or (isinstance(z, float) and math.isnan(z))
 
 
 def test_zero_median_yields_nan_ratio_not_inf() -> None:
@@ -145,10 +146,13 @@ def test_zero_median_yields_nan_ratio_not_inf() -> None:
     ).sort("object_id")
 
     ratios = out["dist_metro_m__rel_p7_ratio_med"].to_list()
-    # Median of [0,0,50] = 0 → all ratios should be NaN, none inf.
-    assert all(math.isnan(r) for r in ratios), ratios
+    # Median of [0,0,50] = 0 → all ratios are missing (None or NaN), none inf.
+    for r in ratios:
+        assert r is None or (isinstance(r, float) and math.isnan(r)), ratios
     # And no infinite values leaked through.
-    assert not any(math.isinf(r) for r in ratios if r is not None and not math.isnan(r))
+    assert not any(
+        isinstance(r, float) and math.isinf(r) for r in ratios if r is not None
+    )
 
 
 def test_multiple_features_each_get_independent_relatives() -> None:
@@ -238,9 +242,9 @@ def test_parent_h3_index_matches_h3_library() -> None:
 
     expected_p7 = h3.latlng_to_cell(lat, lon, 7)
     expected_p8 = h3.latlng_to_cell(lat, lon, 8)
-    # h3-py returns int for the cell index; we compare numerically.
-    assert int(out["parent_h3_p7"][0]) == expected_p7
-    assert int(out["parent_h3_p8"][0]) == expected_p8
+    # h3-py 4.x returns a hex-string for the cell index; we compare directly.
+    assert out["parent_h3_p7"][0] == expected_p7
+    assert out["parent_h3_p8"][0] == expected_p8
 
 
 def test_count_p_is_per_resolution_not_per_feature() -> None:
