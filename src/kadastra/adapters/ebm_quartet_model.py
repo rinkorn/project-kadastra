@@ -13,13 +13,14 @@ from __future__ import annotations
 import pickle
 
 import numpy as np
+from interpret.glassbox import ExplainableBoostingRegressor
 
 
 class EbmQuartetModel:
     def __init__(self, *, max_bins: int = 256, interactions: int = 10) -> None:
         self._max_bins = max_bins
         self._interactions = interactions
-        self._model = None
+        self._model: ExplainableBoostingRegressor | None = None
 
     def fit(
         self,
@@ -28,14 +29,35 @@ class EbmQuartetModel:
         *,
         cat_feature_indices: list[int] | None = None,
     ) -> None:
-        raise NotImplementedError
+        cat_set = set(cat_feature_indices or [])
+        feature_types = [
+            "nominal" if i in cat_set else "continuous"
+            for i in range(X.shape[1])
+        ]
+        model = ExplainableBoostingRegressor(
+            feature_types=feature_types,
+            max_bins=self._max_bins,
+            interactions=self._interactions,
+        )
+        model.fit(X, y)
+        self._model = model
 
     def predict(self, X: np.ndarray) -> np.ndarray:
-        raise NotImplementedError
+        if self._model is None:
+            raise RuntimeError("EbmQuartetModel.predict before fit")
+        preds = self._model.predict(X)
+        return np.asarray(preds, dtype=np.float64)
 
     def serialize(self) -> bytes:
-        raise NotImplementedError
+        if self._model is None:
+            raise RuntimeError("EbmQuartetModel.serialize before fit")
+        return pickle.dumps(
+            (self._max_bins, self._interactions, self._model)
+        )
 
     @classmethod
     def deserialize(cls, blob: bytes) -> EbmQuartetModel:
-        raise NotImplementedError
+        max_bins, interactions, model = pickle.loads(blob)
+        instance = cls(max_bins=max_bins, interactions=interactions)
+        instance._model = model
+        return instance
