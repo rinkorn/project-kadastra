@@ -41,4 +41,14 @@ def _is_excluded(column: str) -> bool:
 def select_object_feature_columns(
     df: pl.DataFrame,
 ) -> tuple[list[str], list[str]]:
-    raise NotImplementedError
+    numeric: list[str] = []
+    categorical: list[str] = []
+    for column in df.columns:
+        if _is_excluded(column):
+            continue
+        dtype = df.schema[column]
+        if _is_numeric(dtype):
+            numeric.append(column)
+        elif _is_categorical(dtype):
+            categorical.append(column)
+    return numeric, categorical
