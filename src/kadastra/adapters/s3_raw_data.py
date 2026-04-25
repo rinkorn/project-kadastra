@@ -24,7 +24,13 @@ class S3RawData:
         )
 
     def read_bytes(self, key: str) -> bytes:
-        raise NotImplementedError
+        response = self._client.get_object(Bucket=self._bucket, Key=key)
+        return response["Body"].read()
 
     def list_keys(self, prefix: str) -> list[str]:
-        raise NotImplementedError
+        keys: list[str] = []
+        paginator = self._client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self._bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                keys.append(obj["Key"])
+        return keys
