@@ -10,6 +10,7 @@ from kadastra.adapters.mlflow_model_registry import MLflowModelRegistry
 from kadastra.adapters.parquet_coverage_store import ParquetCoverageStore
 from kadastra.adapters.parquet_feature_store import ParquetFeatureStore
 from kadastra.adapters.parquet_gold_feature_store import ParquetGoldFeatureStore
+from kadastra.adapters.parquet_nspd_silver_store import ParquetNspdSilverStore
 from kadastra.adapters.parquet_valuation_object_store import ParquetValuationObjectStore
 from kadastra.adapters.s3_raw_data import S3RawData
 from kadastra.api.routes import make_api_router
@@ -17,6 +18,9 @@ from kadastra.config import Settings
 from kadastra.ml.train import CatBoostParams
 from kadastra.ports.model_loader import ModelLoaderPort
 from kadastra.ports.model_registry import ModelRegistryPort
+from kadastra.usecases.assemble_nspd_valuation_objects import (
+    AssembleNspdValuationObjects,
+)
 from kadastra.usecases.build_buildings_features import BuildBuildingsFeatures
 from kadastra.usecases.build_gold_features import BuildGoldFeatures
 from kadastra.usecases.build_metro_features import BuildMetroFeatures
@@ -30,6 +34,7 @@ from kadastra.usecases.get_hex_features import GetHexFeatures
 from kadastra.usecases.get_object_predictions import GetObjectPredictions
 from kadastra.usecases.infer_object_valuation import InferObjectValuation
 from kadastra.usecases.infer_valuation import InferValuation
+from kadastra.usecases.load_nspd_raw_objects import LoadNspdRawObjects
 from kadastra.usecases.train_object_valuation_model import TrainObjectValuationModel
 from kadastra.usecases.train_valuation_model import TrainValuationModel
 from kadastra.web.routes import make_web_router
@@ -175,6 +180,25 @@ class Container:
             raw_data=self.build_s3_raw_data(),
             store=ParquetValuationObjectStore(s.valuation_object_store_path),
             buildings_key=s.buildings_key,
+        )
+
+    def build_load_nspd_raw_objects(self) -> LoadNspdRawObjects:
+        s = self._settings
+        return LoadNspdRawObjects(
+            region_boundary=LocalGeoJsonRegionBoundary(
+                s.region_boundary_path,
+                region_code_field=s.region_boundary_field,
+            ),
+            silver_store=ParquetNspdSilverStore(s.nspd_silver_store_path),
+        )
+
+    def build_assemble_nspd_valuation_objects(self) -> AssembleNspdValuationObjects:
+        s = self._settings
+        return AssembleNspdValuationObjects(
+            silver_store=ParquetNspdSilverStore(s.nspd_silver_store_path),
+            valuation_object_store=ParquetValuationObjectStore(
+                s.valuation_object_store_path
+            ),
         )
 
     def build_object_features(self) -> BuildObjectFeatures:
