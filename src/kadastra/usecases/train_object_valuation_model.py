@@ -21,6 +21,8 @@ _NON_FEATURE_COLUMNS = frozenset(
     }
 )
 _NUMERIC_DTYPES = (pl.Float32, pl.Float64, pl.Int8, pl.Int16, pl.Int32, pl.Int64)
+_CATEGORICAL_DTYPES = (pl.Utf8, pl.Categorical)
+_MISSING_CATEGORY = "__missing__"
 
 
 class TrainObjectValuationModel:
@@ -43,17 +45,33 @@ class TrainObjectValuationModel:
             subset=[_TARGET_COLUMN]
         )
 
-        feature_cols = [
+        numeric_cols = [
             c
             for c in df.columns
             if c not in _NON_FEATURE_COLUMNS
             and df.schema[c] in _NUMERIC_DTYPES
         ]
+        categorical_cols = [
+            c
+            for c in df.columns
+            if c not in _NON_FEATURE_COLUMNS
+            and df.schema[c] in _CATEGORICAL_DTYPES
+        ]
+        feature_cols = numeric_cols + categorical_cols
+        cat_feature_indices = list(range(len(numeric_cols), len(feature_cols)))
+
         df = df.with_columns(
-            [pl.col(c).fill_null(0).cast(pl.Float64) for c in feature_cols]
+            [pl.col(c).fill_null(0).cast(pl.Float64) for c in numeric_cols]
+            + [
+                pl.col(c).fill_null(_MISSING_CATEGORY).cast(pl.Utf8)
+                for c in categorical_cols
+            ]
         )
 
-        X = df.select(feature_cols).to_numpy().astype(np.float64)
+        # Object dtype keeps strings as Python str so CatBoost reads
+        # them as categorical; numeric columns are cast back to float
+        # by the model.
+        X = df.select(feature_cols).to_numpy()
         y = df[_TARGET_COLUMN].to_numpy().astype(np.float64)
 
         cell_resolution = max(self._parent_resolution + 1, 10)
@@ -69,8 +87,11 @@ class TrainObjectValuationModel:
             params=self._params,
             n_splits=self._n_splits,
             parent_resolution=self._parent_resolution,
+            cat_features=cat_feature_indices or None,
         )
-        final_model = train_catboost(X, y, self._params)
+        final_model = train_catboost(
+            X, y, self._params, cat_features=cat_feature_indices or None
+        )
 
         params_payload = {
             **asdict(self._params),
@@ -79,6 +100,7 @@ class TrainObjectValuationModel:
             "parent_resolution": self._parent_resolution,
             "cell_resolution": cell_resolution,
             "feature_columns": feature_cols,
+            "cat_feature_indices": cat_feature_indices,
             "n_samples": len(y),
         }
         metrics_payload = {k: v for k, v in cv.items() if isinstance(v, float)}

@@ -15,7 +15,13 @@ class CatBoostParams:
     seed: int
 
 
-def train_catboost(X: np.ndarray, y: np.ndarray, params: CatBoostParams) -> CatBoostRegressor:
+def train_catboost(
+    X: np.ndarray,
+    y: np.ndarray,
+    params: CatBoostParams,
+    *,
+    cat_features: list[int] | None = None,
+) -> CatBoostRegressor:
     model = CatBoostRegressor(
         iterations=params.iterations,
         learning_rate=params.learning_rate,
@@ -23,8 +29,9 @@ def train_catboost(X: np.ndarray, y: np.ndarray, params: CatBoostParams) -> CatB
         random_seed=params.seed,
         verbose=False,
         allow_writing_files=False,
+        cat_features=cat_features,
     )
-    model.fit(X, y)
+    model.fit(X, y, cat_features=cat_features)
     return model
 
 
@@ -36,6 +43,7 @@ def cross_validate(
     params: CatBoostParams,
     n_splits: int,
     parent_resolution: int,
+    cat_features: list[int] | None = None,
 ) -> dict[str, list[float] | float]:
     folds = spatial_kfold_split(
         h3_indices, n_splits=n_splits, parent_resolution=parent_resolution, seed=params.seed
@@ -46,7 +54,9 @@ def cross_validate(
     fold_mape: list[float] = []
 
     for train_idx, val_idx in folds:
-        model = train_catboost(X[train_idx], y[train_idx], params)
+        model = train_catboost(
+            X[train_idx], y[train_idx], params, cat_features=cat_features
+        )
         preds = np.asarray(model.predict(X[val_idx]), dtype=np.float64)
         m = regression_metrics(y[val_idx], preds)
         fold_mae.append(m["mae"])
