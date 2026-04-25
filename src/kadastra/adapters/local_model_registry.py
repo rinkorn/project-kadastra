@@ -18,6 +18,7 @@ class LocalModelRegistry:
         params: Mapping[str, Any],
         metrics: Mapping[str, float],
         model: CatBoostRegressor,
+        artifacts: Mapping[str, bytes] | None = None,
     ) -> str:
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         run_id = f"{run_name}_{timestamp}"
@@ -27,5 +28,8 @@ class LocalModelRegistry:
         (run_dir / "params.json").write_text(json.dumps(dict(params)))
         (run_dir / "metrics.json").write_text(json.dumps(dict(metrics)))
         model.save_model(str(run_dir / "model.cbm"))
+        if artifacts:
+            for name, blob in artifacts.items():
+                (run_dir / name).write_bytes(blob)
 
         return run_id

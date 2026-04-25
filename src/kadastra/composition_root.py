@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from kadastra.adapters.local_geojson_region_boundary import LocalGeoJsonRegionBoundary
 from kadastra.adapters.local_model_loader import LocalModelLoader
 from kadastra.adapters.local_model_registry import LocalModelRegistry
+from kadastra.adapters.local_oof_predictions_reader import LocalOofPredictionsReader
 from kadastra.adapters.mlflow_model_loader import MLflowModelLoader
 from kadastra.adapters.mlflow_model_registry import MLflowModelRegistry
 from kadastra.adapters.networkx_road_graph import NetworkxRoadGraph
@@ -25,6 +26,7 @@ from kadastra.usecases.assemble_nspd_valuation_objects import (
 )
 from kadastra.usecases.build_buildings_features import BuildBuildingsFeatures
 from kadastra.usecases.build_gold_features import BuildGoldFeatures
+from kadastra.usecases.build_hex_aggregates import BuildHexAggregates
 from kadastra.usecases.build_metro_features import BuildMetroFeatures
 from kadastra.usecases.build_object_features import BuildObjectFeatures
 from kadastra.usecases.build_object_synthetic_target import BuildObjectSyntheticTarget
@@ -32,11 +34,11 @@ from kadastra.usecases.build_region_coverage import BuildRegionCoverage
 from kadastra.usecases.build_road_features import BuildRoadFeatures
 from kadastra.usecases.build_synthetic_target import BuildSyntheticTarget
 from kadastra.usecases.build_valuation_objects import BuildValuationObjects
-from kadastra.usecases.get_hex_features import GetHexFeatures
-from kadastra.usecases.get_object_predictions import GetObjectPredictions
+from kadastra.usecases.get_hex_aggregates import GetHexAggregates
 from kadastra.usecases.infer_object_valuation import InferObjectValuation
 from kadastra.usecases.infer_valuation import InferValuation
 from kadastra.usecases.load_nspd_raw_objects import LoadNspdRawObjects
+from kadastra.usecases.load_object_inspection import LoadObjectInspection
 from kadastra.usecases.train_object_valuation_model import TrainObjectValuationModel
 from kadastra.usecases.train_valuation_model import TrainValuationModel
 from kadastra.web.routes import make_web_router
@@ -107,13 +109,6 @@ class Container:
             feature_reader=ParquetFeatureStore(s.feature_store_path),
             gold_store=ParquetGoldFeatureStore(s.gold_store_path),
             feature_sets=s.gold_feature_sets,
-        )
-
-    def build_get_hex_features(self) -> GetHexFeatures:
-        s = self._settings
-        return GetHexFeatures(
-            ParquetGoldFeatureStore(s.gold_store_path),
-            prediction_reader=ParquetGoldFeatureStore(s.predictions_store_path),
         )
 
     def build_synthetic_target(self) -> BuildSyntheticTarget:
@@ -256,6 +251,15 @@ class Container:
             parent_resolution=s.train_parent_resolution,
         )
 
+    def build_hex_aggregates(self) -> BuildHexAggregates:
+        s = self._settings
+        return BuildHexAggregates(
+            reader=ParquetValuationObjectStore(s.valuation_object_store_path),
+            oof_reader=LocalOofPredictionsReader(s.model_registry_path),
+            output_base_path=s.hex_aggregates_base_path,
+            resolutions=s.hex_aggregates_resolutions,
+        )
+
     def build_infer_object_valuation(self) -> InferObjectValuation:
         s = self._settings
         return InferObjectValuation(
@@ -267,10 +271,15 @@ class Container:
             run_name_prefix=_OBJECT_RUN_NAME_PREFIX,
         )
 
-    def build_get_object_predictions(self) -> GetObjectPredictions:
+    def build_get_hex_aggregates(self) -> GetHexAggregates:
         s = self._settings
-        return GetObjectPredictions(
-            ParquetValuationObjectStore(s.object_predictions_store_path)
+        return GetHexAggregates(s.hex_aggregates_base_path)
+
+    def build_load_object_inspection(self) -> LoadObjectInspection:
+        s = self._settings
+        return LoadObjectInspection(
+            reader=ParquetValuationObjectStore(s.valuation_object_store_path),
+            oof_reader=LocalOofPredictionsReader(s.model_registry_path),
         )
 
 
@@ -281,9 +290,9 @@ def create_app(settings: Settings) -> FastAPI:
     app = FastAPI(title="kadastra")
     app.include_router(
         make_api_router(
-            container.build_get_hex_features(),
-            settings.region_code,
-            get_object_predictions=container.build_get_object_predictions(),
+            region_code=settings.region_code,
+            get_hex_aggregates=container.build_get_hex_aggregates(),
+            load_inspection=container.build_load_object_inspection(),
         )
     )
     app.include_router(make_web_router(templates_dir))

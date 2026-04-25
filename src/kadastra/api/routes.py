@@ -1,65 +1,113 @@
+"""HTTP API for the per-object inspector and per-hex aggregate map.
+
+Endpoints:
+
+- ``GET /api/hex_aggregates`` — return per-hex aggregate values for a
+  given (resolution, asset_class, feature) triple. Drives the hex
+  layer of the map UI.
+- ``GET /api/inspection`` — slim per-object scatter payload
+  ``{object_id, lat, lon, y_true, y_pred_oof, residual, fold_id}``
+  for the requested asset class. Drives the scatter layer.
+- ``GET /api/inspection/{object_id}`` — full feature dict for a
+  single object (every gold column + OOF columns). Powers the side
+  panel.
+
+The legacy ``/api/hex_features`` endpoint (sourced from the old gold
+hex feature store, never re-built after the move to the per-object
+pipeline) is retired. The map UI now reads ``/api/hex_aggregates``.
+"""
+
+from __future__ import annotations
+
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
 from kadastra.domain.asset_class import AssetClass
-from kadastra.usecases.get_hex_features import GetHexFeatures
-from kadastra.usecases.get_object_predictions import GetObjectPredictions
+from kadastra.usecases.get_hex_aggregates import (
+    ASSET_CLASS_VALUES,
+    CATEGORICAL_FEATURES,
+    NUMERIC_FEATURES,
+    GetHexAggregates,
+)
+from kadastra.usecases.load_object_inspection import LoadObjectInspection
 
 
 def make_api_router(
-    get_hex_features: GetHexFeatures,
+    *,
     region_code: str,
-    get_object_predictions: GetObjectPredictions | None = None,
+    get_hex_aggregates: GetHexAggregates,
+    load_inspection: LoadObjectInspection,
 ) -> APIRouter:
     router = APIRouter(prefix="/api")
 
-    @router.get("/hex_features")
-    def hex_features(
-        resolution: int = Query(8),
-        feature: str = Query("building_count"),
+    @router.get("/hex_aggregates")
+    def hex_aggregates(
+        resolution: int = Query(..., ge=0, le=15),
+        asset_class: str = Query(...),
+        feature: str = Query(...),
     ) -> dict[str, Any]:
+        if asset_class not in ASSET_CLASS_VALUES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"unknown asset_class: {asset_class!r}; expected one of {ASSET_CLASS_VALUES}",
+            )
         try:
-            data = get_hex_features.execute(region_code, resolution, feature)
+            data = get_hex_aggregates.execute(
+                region_code, resolution, asset_class, feature
+            )
         except KeyError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except FileNotFoundError as exc:
-            raise HTTPException(
-                status_code=404,
-                detail=f"gold features not built for resolution={resolution}",
-            ) from exc
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         return {
             "region": region_code,
             "resolution": resolution,
+            "asset_class": asset_class,
             "feature": feature,
+            "is_categorical": feature in CATEGORICAL_FEATURES,
+            "is_numeric": feature in NUMERIC_FEATURES,
             "data": data,
         }
 
-    @router.get("/object_predictions")
-    def object_predictions(
-        asset_class: str = Query(...),
-    ) -> dict[str, Any]:
-        if get_object_predictions is None:
-            raise HTTPException(
-                status_code=404, detail="object predictions are not configured"
-            )
-        try:
-            ac = AssetClass(asset_class)
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=400, detail=f"unknown asset_class: {asset_class!r}"
-            ) from exc
-        try:
-            data = get_object_predictions.execute(region_code, ac)
-        except FileNotFoundError as exc:
-            raise HTTPException(
-                status_code=404,
-                detail=f"object predictions not built for asset_class={asset_class}",
-            ) from exc
+    @router.get("/inspection")
+    def inspection_list(asset_class: str = Query(...)) -> dict[str, Any]:
+        ac = _parse_asset_class(asset_class)
         return {
             "region": region_code,
             "asset_class": ac.value,
-            "data": data,
+            "data": load_inspection.list_for_map(region_code, ac),
+        }
+
+    @router.get("/inspection/{object_id:path}")
+    def inspection_detail(
+        object_id: str,
+        asset_class: str = Query(...),
+    ) -> dict[str, Any]:
+        ac = _parse_asset_class(asset_class)
+        detail = load_inspection.get_detail(region_code, ac, object_id)
+        if detail is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"object {object_id!r} not found for asset_class={ac.value}",
+            )
+        return {"region": region_code, "asset_class": ac.value, "data": detail}
+
+    @router.get("/feature_options")
+    def feature_options() -> dict[str, Any]:
+        return {
+            "asset_classes": list(ASSET_CLASS_VALUES),
+            "numeric_features": list(NUMERIC_FEATURES),
+            "categorical_features": list(CATEGORICAL_FEATURES),
         }
 
     return router
+
+
+def _parse_asset_class(asset_class: str) -> AssetClass:
+    try:
+        return AssetClass(asset_class)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400, detail=f"unknown asset_class: {asset_class!r}"
+        ) from exc

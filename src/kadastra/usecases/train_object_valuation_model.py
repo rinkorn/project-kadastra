@@ -1,7 +1,9 @@
+import io
 from dataclasses import asdict
 
 import h3
 import numpy as np
+import polars as pl
 
 from kadastra.domain.asset_class import AssetClass
 from kadastra.ml.object_feature_columns import select_object_feature_columns
@@ -11,6 +13,7 @@ from kadastra.ports.model_registry import ModelRegistryPort
 from kadastra.ports.valuation_object_reader import ValuationObjectReaderPort
 
 _TARGET_COLUMN = "synthetic_target_rub_per_m2"
+_OOF_ARTIFACT_NAME = "oof_predictions.parquet"
 
 
 class TrainObjectValuationModel:
@@ -73,9 +76,59 @@ class TrainObjectValuationModel:
         }
         metrics_payload = {k: v for k, v in cv.items() if isinstance(v, float)}
 
+        # OOF predictions: each row predicted by a model that did not
+        # see it in training (spatial-CV honest view). Joined back to
+        # ``object_id`` / ``lat`` / ``lon`` so the inspector can render
+        # them on the map without recomputing.
+        oof_artifact = _build_oof_artifact(
+            df,
+            oof_indices=cv["oof_indices"],  # type: ignore[arg-type]
+            oof_fold_ids=cv["oof_fold_ids"],  # type: ignore[arg-type]
+            oof_y_pred=cv["oof_y_pred"],  # type: ignore[arg-type]
+        )
+
         return self._model_registry.log_run(
             run_name=f"catboost-object-{asset_class.value}",
             params=params_payload,
             metrics=metrics_payload,
             model=final_model,
+            artifacts={_OOF_ARTIFACT_NAME: oof_artifact},
         )
+
+
+def _build_oof_artifact(
+    df: pl.DataFrame,
+    *,
+    oof_indices: list[int],
+    oof_fold_ids: list[int],
+    oof_y_pred: list[float],
+) -> bytes:
+    """Serialize OOF predictions as parquet bytes.
+
+    Schema: ``(object_id, lat, lon, fold_id, y_true, y_pred_oof)``.
+    Rows are ordered by ``object_id`` for stable lookups downstream.
+    """
+    selected = df.select(["object_id", "lat", "lon", _TARGET_COLUMN])
+    oof_df = pl.DataFrame(
+        {
+            "_row": oof_indices,
+            "fold_id": oof_fold_ids,
+            "y_pred_oof": oof_y_pred,
+        },
+        schema={
+            "_row": pl.Int64,
+            "fold_id": pl.Int64,
+            "y_pred_oof": pl.Float64,
+        },
+    )
+    enriched = (
+        selected.with_row_index(name="_row")
+        .with_columns(pl.col("_row").cast(pl.Int64))
+        .join(oof_df, on="_row", how="left")
+        .drop("_row")
+        .rename({_TARGET_COLUMN: "y_true"})
+        .sort("object_id")
+    )
+    buf = io.BytesIO()
+    enriched.write_parquet(buf)
+    return buf.getvalue()
