@@ -11,9 +11,11 @@ few POIs", where this is much faster than per-pair shortest_path).
 from __future__ import annotations
 
 from collections.abc import Iterable
+from pathlib import Path
 
 import networkx as nx
 import numpy as np
+import polars as pl
 from scipy.spatial import cKDTree
 
 from kadastra.etl.haversine import haversine_meters
@@ -21,6 +23,7 @@ from kadastra.ports.road_graph import RoadGraphPort
 
 
 _Coord = tuple[float, float]
+_EDGES_SCHEMA = ("from_lat", "from_lon", "to_lat", "to_lon", "length_m")
 
 
 class NetworkxRoadGraph(RoadGraphPort):
@@ -52,6 +55,24 @@ class NetworkxRoadGraph(RoadGraphPort):
                 length_m=float(length),
             )
         return cls(graph, np.asarray(node_coords, dtype=np.float64))
+
+    @classmethod
+    def from_parquet(cls, path: Path) -> "NetworkxRoadGraph":
+        df = pl.read_parquet(path)
+        missing = [c for c in _EDGES_SCHEMA if c not in df.columns]
+        if missing:
+            raise ValueError(
+                f"road graph parquet at {path} missing columns: {missing}"
+            )
+        edges = [
+            (
+                (float(row[0]), float(row[1])),
+                (float(row[2]), float(row[3])),
+                float(row[4]),
+            )
+            for row in df.select(list(_EDGES_SCHEMA)).iter_rows()
+        ]
+        return cls.from_edges(edges)
 
     def _snap(self, lat: float, lon: float) -> tuple[int, float]:
         if self._kdtree is None:
