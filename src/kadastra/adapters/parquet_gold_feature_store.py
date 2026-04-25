@@ -13,4 +13,5 @@ class ParquetGoldFeatureStore:
         df.write_parquet(partition / "data.parquet")
 
     def load(self, region_code: str, resolution: int) -> pl.DataFrame:
-        raise NotImplementedError
+        path = self._base_path / f"region={region_code}" / f"resolution={resolution}" / "data.parquet"
+        return pl.read_parquet(path)
