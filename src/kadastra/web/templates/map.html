@@ -39,7 +39,7 @@
 <body>
   <div class="panel">
     <strong>kadastra</strong>
-    <span class="badge" title="Target is a feature-driven synthetic proxy, not real cadastral prices. Buildings/metro data limited to Kazan.">synthetic proxy</span>
+    <span class="badge" title="Target is a feature-driven synthetic proxy, not real cadastral prices. Buildings cover the Kazan agglomeration; metro is Kazan-only.">synthetic proxy</span>
     <label>Feature:
       <select id="feature">
         {% for f in features %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
@@ -47,8 +47,11 @@
     </label>
     <label>Resolution:
       <select id="resolution">
-        <option value="7">7 (~5 km²)</option>
-        <option value="8" selected>8 (~0.7 km²)</option>
+        <option value="7">7 (~5 km², ~1.4 km)</option>
+        <option value="8">8 (~0.7 km², ~530 m)</option>
+        <option value="9">9 (~0.1 km², ~200 m)</option>
+        <option value="10" selected>10 (~15 000 m², ~75 m)</option>
+        <option value="11">11 (~2 100 m², ~28 m)</option>
       </select>
     </label>
     <label>Scale:
@@ -82,8 +85,8 @@ const map = new maplibregl.Map({
     },
     layers: [{ id: 'osm', type: 'raster', source: 'osm' }]
   },
-  center: [49.1, 55.8],
-  zoom: 8
+  center: [49.13, 55.79],
+  zoom: 9
 });
 
 const deckOverlay = new deck.MapboxOverlay({
