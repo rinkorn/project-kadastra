@@ -38,14 +38,45 @@ class CatBoostQuartetModel:
         *,
         cat_feature_indices: list[int] | None = None,
     ) -> None:
-        raise NotImplementedError
+        model = CatBoostRegressor(
+            iterations=self._iterations,
+            learning_rate=self._learning_rate,
+            depth=self._depth,
+            random_seed=self._seed,
+            verbose=False,
+            allow_writing_files=False,
+            cat_features=cat_feature_indices or None,
+        )
+        model.fit(X, y, cat_features=cat_feature_indices or None)
+        self._model = model
 
     def predict(self, X: np.ndarray) -> np.ndarray:
-        raise NotImplementedError
+        if self._model is None:
+            raise RuntimeError("CatBoostQuartetModel.predict before fit")
+        preds = self._model.predict(X)
+        return np.asarray(preds, dtype=np.float64)
 
     def serialize(self) -> bytes:
-        raise NotImplementedError
+        if self._model is None:
+            raise RuntimeError("CatBoostQuartetModel.serialize before fit")
+        with tempfile.NamedTemporaryFile(suffix=".cbm", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+        try:
+            self._model.save_model(str(tmp_path), format="cbm")
+            return tmp_path.read_bytes()
+        finally:
+            tmp_path.unlink(missing_ok=True)
 
     @classmethod
     def deserialize(cls, blob: bytes) -> CatBoostQuartetModel:
-        raise NotImplementedError
+        with tempfile.NamedTemporaryFile(suffix=".cbm", delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+            tmp_path.write_bytes(blob)
+        try:
+            model = CatBoostRegressor()
+            model.load_model(str(tmp_path), format="cbm")
+        finally:
+            tmp_path.unlink(missing_ok=True)
+        instance = cls()
+        instance._model = model
+        return instance
