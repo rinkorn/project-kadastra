@@ -17,4 +17,9 @@ class BuildGoldFeatures:
         self._feature_sets = feature_sets
 
     def execute(self, region_code: str, resolutions: list[int]) -> None:
-        raise NotImplementedError
+        for resolution in resolutions:
+            df = self._coverage_reader.load(region_code, resolution)
+            for feature_set in self._feature_sets:
+                features = self._feature_reader.load(region_code, resolution, feature_set)
+                df = df.join(features, on=["h3_index", "resolution"], how="left")
+            self._gold_store.save(region_code, resolution, df)
