@@ -27,6 +27,7 @@ from kadastra.usecases.build_road_features import BuildRoadFeatures
 from kadastra.usecases.build_synthetic_target import BuildSyntheticTarget
 from kadastra.usecases.build_valuation_objects import BuildValuationObjects
 from kadastra.usecases.get_hex_features import GetHexFeatures
+from kadastra.usecases.get_object_predictions import GetObjectPredictions
 from kadastra.usecases.infer_object_valuation import InferObjectValuation
 from kadastra.usecases.infer_valuation import InferValuation
 from kadastra.usecases.train_object_valuation_model import TrainObjectValuationModel
@@ -226,12 +227,24 @@ class Container:
             run_name_prefix=_OBJECT_RUN_NAME_PREFIX,
         )
 
+    def build_get_object_predictions(self) -> GetObjectPredictions:
+        s = self._settings
+        return GetObjectPredictions(
+            ParquetValuationObjectStore(s.object_predictions_store_path)
+        )
+
 
 def create_app(settings: Settings) -> FastAPI:
     container = Container(settings)
     templates_dir = Path(__file__).parent / "web" / "templates"
 
     app = FastAPI(title="kadastra")
-    app.include_router(make_api_router(container.build_get_hex_features(), settings.region_code))
+    app.include_router(
+        make_api_router(
+            container.build_get_hex_features(),
+            settings.region_code,
+            get_object_predictions=container.build_get_object_predictions(),
+        )
+    )
     app.include_router(make_web_router(templates_dir))
     return app
