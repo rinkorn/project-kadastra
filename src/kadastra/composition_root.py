@@ -14,6 +14,7 @@ from kadastra.usecases.build_gold_features import BuildGoldFeatures
 from kadastra.usecases.build_metro_features import BuildMetroFeatures
 from kadastra.usecases.build_region_coverage import BuildRegionCoverage
 from kadastra.usecases.build_road_features import BuildRoadFeatures
+from kadastra.usecases.build_synthetic_target import BuildSyntheticTarget
 from kadastra.usecases.get_hex_features import GetHexFeatures
 from kadastra.web.routes import make_web_router
 
@@ -84,6 +85,14 @@ class Container:
 
     def build_get_hex_features(self) -> GetHexFeatures:
         return GetHexFeatures(ParquetGoldFeatureStore(self._settings.gold_store_path))
+
+    def build_synthetic_target(self) -> BuildSyntheticTarget:
+        s = self._settings
+        return BuildSyntheticTarget(
+            gold_reader=ParquetGoldFeatureStore(s.gold_store_path),
+            target_store=ParquetGoldFeatureStore(s.synthetic_target_store_path),
+            seed=s.synthetic_target_seed,
+        )
 
 
 def create_app(settings: Settings) -> FastAPI:

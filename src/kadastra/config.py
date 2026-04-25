@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     gold_store_path: Path = Path("data/gold/features")
     gold_feature_sets: list[str] = ["metro", "buildings", "roads"]
 
+    synthetic_target_store_path: Path = Path("data/gold/targets")
+    synthetic_target_seed: int = 42
+
     mlflow_enabled: bool = False
     mlflow_tracking_uri: str | None = None
     mlflow_experiment_name: str = "kadastra-valuation"
