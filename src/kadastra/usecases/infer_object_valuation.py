@@ -18,6 +18,8 @@ _NON_FEATURE_COLUMNS = frozenset(
     }
 )
 _NUMERIC_DTYPES = (pl.Float32, pl.Float64, pl.Int8, pl.Int16, pl.Int32, pl.Int64)
+_CATEGORICAL_DTYPES = (pl.Utf8, pl.Categorical)
+_MISSING_CATEGORY = "__missing__"
 
 
 class InferObjectValuation:
@@ -47,17 +49,31 @@ class InferObjectValuation:
 
         df = self._reader.load(region_code, asset_class)
 
-        feature_cols = [
+        numeric_cols = [
             c
             for c in df.columns
             if c not in _NON_FEATURE_COLUMNS
             and df.schema[c] in _NUMERIC_DTYPES
         ]
+        categorical_cols = [
+            c
+            for c in df.columns
+            if c not in _NON_FEATURE_COLUMNS
+            and df.schema[c] in _CATEGORICAL_DTYPES
+        ]
+        feature_cols = numeric_cols + categorical_cols
+
         df_filled = df.with_columns(
-            [pl.col(c).fill_null(0).cast(pl.Float64) for c in feature_cols]
+            [pl.col(c).fill_null(0).cast(pl.Float64) for c in numeric_cols]
+            + [
+                pl.col(c).fill_null(_MISSING_CATEGORY).cast(pl.Utf8)
+                for c in categorical_cols
+            ]
         )
 
-        X = df_filled.select(feature_cols).to_numpy().astype(np.float64)
+        # Object dtype keeps strings as Python str so the model's
+        # cat_features indices line up with what it saw at training.
+        X = df_filled.select(feature_cols).to_numpy()
         preds = np.asarray(model.predict(X), dtype=np.float64)
 
         out = pl.DataFrame(
