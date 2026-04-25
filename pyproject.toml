@@ -19,6 +19,7 @@ dependencies = [
     "polars>=1.40.1",
     "pydantic-settings>=2.14.0",
     "pyproj>=3.7.2",
+    "scikit-learn>=1.8.0",
     "shapely>=2.1.2",
     "uvicorn>=0.46.0",
 ]
