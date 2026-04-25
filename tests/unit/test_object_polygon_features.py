@@ -128,8 +128,8 @@ def test_partial_coverage_grows_then_shrinks_with_radius() -> None:
     # touch only at a tangent — share should be ~0.
     assert out["poly_share_100m"][0] == pytest.approx(0.0, abs=0.01)
     # 300 m / 500 m / 800 m all overlap but with smaller share as buffer grows
-    # (polygon area is fixed at 200×200 = 40000 m²; buffer area grows ~R²).
-    assert 0.0 < out["poly_share_300m"][0]
+    # (polygon area is fixed at 200x200 = 40000 sq.m; buffer area grows ~R^2).
+    assert out["poly_share_300m"][0] > 0.0
     assert out["poly_share_300m"][0] > out["poly_share_500m"][0]
     assert out["poly_share_500m"][0] > out["poly_share_800m"][0]
 
