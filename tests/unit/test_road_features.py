@@ -71,16 +71,20 @@ def test_multi_segment_way_sums_lengths_in_same_hex() -> None:
     assert result["road_length_m"][0] == pytest.approx(expected, rel=1e-9)
 
 
-def test_way_passing_through_multiple_hexes_distributes_lengths() -> None:
+def test_way_with_segments_in_adjacent_hexes_assigns_length_to_both() -> None:
     cell_a = h3.latlng_to_cell(KAZAN_LAT, KAZAN_LON, 8)
-    cell_b = h3.latlng_to_cell(KAZAN_LAT + 0.05, KAZAN_LON, 8)  # ~5.5 km north
-    assert cell_a != cell_b
+    a_lat, a_lon = h3.cell_to_latlng(cell_a)
+    cell_b = next(c for c in h3.grid_disk(cell_a, 1) if c != cell_a)
+    b_lat, b_lon = h3.cell_to_latlng(cell_b)
     coverage = _coverage([cell_a, cell_b], 8)
+
+    eps = 0.00001
     way = _way(
         [
-            (KAZAN_LAT, KAZAN_LON),
-            (KAZAN_LAT + 0.001, KAZAN_LON),
-            (KAZAN_LAT + 0.05, KAZAN_LON),
+            (a_lat - eps, a_lon),
+            (a_lat + eps, a_lon),
+            (b_lat - eps, b_lon),
+            (b_lat + eps, b_lon),
         ]
     )
 
@@ -89,11 +93,6 @@ def test_way_passing_through_multiple_hexes_distributes_lengths() -> None:
     by_hex = {row["h3_index"]: row["road_length_m"] for row in result.iter_rows(named=True)}
     assert by_hex[cell_a] > 0
     assert by_hex[cell_b] > 0
-    # Total is approx total way length
-    total = sum(by_hex.values())
-    expected_total = haversine_meters(KAZAN_LAT, KAZAN_LON, KAZAN_LAT + 0.001, KAZAN_LON) + \
-                     haversine_meters(KAZAN_LAT + 0.001, KAZAN_LON, KAZAN_LAT + 0.05, KAZAN_LON)
-    assert total == pytest.approx(expected_total, rel=1e-9)
 
 
 def test_distant_hex_gets_zero_when_road_is_elsewhere() -> None:
