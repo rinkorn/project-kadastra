@@ -1,6 +1,6 @@
 # ADR-0004: Синтетический таргет для пилота
 
-**Статус:** Accepted
+**Статус:** Superseded by [ADR-0009](0009-real-cadastre-target-via-nspd.md); см. также [ADR-0010](0010-methodology-compliance-roadmap.md) — обе замены оказались про разные target'ы (real cadastral в 0009, market в 0010); финальный target по 0010 — рыночные сделки, пока недоступны.
 **Дата:** 2026-04-25
 
 ## Контекст

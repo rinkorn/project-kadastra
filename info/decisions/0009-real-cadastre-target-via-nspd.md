@@ -1,9 +1,10 @@
 # ADR-0009: Замена synthetic-таргета реальной кадастровой стоимостью из НСПД, добавление LandPlot
 
-**Статус:** Accepted
+**Статус:** Accepted частично — pipeline и схема корректны, **выбор target пересмотрен в [ADR-0010](0010-methodology-compliance-roadmap.md)**: государственная кадастровая стоимость из ЕГРН (`cost_index`) — это broken state output, который сам по себе подлежит пересчёту. Используется как **interim placeholder** до появления сделочных данных (track 1, заблокирован). NSPD как источник объектов, парсинг, silver-store и feature engineering — остаются valid'ными.
 **Дата:** 2026-04-25
 **Заменяет:** synthetic-таргет из [ADR-0004](0004-synthetic-target.md) (для всех 4 классов)
 **Дополняет:** [ADR-0007](0007-kazan-agglomeration-scope.md), [ADR-0008](0008-per-building-multi-class-valuation.md)
+**Уточняется:** [ADR-0010](0010-methodology-compliance-roadmap.md) (target reframe)
 
 ## Контекст
 
