@@ -127,7 +127,11 @@ class _FakeRawData:
 
 
 def _usecase(
-    store: _FakeStore, raw: _FakeRawData
+    store: _FakeStore,
+    raw: _FakeRawData,
+    *,
+    relative_feature_parent_resolutions: list[int] | None = None,
+    relative_feature_columns: list[str] | None = None,
 ) -> BuildObjectFeatures:
     return BuildObjectFeatures(
         reader=store,
@@ -139,6 +143,16 @@ def _usecase(
         neighbor_radius_m=500.0,
         road_radius_m=500.0,
         road_graph=_FAKE_GRAPH,
+        relative_feature_parent_resolutions=(
+            relative_feature_parent_resolutions
+            if relative_feature_parent_resolutions is not None
+            else [7]
+        ),
+        relative_feature_columns=(
+            relative_feature_columns
+            if relative_feature_columns is not None
+            else ["dist_metro_m"]
+        ),
     )
 
 
@@ -267,6 +281,48 @@ def test_neighbor_counts_see_all_classes() -> None:
     assert apt_row["count_houses_500m"][0] == 1
     assert apt_row["count_commercial_500m"][0] == 1
     assert apt_row["count_apartments_500m"][0] == 0  # only one apartment, self excluded
+
+
+def test_appends_relative_feature_columns_for_configured_features() -> None:
+    """BuildObjectFeatures must run compute_relative_features after the
+    other ETL steps and surface the derived `__rel_p{R}_*` columns
+    plus the `parent_h3_p{R}` / `count_p{R}` book-keeping columns
+    in each saved partition. Without this the methodological-block-2
+    win (ADR-0012) doesn't reach the model.
+    """
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        relative_feature_parent_resolutions=[7, 8],
+        relative_feature_columns=["dist_metro_m", "levels"],
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    expected_relative = {
+        "parent_h3_p7", "count_p7",
+        "parent_h3_p8", "count_p8",
+        "dist_metro_m__rel_p7_diff_med",
+        "dist_metro_m__rel_p7_ratio_med",
+        "dist_metro_m__rel_p7_z_iqr",
+        "dist_metro_m__rel_p8_diff_med",
+        "dist_metro_m__rel_p8_ratio_med",
+        "dist_metro_m__rel_p8_z_iqr",
+        "levels__rel_p7_diff_med",
+        "levels__rel_p7_ratio_med",
+        "levels__rel_p7_z_iqr",
+        "levels__rel_p8_diff_med",
+        "levels__rel_p8_ratio_med",
+        "levels__rel_p8_z_iqr",
+    }
+    assert expected_relative.issubset(set(df.columns))
 
 
 def test_handles_empty_partition_gracefully() -> None:
