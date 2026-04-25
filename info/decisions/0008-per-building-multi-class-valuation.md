@@ -1,6 +1,6 @@
 # ADR-0008: Per-building multi-class valuation поверх hex-пайплайна
 
-**Статус:** Accepted
+**Статус:** Accepted; уточнено в [ADR-0010](0010-methodology-compliance-roadmap.md) — pipeline и доменные сущности этого ADR корректны, но формулировка цели «оценка кадастровой стоимости» поправлена на «модель рынка недвижимости», а текущий target (`synthetic_target_rub_per_m2` ← `cost_index` из ЕГРН по [ADR-0009](0009-real-cadastre-target-via-nspd.md)) считается **interim placeholder** до появления сделочных данных.
 **Дата:** 2026-04-25
 **Дополняет:** [ADR-0004](0004-synthetic-target.md), [ADR-0005](0005-baseline-training.md), [ADR-0006](0006-inference-and-map.md)
 

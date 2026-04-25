@@ -3,19 +3,21 @@ import pytest
 from kadastra.domain.asset_class import AssetClass
 
 
-def test_asset_class_has_apartment_house_commercial() -> None:
+def test_asset_class_has_apartment_house_commercial_landplot() -> None:
     assert AssetClass.APARTMENT.value == "apartment"
     assert AssetClass.HOUSE.value == "house"
     assert AssetClass.COMMERCIAL.value == "commercial"
+    assert AssetClass.LANDPLOT.value == "landplot"
 
 
 def test_asset_class_is_hashable_and_iterable() -> None:
     classes = list(AssetClass)
-    assert len(classes) == 3
+    assert len(classes) == 4
     assert {c for c in classes} == {
         AssetClass.APARTMENT,
         AssetClass.HOUSE,
         AssetClass.COMMERCIAL,
+        AssetClass.LANDPLOT,
     }
 
 

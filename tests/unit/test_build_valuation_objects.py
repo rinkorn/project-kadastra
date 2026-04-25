@@ -6,7 +6,6 @@ import polars as pl
 from kadastra.domain.asset_class import AssetClass
 from kadastra.usecases.build_valuation_objects import BuildValuationObjects
 
-
 _CSV_HEADER = (
     "osm_id,osm_type,lat,lon,building,levels,flats,material,wall,street,"
     "housenumber,postcode,city,start_date,name,energy_class\n"
@@ -60,7 +59,7 @@ def test_writes_one_partition_per_asset_class() -> None:
         raw_data=raw, store=store, buildings_key="buildings.csv"
     )
 
-    usecase.execute("RU-KAZAN-AGG", asset_classes=list(AssetClass))
+    usecase.execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT, AssetClass.HOUSE, AssetClass.COMMERCIAL])
 
     assert sorted(c.asset_class.value for c in store.calls) == [
         "apartment",
@@ -78,7 +77,7 @@ def test_each_partition_only_contains_objects_of_that_class() -> None:
         raw_data=raw, store=store, buildings_key="buildings.csv"
     )
 
-    usecase.execute("RU-KAZAN-AGG", asset_classes=list(AssetClass))
+    usecase.execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT, AssetClass.HOUSE, AssetClass.COMMERCIAL])
 
     by_class = {c.asset_class: c.df for c in store.calls}
     assert by_class[AssetClass.APARTMENT]["asset_class"].unique().to_list() == ["apartment"]
@@ -121,7 +120,7 @@ def test_buildings_csv_columns_consistent_across_partitions() -> None:
         raw_data=raw, store=store, buildings_key="buildings.csv"
     )
 
-    usecase.execute("RU-KAZAN-AGG", asset_classes=list(AssetClass))
+    usecase.execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT, AssetClass.HOUSE, AssetClass.COMMERCIAL])
 
     expected_cols = {"object_id", "asset_class", "lat", "lon", "levels", "flats"}
     for call in store.calls:

@@ -54,21 +54,58 @@ def _featured(ac: AssetClass, n: int = 30) -> pl.DataFrame:
     )
 
 
+def _is_numeric(dtype: pl.DataType) -> bool:
+    return dtype.is_numeric()
+
+
+def _is_categorical(dtype: pl.DataType) -> bool:
+    return dtype == pl.Utf8 or dtype == pl.Categorical
+
+
 def _trained_model(df: pl.DataFrame) -> CatBoostRegressor:
-    feature_cols = [
+    """Mirror TrainObjectValuationModel.execute()'s feature handling so
+    the model in the test ends up with the same column ordering and
+    cat_features that the production code will use.
+    """
+    excluded = {
+        "object_id",
+        "asset_class",
+        "lat",
+        "lon",
+        "synthetic_target_rub_per_m2",
+        "cost_value_rub",
+    }
+    numeric_cols = [
         c
         for c in df.columns
-        if c not in {"object_id", "asset_class", "lat", "lon", "synthetic_target_rub_per_m2"}
+        if c not in excluded and _is_numeric(df.schema[c])
     ]
+    categorical_cols = [
+        c
+        for c in df.columns
+        if c not in excluded and _is_categorical(df.schema[c])
+    ]
+    feature_cols = numeric_cols + categorical_cols
+    cat_indices = list(range(len(numeric_cols), len(feature_cols)))
+
     df = df.with_columns(
-        [pl.col(c).fill_null(0).cast(pl.Float64) for c in feature_cols]
+        [pl.col(c).fill_null(0).cast(pl.Float64) for c in numeric_cols]
+        + [
+            pl.col(c).fill_null("__missing__").cast(pl.Utf8)
+            for c in categorical_cols
+        ]
     )
     X = df.select(feature_cols).to_numpy()
     y = df["synthetic_target_rub_per_m2"].to_numpy()
     model = CatBoostRegressor(
-        iterations=20, learning_rate=0.3, depth=4, verbose=False, allow_writing_files=False
+        iterations=20,
+        learning_rate=0.3,
+        depth=4,
+        verbose=False,
+        allow_writing_files=False,
+        cat_features=cat_indices or None,
     )
-    model.fit(X, y)
+    model.fit(X, y, cat_features=cat_indices or None)
     return model
 
 
@@ -178,3 +215,56 @@ def test_returns_resolved_run_id() -> None:
 
     assert auto == "catboost-object-apartment-latest"
     assert explicit == "x"
+
+
+def test_excludes_cost_value_rub_target_leak() -> None:
+    """cost_value_rub is the EГРН total from which cost_index = cost_value
+    / area_m2 is derived; must be excluded from features at inference too.
+    """
+    df = _featured(AssetClass.APARTMENT, 30).with_columns(
+        pl.lit(5_000_000.0).alias("cost_value_rub")
+    )
+    model = _trained_model(df)
+    reader = _FakeReader({AssetClass.APARTMENT: df})
+    store = _FakeStore()
+    loader = _FakeLoader(model)
+
+    InferObjectValuation(
+        model_loader=loader,
+        reader=reader,
+        prediction_store=store,
+        run_name_prefix="catboost-object-",
+    ).execute("RU-KAZAN-AGG", AssetClass.APARTMENT)
+
+    saved = store.calls[0].df
+    assert saved.height == df.height
+    assert saved["predicted_value"].null_count() == 0
+
+
+def test_passes_string_columns_through_to_categorical_model() -> None:
+    """Models trained with cat_features expect the same string columns at
+    inference time — not dropped, not cast to numeric. Inference must
+    pass categorical columns straight through (with a sentinel for nulls).
+    """
+    df = _featured(AssetClass.HOUSE, 30).with_columns(
+        pl.Series(
+            "materials",
+            ["Кирпичные", "Панельные", "Монолитные"] * 10,
+            dtype=pl.Utf8,
+        )
+    )
+    model = _trained_model(df)
+    reader = _FakeReader({AssetClass.HOUSE: df})
+    store = _FakeStore()
+    loader = _FakeLoader(model)
+
+    InferObjectValuation(
+        model_loader=loader,
+        reader=reader,
+        prediction_store=store,
+        run_name_prefix="catboost-object-",
+    ).execute("RU-KAZAN-AGG", AssetClass.HOUSE)
+
+    saved = store.calls[0].df
+    assert saved.height == df.height
+    assert saved["predicted_value"].null_count() == 0

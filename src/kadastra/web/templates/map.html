@@ -39,13 +39,14 @@
 <body>
   <div class="panel">
     <strong>kadastra</strong>
-    <span class="badge" title="Target is a feature-driven synthetic proxy, not real cadastral prices. Buildings cover the Kazan agglomeration; metro is Kazan-only.">synthetic proxy</span>
+    <span class="badge" title="Object targets are real ЕГРН cost_index values from NSPD (per ADR-0009). Hex features are still OSM-derived; metro is Kazan-only.">ЕГРН cost_index</span>
     <label>Mode:
       <select id="mode">
         <option value="hex" selected>Hex feature</option>
         <option value="object:apartment">Objects: apartment</option>
         <option value="object:house">Objects: house</option>
         <option value="object:commercial">Objects: commercial</option>
+        <option value="object:landplot">Objects: landplot</option>
       </select>
     </label>
     <label>Feature:

@@ -36,6 +36,10 @@ class Settings(BaseSettings):
     object_predictions_store_path: Path = Path("data/gold/object_predictions")
     object_neighbor_radius_m: float = 500.0
     object_road_radius_m: float = 500.0
+
+    nspd_silver_store_path: Path = Path("data/silver/nspd")
+    nspd_buildings_raw_dir: Path = Path("data/raw/nspd/buildings-kazan")
+    nspd_landplots_raw_dir: Path = Path("data/raw/nspd/landplots-kazan")
     model_registry_path: Path = Path("data/models")
     catboost_iterations: int = 500
     catboost_learning_rate: float = 0.05

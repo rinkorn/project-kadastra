@@ -5,7 +5,6 @@ import polars as pl
 from kadastra.domain.asset_class import AssetClass
 from kadastra.usecases.build_object_synthetic_target import BuildObjectSyntheticTarget
 
-
 _FEATURE_SCHEMA = {
     "object_id": pl.Utf8,
     "asset_class": pl.Utf8,
@@ -83,7 +82,7 @@ def test_appends_target_column_for_each_class() -> None:
     )
     usecase = BuildObjectSyntheticTarget(reader=store, store=store, seed=42)
 
-    usecase.execute("RU-KAZAN-AGG", asset_classes=list(AssetClass))
+    usecase.execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT, AssetClass.HOUSE, AssetClass.COMMERCIAL])
 
     assert len(store.calls) == 3
     for call in store.calls:
