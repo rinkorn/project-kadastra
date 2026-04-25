@@ -1,14 +1,43 @@
 [project]
 name = "kadastra"
 version = "0.1.0"
-description = "Add your description here"
+description = "Cadastral valuation on H3 hexagonal grid (pilot region: Tatarstan)"
 readme = "README.md"
 authors = [
     { name = "AlbM", email = "rinkorn.alb@gmail.com" }
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "h3>=4.4.2",
+    "shapely>=2.1.2",
+]
 
 [build-system]
 requires = ["uv_build>=0.10.4,<0.11.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.409",
+    "pytest>=9.0.3",
+    "ruff>=0.15.12",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.pyright]
+include = ["src", "tests"]
+exclude = [".venv", "**/__pycache__"]
+pythonVersion = "3.13"
+typeCheckingMode = "strict"
+reportMissingTypeStubs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
