@@ -101,6 +101,14 @@ class Settings(BaseSettings):
     train_n_splits: int = 5
     train_parent_resolution: int = 7
 
+    # Block 5 (ADR-0016) — White Box (EBM) and Grey Box (Decision
+    # Tree) hyperparameters. EBM defaults from interpret-ml; Grey
+    # depth = 10 keeps the tree shallow enough to be useful as an
+    # approximator of the Black Box rather than a competitor.
+    ebm_max_bins: int = 256
+    ebm_interactions: int = 10
+    grey_tree_max_depth: int = 10
+
     mlflow_enabled: bool = False
     mlflow_tracking_uri: str | None = None
     mlflow_experiment_name: str = "kadastra-valuation"
