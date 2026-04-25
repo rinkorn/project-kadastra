@@ -14,12 +14,12 @@ from kadastra.adapters.parquet_gold_feature_store import ParquetGoldFeatureStore
 from kadastra.adapters.parquet_nspd_silver_store import ParquetNspdSilverStore
 from kadastra.adapters.parquet_valuation_object_store import ParquetValuationObjectStore
 from kadastra.adapters.s3_raw_data import S3RawData
-from kadastra.ports.road_graph import RoadGraphPort
 from kadastra.api.routes import make_api_router
 from kadastra.config import Settings
 from kadastra.ml.train import CatBoostParams
 from kadastra.ports.model_loader import ModelLoaderPort
 from kadastra.ports.model_registry import ModelRegistryPort
+from kadastra.ports.road_graph import RoadGraphPort
 from kadastra.usecases.assemble_nspd_valuation_objects import (
     AssembleNspdValuationObjects,
 )
@@ -219,6 +219,8 @@ class Container:
             neighbor_radius_m=s.object_neighbor_radius_m,
             road_radius_m=s.object_road_radius_m,
             road_graph=self.build_road_graph(),
+            relative_feature_parent_resolutions=s.relative_feature_parent_resolutions,
+            relative_feature_columns=s.relative_feature_columns,
         )
 
     def build_object_synthetic_target(self) -> BuildObjectSyntheticTarget:

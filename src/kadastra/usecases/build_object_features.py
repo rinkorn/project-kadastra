@@ -8,6 +8,7 @@ from kadastra.domain.asset_class import AssetClass
 from kadastra.etl.object_metro_features import compute_object_metro_features
 from kadastra.etl.object_neighbor_features import compute_object_neighbor_features
 from kadastra.etl.object_road_features import compute_object_road_features
+from kadastra.etl.relative_features import compute_relative_features
 from kadastra.ports.raw_data import RawDataPort
 from kadastra.ports.road_graph import RoadGraphPort
 from kadastra.ports.valuation_object_reader import ValuationObjectReaderPort
@@ -26,6 +27,8 @@ class BuildObjectFeatures:
         neighbor_radius_m: float,
         road_radius_m: float,
         road_graph: RoadGraphPort,
+        relative_feature_parent_resolutions: list[int],
+        relative_feature_columns: list[str],
     ) -> None:
         self._reader = reader
         self._store = store
@@ -36,6 +39,8 @@ class BuildObjectFeatures:
         self._neighbor_radius_m = neighbor_radius_m
         self._road_radius_m = road_radius_m
         self._road_graph = road_graph
+        self._relative_feature_parent_resolutions = relative_feature_parent_resolutions
+        self._relative_feature_columns = relative_feature_columns
 
     def execute(self, region_code: str, asset_classes: list[AssetClass]) -> None:
         stations = pl.read_csv(
@@ -67,6 +72,17 @@ class BuildObjectFeatures:
         )
         enriched = compute_object_neighbor_features(
             enriched, radius_m=self._neighbor_radius_m
+        )
+        # Filter feature_columns to those present (allows configuring a
+        # superset in Settings — missing ones are simply skipped, not
+        # errors, so per-class slices with different schemas don't crash).
+        present_relative_columns = [
+            c for c in self._relative_feature_columns if c in enriched.columns
+        ]
+        enriched = compute_relative_features(
+            enriched,
+            parent_resolutions=self._relative_feature_parent_resolutions,
+            feature_columns=present_relative_columns,
         )
 
         for asset_class in asset_classes:

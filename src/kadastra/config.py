@@ -36,6 +36,21 @@ class Settings(BaseSettings):
     object_predictions_store_path: Path = Path("data/gold/object_predictions")
     object_neighbor_radius_m: float = 500.0
     object_road_radius_m: float = 500.0
+    relative_feature_parent_resolutions: list[int] = [7, 8]
+    relative_feature_columns: list[str] = [
+        "dist_metro_m",
+        "dist_entrance_m",
+        "count_stations_1km",
+        "count_entrances_500m",
+        "road_length_500m",
+        "count_apartments_500m",
+        "count_houses_500m",
+        "count_commercial_500m",
+        "levels",
+        "flats",
+        "area_m2",
+        "year_built",
+    ]
 
     nspd_silver_store_path: Path = Path("data/silver/nspd")
     nspd_buildings_raw_dir: Path = Path("data/raw/nspd/buildings-kazan")

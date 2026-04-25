@@ -1,0 +1,54 @@
+"""Shared rule for picking model-feature columns from a per-object frame.
+
+Used by both TrainObjectValuationModel and InferObjectValuation so the
+matrix layouts (numeric-then-categorical, with cat_feature_indices)
+stay in sync. See ADR-0012 for why ``parent_h3_p{R}`` columns are
+held out of the model — they are high-cardinality IDs that vanish
+under spatial CV.
+"""
+
+from __future__ import annotations
+
+import polars as pl
+
+_NON_FEATURE_COLUMNS = frozenset(
+    {
+        "object_id",
+        "asset_class",
+        "lat",
+        "lon",
+        "synthetic_target_rub_per_m2",
+        "cost_value_rub",
+    }
+)
+_NON_FEATURE_PREFIXES = ("parent_h3_p",)
+
+
+def _is_numeric(dtype: pl.DataType) -> bool:
+    return dtype.is_numeric()
+
+
+def _is_categorical(dtype: pl.DataType) -> bool:
+    return dtype == pl.Utf8 or dtype == pl.Categorical
+
+
+def _is_excluded(column: str) -> bool:
+    if column in _NON_FEATURE_COLUMNS:
+        return True
+    return any(column.startswith(p) for p in _NON_FEATURE_PREFIXES)
+
+
+def select_object_feature_columns(
+    df: pl.DataFrame,
+) -> tuple[list[str], list[str]]:
+    numeric: list[str] = []
+    categorical: list[str] = []
+    for column in df.columns:
+        if _is_excluded(column):
+            continue
+        dtype = df.schema[column]
+        if _is_numeric(dtype):
+            numeric.append(column)
+        elif _is_categorical(dtype):
+            categorical.append(column)
+    return numeric, categorical
