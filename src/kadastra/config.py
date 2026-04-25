@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     synthetic_target_store_path: Path = Path("data/gold/targets")
     synthetic_target_seed: int = 42
 
+    model_registry_path: Path = Path("data/models")
+    catboost_iterations: int = 500
+    catboost_learning_rate: float = 0.05
+    catboost_depth: int = 6
+    catboost_seed: int = 42
+    train_n_splits: int = 5
+    train_parent_resolution: int = 6
+
     mlflow_enabled: bool = False
     mlflow_tracking_uri: str | None = None
     mlflow_experiment_name: str = "kadastra-valuation"

@@ -3,12 +3,16 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from kadastra.adapters.local_geojson_region_boundary import LocalGeoJsonRegionBoundary
+from kadastra.adapters.local_model_registry import LocalModelRegistry
+from kadastra.adapters.mlflow_model_registry import MLflowModelRegistry
 from kadastra.adapters.parquet_coverage_store import ParquetCoverageStore
 from kadastra.adapters.parquet_feature_store import ParquetFeatureStore
 from kadastra.adapters.parquet_gold_feature_store import ParquetGoldFeatureStore
 from kadastra.adapters.s3_raw_data import S3RawData
 from kadastra.api.routes import make_api_router
 from kadastra.config import Settings
+from kadastra.ml.train import CatBoostParams
+from kadastra.ports.model_registry import ModelRegistryPort
 from kadastra.usecases.build_buildings_features import BuildBuildingsFeatures
 from kadastra.usecases.build_gold_features import BuildGoldFeatures
 from kadastra.usecases.build_metro_features import BuildMetroFeatures
@@ -16,6 +20,7 @@ from kadastra.usecases.build_region_coverage import BuildRegionCoverage
 from kadastra.usecases.build_road_features import BuildRoadFeatures
 from kadastra.usecases.build_synthetic_target import BuildSyntheticTarget
 from kadastra.usecases.get_hex_features import GetHexFeatures
+from kadastra.usecases.train_valuation_model import TrainValuationModel
 from kadastra.web.routes import make_web_router
 
 
@@ -92,6 +97,36 @@ class Container:
             gold_reader=ParquetGoldFeatureStore(s.gold_store_path),
             target_store=ParquetGoldFeatureStore(s.synthetic_target_store_path),
             seed=s.synthetic_target_seed,
+        )
+
+    def build_model_registry(self) -> ModelRegistryPort:
+        s = self._settings
+        if s.mlflow_enabled:
+            if not s.mlflow_tracking_uri:
+                raise RuntimeError(
+                    "MLFLOW_TRACKING_URI is required when MLFLOW_ENABLED=True"
+                )
+            return MLflowModelRegistry(
+                tracking_uri=s.mlflow_tracking_uri,
+                experiment_name=s.mlflow_experiment_name,
+            )
+        return LocalModelRegistry(s.model_registry_path)
+
+    def build_train_valuation_model(self) -> TrainValuationModel:
+        s = self._settings
+        params = CatBoostParams(
+            iterations=s.catboost_iterations,
+            learning_rate=s.catboost_learning_rate,
+            depth=s.catboost_depth,
+            seed=s.catboost_seed,
+        )
+        return TrainValuationModel(
+            gold_reader=ParquetGoldFeatureStore(s.gold_store_path),
+            target_reader=ParquetGoldFeatureStore(s.synthetic_target_store_path),
+            model_registry=self.build_model_registry(),
+            params=params,
+            n_splits=s.train_n_splits,
+            parent_resolution=s.train_parent_resolution,
         )
 
 
