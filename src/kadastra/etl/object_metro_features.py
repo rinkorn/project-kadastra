@@ -45,6 +45,9 @@ def compute_object_metro_features(
         ]
         d = road_graph.distance_matrix_m(obj_coords, station_coords)
         dist_min_stations = d.min(axis=1)
+        dist_min_stations = np.where(
+            np.isinf(dist_min_stations), _FAR_SENTINEL_M, dist_min_stations
+        )
         cnt_stations_1km = (d < 1000.0).sum(axis=1).astype(np.int64)
 
     if entrances.is_empty():
@@ -61,6 +64,9 @@ def compute_object_metro_features(
         ]
         d = road_graph.distance_matrix_m(obj_coords, entrance_coords)
         dist_min_entrances = d.min(axis=1)
+        dist_min_entrances = np.where(
+            np.isinf(dist_min_entrances), _FAR_SENTINEL_M, dist_min_entrances
+        )
         cnt_entrances_500m = (d < 500.0).sum(axis=1).astype(np.int64)
 
     return objects.with_columns(
