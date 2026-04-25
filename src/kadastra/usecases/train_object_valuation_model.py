@@ -5,6 +5,7 @@ import numpy as np
 import polars as pl
 
 from kadastra.domain.asset_class import AssetClass
+from kadastra.ml.object_feature_matrix import build_object_feature_matrix
 from kadastra.ml.train import CatBoostParams, cross_validate, train_catboost
 from kadastra.ports.model_registry import ModelRegistryPort
 from kadastra.ports.valuation_object_reader import ValuationObjectReaderPort
@@ -20,9 +21,12 @@ _NON_FEATURE_COLUMNS = frozenset(
         "cost_value_rub",
     }
 )
-_NUMERIC_DTYPES = (pl.Float32, pl.Float64, pl.Int8, pl.Int16, pl.Int32, pl.Int64)
-_CATEGORICAL_DTYPES = (pl.Utf8, pl.Categorical)
-_MISSING_CATEGORY = "__missing__"
+def _is_numeric(dtype: pl.DataType) -> bool:
+    return dtype.is_numeric()
+
+
+def _is_categorical(dtype: pl.DataType) -> bool:
+    return dtype == pl.Utf8 or dtype == pl.Categorical
 
 
 class TrainObjectValuationModel:
@@ -48,30 +52,19 @@ class TrainObjectValuationModel:
         numeric_cols = [
             c
             for c in df.columns
-            if c not in _NON_FEATURE_COLUMNS
-            and df.schema[c] in _NUMERIC_DTYPES
+            if c not in _NON_FEATURE_COLUMNS and _is_numeric(df.schema[c])
         ]
         categorical_cols = [
             c
             for c in df.columns
-            if c not in _NON_FEATURE_COLUMNS
-            and df.schema[c] in _CATEGORICAL_DTYPES
+            if c not in _NON_FEATURE_COLUMNS and _is_categorical(df.schema[c])
         ]
         feature_cols = numeric_cols + categorical_cols
         cat_feature_indices = list(range(len(numeric_cols), len(feature_cols)))
 
-        df = df.with_columns(
-            [pl.col(c).fill_null(0).cast(pl.Float64) for c in numeric_cols]
-            + [
-                pl.col(c).fill_null(_MISSING_CATEGORY).cast(pl.Utf8)
-                for c in categorical_cols
-            ]
+        X = build_object_feature_matrix(
+            df, numeric_cols=numeric_cols, categorical_cols=categorical_cols
         )
-
-        # Object dtype keeps strings as Python str so CatBoost reads
-        # them as categorical; numeric columns are cast back to float
-        # by the model.
-        X = df.select(feature_cols).to_numpy()
         y = df[_TARGET_COLUMN].to_numpy().astype(np.float64)
 
         cell_resolution = max(self._parent_resolution + 1, 10)

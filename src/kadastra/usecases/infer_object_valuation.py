@@ -2,6 +2,7 @@ import numpy as np
 import polars as pl
 
 from kadastra.domain.asset_class import AssetClass
+from kadastra.ml.object_feature_matrix import build_object_feature_matrix
 from kadastra.ports.model_loader import ModelLoaderPort
 from kadastra.ports.valuation_object_reader import ValuationObjectReaderPort
 from kadastra.ports.valuation_object_store import ValuationObjectStorePort
@@ -17,9 +18,12 @@ _NON_FEATURE_COLUMNS = frozenset(
         "cost_value_rub",
     }
 )
-_NUMERIC_DTYPES = (pl.Float32, pl.Float64, pl.Int8, pl.Int16, pl.Int32, pl.Int64)
-_CATEGORICAL_DTYPES = (pl.Utf8, pl.Categorical)
-_MISSING_CATEGORY = "__missing__"
+def _is_numeric(dtype: pl.DataType) -> bool:
+    return dtype.is_numeric()
+
+
+def _is_categorical(dtype: pl.DataType) -> bool:
+    return dtype == pl.Utf8 or dtype == pl.Categorical
 
 
 class InferObjectValuation:
@@ -52,28 +56,16 @@ class InferObjectValuation:
         numeric_cols = [
             c
             for c in df.columns
-            if c not in _NON_FEATURE_COLUMNS
-            and df.schema[c] in _NUMERIC_DTYPES
+            if c not in _NON_FEATURE_COLUMNS and _is_numeric(df.schema[c])
         ]
         categorical_cols = [
             c
             for c in df.columns
-            if c not in _NON_FEATURE_COLUMNS
-            and df.schema[c] in _CATEGORICAL_DTYPES
+            if c not in _NON_FEATURE_COLUMNS and _is_categorical(df.schema[c])
         ]
-        feature_cols = numeric_cols + categorical_cols
-
-        df_filled = df.with_columns(
-            [pl.col(c).fill_null(0).cast(pl.Float64) for c in numeric_cols]
-            + [
-                pl.col(c).fill_null(_MISSING_CATEGORY).cast(pl.Utf8)
-                for c in categorical_cols
-            ]
+        X = build_object_feature_matrix(
+            df, numeric_cols=numeric_cols, categorical_cols=categorical_cols
         )
-
-        # Object dtype keeps strings as Python str so the model's
-        # cat_features indices line up with what it saw at training.
-        X = df_filled.select(feature_cols).to_numpy()
         preds = np.asarray(model.predict(X), dtype=np.float64)
 
         out = pl.DataFrame(
