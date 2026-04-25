@@ -54,11 +54,22 @@ def _featured(ac: AssetClass, n: int = 30) -> pl.DataFrame:
     )
 
 
+_NUMERIC_DTYPES = (pl.Float32, pl.Float64, pl.Int8, pl.Int16, pl.Int32, pl.Int64)
+
+
 def _trained_model(df: pl.DataFrame) -> CatBoostRegressor:
+    excluded = {
+        "object_id",
+        "asset_class",
+        "lat",
+        "lon",
+        "synthetic_target_rub_per_m2",
+        "cost_value_rub",
+    }
     feature_cols = [
         c
         for c in df.columns
-        if c not in {"object_id", "asset_class", "lat", "lon", "synthetic_target_rub_per_m2"}
+        if c not in excluded and df.schema[c] in _NUMERIC_DTYPES
     ]
     df = df.with_columns(
         [pl.col(c).fill_null(0).cast(pl.Float64) for c in feature_cols]
@@ -178,3 +189,32 @@ def test_returns_resolved_run_id() -> None:
 
     assert auto == "catboost-object-apartment-latest"
     assert explicit == "x"
+
+
+def test_skips_string_columns_and_cost_value_rub_leak() -> None:
+    """Inference must filter feature columns the same way training does:
+    skip non-numeric (e.g. NSPD's 'materials') and exclude cost_value_rub
+    (target leak: cost_index = cost_value / area). Otherwise the strict
+    cast to Float64 crashes and/or the model receives a wrong column set.
+    """
+    df = _featured(AssetClass.APARTMENT, 30).with_columns(
+        [
+            pl.lit("Кирпичные").alias("materials"),
+            pl.lit(5_000_000.0).alias("cost_value_rub"),
+        ]
+    )
+    model = _trained_model(df)
+    reader = _FakeReader({AssetClass.APARTMENT: df})
+    store = _FakeStore()
+    loader = _FakeLoader(model)
+
+    InferObjectValuation(
+        model_loader=loader,
+        reader=reader,
+        prediction_store=store,
+        run_name_prefix="catboost-object-",
+    ).execute("RU-KAZAN-AGG", AssetClass.APARTMENT)
+
+    saved = store.calls[0].df
+    assert saved.height == df.height
+    assert saved["predicted_value"].null_count() == 0
