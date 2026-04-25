@@ -16,3 +16,6 @@ class ParquetFeatureStore:
         )
         partition.mkdir(parents=True, exist_ok=True)
         df.write_parquet(partition / "data.parquet")
+
+    def load(self, region_code: str, resolution: int, feature_set: str) -> pl.DataFrame:
+        raise NotImplementedError
