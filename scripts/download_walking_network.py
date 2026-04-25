@@ -25,7 +25,6 @@ from pathlib import Path
 
 import httpx
 
-
 _DEFAULT_BBOX = "55.5,48.7,56.05,49.55"  # south, west, north, east
 _DEFAULT_OUT = Path("data/raw/osm/kazan_walking_network.json")
 _DEFAULT_ENDPOINT = "https://overpass-api.de/api/interpreter"

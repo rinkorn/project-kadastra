@@ -17,7 +17,6 @@ import polars as pl
 
 from kadastra.etl.haversine import haversine_meters
 
-
 _OUTPUT_SCHEMA = {
     "from_lat": pl.Float64,
     "from_lon": pl.Float64,

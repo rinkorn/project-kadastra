@@ -21,7 +21,6 @@ from scipy.spatial import cKDTree
 from kadastra.etl.haversine import haversine_meters
 from kadastra.ports.road_graph import RoadGraphPort
 
-
 _Coord = tuple[float, float]
 _EDGES_SCHEMA = ("from_lat", "from_lon", "to_lat", "to_lon", "length_m")
 
@@ -39,7 +38,7 @@ class NetworkxRoadGraph(RoadGraphPort):
     @classmethod
     def from_edges(
         cls, edges: Iterable[tuple[_Coord, _Coord, float]]
-    ) -> "NetworkxRoadGraph":
+    ) -> NetworkxRoadGraph:
         coord_to_id: dict[_Coord, int] = {}
         node_coords: list[_Coord] = []
         graph: nx.Graph = nx.Graph()
@@ -57,7 +56,7 @@ class NetworkxRoadGraph(RoadGraphPort):
         return cls(graph, np.asarray(node_coords, dtype=np.float64))
 
     @classmethod
-    def from_parquet(cls, path: Path) -> "NetworkxRoadGraph":
+    def from_parquet(cls, path: Path) -> NetworkxRoadGraph:
         df = pl.read_parquet(path)
         missing = [c for c in _EDGES_SCHEMA if c not in df.columns]
         if missing:
