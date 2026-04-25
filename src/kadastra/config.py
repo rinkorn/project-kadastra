@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     object_predictions_store_path: Path = Path("data/gold/object_predictions")
     object_neighbor_radius_m: float = 500.0
     object_road_radius_m: float = 500.0
+    zonal_radii_m: list[int] = [100, 300, 500, 800]
+    zonal_layer_names: list[str] = [
+        "stations",
+        "entrances",
+        "apartments",
+        "houses",
+        "commercial",
+    ]
     relative_feature_parent_resolutions: list[int] = [7, 8]
     relative_feature_columns: list[str] = [
         "dist_metro_m",

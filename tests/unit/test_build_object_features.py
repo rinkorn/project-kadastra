@@ -132,6 +132,8 @@ def _usecase(
     *,
     relative_feature_parent_resolutions: list[int] | None = None,
     relative_feature_columns: list[str] | None = None,
+    zonal_radii_m: list[int] | None = None,
+    zonal_layer_names: list[str] | None = None,
 ) -> BuildObjectFeatures:
     return BuildObjectFeatures(
         reader=store,
@@ -152,6 +154,14 @@ def _usecase(
             relative_feature_columns
             if relative_feature_columns is not None
             else ["dist_metro_m"]
+        ),
+        zonal_radii_m=(
+            zonal_radii_m if zonal_radii_m is not None else [100, 300, 500, 800]
+        ),
+        zonal_layer_names=(
+            zonal_layer_names
+            if zonal_layer_names is not None
+            else ["stations", "entrances", "apartments", "houses", "commercial"]
         ),
     )
 
@@ -323,6 +333,47 @@ def test_appends_relative_feature_columns_for_configured_features() -> None:
         "levels__rel_p8_z_iqr",
     }
     assert expected_relative.issubset(set(df.columns))
+
+
+def test_appends_zonal_density_columns_per_layer_and_radius() -> None:
+    """BuildObjectFeatures must run compute_object_zonal_features and
+    surface `{layer}_within_{R}m` for each configured (layer, radius)
+    in each saved partition. Without this the methodological-block-3
+    win (ADR-0013) doesn't reach the model.
+    """
+    initial = {
+        AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT),
+        AssetClass.HOUSE: _objects_for(AssetClass.HOUSE),
+        AssetClass.COMMERCIAL: _objects_for(AssetClass.COMMERCIAL),
+    }
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        zonal_radii_m=[100, 800],
+        zonal_layer_names=["stations", "entrances", "apartments", "houses", "commercial"],
+    ).execute(
+        "RU-KAZAN-AGG",
+        asset_classes=[AssetClass.APARTMENT, AssetClass.HOUSE, AssetClass.COMMERCIAL],
+    )
+
+    df = next(c for c in store.calls if c.asset_class is AssetClass.APARTMENT).df
+    expected = {
+        "stations_within_100m", "stations_within_800m",
+        "entrances_within_100m", "entrances_within_800m",
+        "apartments_within_100m", "apartments_within_800m",
+        "houses_within_100m", "houses_within_800m",
+        "commercial_within_100m", "commercial_within_800m",
+    }
+    assert expected.issubset(set(df.columns)), (
+        f"missing columns: {expected - set(df.columns)}"
+    )
 
 
 def test_handles_empty_partition_gracefully() -> None:
