@@ -42,7 +42,7 @@
 | --- | --- | --- | --- | --- |
 | 1 | **Граф OSM (путевое расстояние)** | 7.2, 7.3 | ✅ [ADR-0011](0011-graph-based-distance-features.md) | Закрыто на пешеходное расстояние. Time-веса по классу дороги — отдельным ADR при первой автомобильной ЦОФ. |
 | 2 | **Относительные ЦОФ через H3 parent-агрегаты** | 11 | ✅ [ADR-0012](0012-relative-features-via-h3-parent-aggregations.md) | Закрыто на res=7/8, агрегаты по всем классам, derivatives `diff/ratio/z_iqr`. Эффект на CatBoost-метриках околонулевой; реальный выигрыш ожидается на White Box модели (блок 5). Per-class агрегаты — отдельным ADR при первой White Box модели. |
-| 3 | **Зональные ЦОФ в 4 радиусах + поли-площадь** | 8 | ✅ [ADR-0013](0013-zonal-density-features-multi-radius.md) (плотность); поли-площадь — отдельным ADR | Density-counts на 100/300/500/800 м для 5 слоёв (stations/entrances/apartments/houses/commercial) — закрыто, дало первый явный MAPE-выигрыш на CatBoost: house -1.5 п.п., landplot -3.4 п.п. от block 1. Поли-площадь требует OSM-полигональной выгрузки — отдельный ADR. |
+| 3 | **Зональные ЦОФ в 4 радиусах + поли-площадь** | 8 | ✅ [ADR-0013](0013-zonal-density-features-multi-radius.md) (плотность) + ✅ [ADR-0014](0014-poly-area-buffer-features.md) (поли-площадь) | Плотность-counts `{layer}_within_{R}m` на 100/300/500/800 м для 5 точечных слоёв (stations/entrances/apartments/houses/commercial). Поли-площадь `{layer}_share_{R}m` для 4 OSM-полигональных слоёв (water/park/industrial/cemetery) на тех же радиусах. Block 3 — первый явный MAPE-выигрыш на CatBoost: house -1.5 п.п., landplot -3.4 п.п. от block 1. |
 | 4 | **Территориальные ЦОФ** | 9 | ⏳ next | Присвоение муниципалитета на гекс через ГАР `AS_MUN_HIERARCHY` (он уже в S3); затем — на объект через гекс. Дополнительно — комбинационные переменные (видовые места, опорные НП). |
 | 5 | **Black/Grey/White Box квартет** | 13.2 | pending | Параллельно: одна неинтерпретируемая (CatBoost / нейронка), одна интерпретируемая (линейная/правила), одна аппроксимирующая (DT поверх Black Box), одна naive-baseline. Цель — мерять потери при упрощении. |
 | 6 | **Темпоральные срезы** | 10 | blocked (трек 1) | Когда появятся сделки — считать ЦОФ на дату сделки, а не на «сегодня». Без сделок этот блок беспредметен. |
@@ -55,6 +55,7 @@
 - **Per-class модели** ([ADR-0008](0008-per-building-multi-class-valuation.md)) — остаются. Методология показывает одну модель на регион, мы держим four-way. Не противоречит, скорее ортогональный выбор.
 - **NSPD как источник объектов** ([ADR-0009](0009-real-cadastre-target-via-nspd.md), §3) — остаётся. NSPD даёт богатые атрибуты (floors, year_built, materials, purpose), spatial postfilter и cad_num. Источник верный — это **выбор target внутри** ADR-0009 был неполноценным.
 - **Hexagonal architecture, TDD, dev-rules** — без изменений.
+- **Инфраструктура и стиль** — соответствует [grid-rationale.md §14](../grid-rationale.md): pure-Python, без UI-оболочек, один входной скрипт, лог в файл, LLM-ассистент. Конкретные либы у нас другие (`polars` вместо pandas/Fiona, parquet+S3 вместо локального PostgreSQL, `shapely`/`pyproj`/`scipy`/`h3-py` вместо QGIS/GDAL-плагинов), но философия совпадает: код, не оболочка; параллельные расчёты не требуют distributed-систем; «индийский код» терпим, потому что задача не latency-critical.
 
 ### 5. Изменения в более ранних ADR
 
