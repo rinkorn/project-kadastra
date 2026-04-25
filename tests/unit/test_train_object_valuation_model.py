@@ -168,3 +168,37 @@ def test_logs_asset_class_in_params() -> None:
     _usecase(reader, registry).execute("RU-KAZAN-AGG", AssetClass.HOUSE)
 
     assert registry.calls[0]["params"]["asset_class"] == "house"
+
+
+def test_excludes_cost_value_rub_as_target_leak() -> None:
+    """cost_value_rub is the EГРН total from which cost_index = cost_value / area
+    is derived; passing it as a feature would let the model trivially recover the
+    target. Must be excluded even though it's numeric.
+    """
+    df = _featured(AssetClass.APARTMENT, 60).with_columns(
+        pl.lit(5_000_000.0).alias("cost_value_rub")
+    )
+    reader = _FakeReader({AssetClass.APARTMENT: df})
+    registry = _FakeRegistry()
+
+    _usecase(reader, registry).execute("RU-KAZAN-AGG", AssetClass.APARTMENT)
+
+    feature_cols = set(registry.calls[0]["params"]["feature_columns"])
+    assert "cost_value_rub" not in feature_cols
+
+
+def test_skips_non_numeric_columns() -> None:
+    """NSPD valuation objects carry string fields (e.g. materials = "Кирпичные")
+    that can't be cast to Float64. The training pipeline must skip them rather
+    than crashing — categorical encoding is not yet wired up.
+    """
+    df = _featured(AssetClass.HOUSE, 60).with_columns(
+        pl.lit("Кирпичные").alias("materials")
+    )
+    reader = _FakeReader({AssetClass.HOUSE: df})
+    registry = _FakeRegistry()
+
+    _usecase(reader, registry).execute("RU-KAZAN-AGG", AssetClass.HOUSE)
+
+    feature_cols = set(registry.calls[0]["params"]["feature_columns"])
+    assert "materials" not in feature_cols

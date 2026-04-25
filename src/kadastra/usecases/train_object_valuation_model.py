@@ -17,8 +17,10 @@ _NON_FEATURE_COLUMNS = frozenset(
         "lat",
         "lon",
         _TARGET_COLUMN,
+        "cost_value_rub",
     }
 )
+_NUMERIC_DTYPES = (pl.Float32, pl.Float64, pl.Int8, pl.Int16, pl.Int32, pl.Int64)
 
 
 class TrainObjectValuationModel:
@@ -41,7 +43,12 @@ class TrainObjectValuationModel:
             subset=[_TARGET_COLUMN]
         )
 
-        feature_cols = [c for c in df.columns if c not in _NON_FEATURE_COLUMNS]
+        feature_cols = [
+            c
+            for c in df.columns
+            if c not in _NON_FEATURE_COLUMNS
+            and df.schema[c] in _NUMERIC_DTYPES
+        ]
         df = df.with_columns(
             [pl.col(c).fill_null(0).cast(pl.Float64) for c in feature_cols]
         )
