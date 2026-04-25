@@ -48,6 +48,26 @@ def test_save_overwrites_previous_partition(tmp_path: Path) -> None:
     assert df["h3_index"].to_list() == ["h_b"]
 
 
+def test_load_round_trips_saved_features(tmp_path: Path) -> None:
+    store = ParquetGoldFeatureStore(tmp_path)
+    store.save("RU-TA", 8, _gold_df())
+
+    df = store.load("RU-TA", 8)
+
+    assert df.columns == ["h3_index", "resolution", "dist_metro_m", "building_count", "road_length_m"]
+    assert df["road_length_m"].to_list() == [120.5, 0.0]
+
+
+def test_load_for_missing_resolution_raises(tmp_path: Path) -> None:
+    import pytest
+
+    store = ParquetGoldFeatureStore(tmp_path)
+    store.save("RU-TA", 8, _gold_df())
+
+    with pytest.raises(FileNotFoundError):
+        store.load("RU-TA", 9)
+
+
 def test_save_isolates_resolutions(tmp_path: Path) -> None:
     store = ParquetGoldFeatureStore(tmp_path)
     df7 = pl.DataFrame({"h3_index": ["h_a"], "resolution": [7], "x": [1.0]})
