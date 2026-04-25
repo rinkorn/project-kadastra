@@ -18,3 +18,7 @@ class Settings(BaseSettings):
     s3_secret_key: str | None = None
     s3_region: str = "us-east-1"
     s3_addressing_style: str = "path"
+
+    feature_store_path: Path = Path("data/silver/features")
+    metro_stations_key: str = "Kadatastr/metro/metro_stations.csv"
+    metro_entrances_key: str = "Kadatastr/metro/metro_entrances.csv"

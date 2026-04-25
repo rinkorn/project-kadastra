@@ -19,3 +19,7 @@ class ParquetCoverageStore:
             partition.mkdir(parents=True, exist_ok=True)
             df = pl.DataFrame({"h3_index": sorted(indices)})
             df.write_parquet(partition / "data.parquet")
+
+    def load(self, region_code: str, resolution: int) -> pl.DataFrame:
+        path = self._base_path / f"region={region_code}" / f"resolution={resolution}" / "data.parquet"
+        return pl.read_parquet(path).with_columns(pl.lit(resolution, dtype=pl.Int32).alias("resolution"))
