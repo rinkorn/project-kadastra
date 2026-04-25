@@ -1,8 +1,10 @@
-"""Extract polygon layers (water/park/industrial/cemetery) from the
-agglomeration-clipped OSM PBF into per-layer GeoJSON-seq files.
+"""Extract polygon layers (water/park/industrial/cemetery/raions) from
+the agglomeration-clipped OSM PBF into per-layer GeoJSON-seq files.
 
 The output is consumed by ``compute_object_polygon_features`` as input
-for poly-area buffer features (see ADR-0014).
+for poly-area buffer features (see ADR-0014) and by
+``compute_object_municipality_features`` as input for the
+intra_city_raion spatial join (see ADR-0015).
 
 Source: ``data/raw/osm/kazan-agg.osm.pbf`` (generated earlier by the
 buildings pipeline, see ADR-0007).
@@ -20,9 +22,11 @@ unless ``--force`` is passed.
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 # OSM tag filter expressions, one per layer.
@@ -47,6 +51,17 @@ _LAYER_FILTERS: dict[str, list[str]] = {
         "wa/amenity=grave_yard",
     ],
 }
+
+# Raions are chained-filter: only relations with both
+# boundary=administrative AND admin_level=9. osmium tags-filter combines
+# expressions with OR within one invocation, so we run two passes.
+# Output is then post-filtered to keep only Polygon/MultiPolygon
+# features whose properties carry admin_level=9 (osmium export emits
+# referenced nodes/ways too — they get tossed here).
+_RAIONS_FILTER_PASSES: list[list[str]] = [
+    ["r/boundary=administrative"],
+    ["r/admin_level=9"],
+]
 
 _DEFAULT_SRC = Path("data/raw/osm/kazan-agg.osm.pbf")
 _OUT_DIR = Path("data/raw/osm")
@@ -96,8 +111,54 @@ def _extract_layer(
     print(f"Wrote {out_path} ({size_mb:.1f} MB)")
 
 
+def _extract_raions(src: Path, out_dir: Path, force: bool) -> None:
+    out_path = out_dir / "kazan-agg-raions.geojsonseq"
+    if out_path.exists() and not force:
+        size_mb = out_path.stat().st_size / 1024 / 1024
+        print(f"{out_path} already exists ({size_mb:.1f} MB); --force to rebuild")
+        return
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        current = src
+        for i, filters in enumerate(_RAIONS_FILTER_PASSES):
+            stage = tmp_path / f"raions-stage{i}.osm.pbf"
+            _run(["osmium", "tags-filter", "--overwrite", "-o", str(stage), str(current), *filters])
+            current = stage
+        raw = tmp_path / "raions-raw.geojsonseq"
+        _run(
+            [
+                "osmium", "export", "--overwrite", "-f", "geojsonseq",
+                "--add-unique-id=type_id", "-o", str(raw), str(current),
+            ]
+        )
+        kept = 0
+        with raw.open("rb") as fin, out_path.open("wb") as fout:
+            for chunk in fin.read().split(b"\x1e"):
+                line = chunk.strip()
+                if not line:
+                    continue
+                try:
+                    feat = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                geom_type = (feat.get("geometry") or {}).get("type")
+                props = feat.get("properties") or {}
+                if geom_type not in ("Polygon", "MultiPolygon"):
+                    continue
+                if str(props.get("admin_level")) != "9":
+                    continue
+                fout.write(b"\x1e")
+                fout.write(json.dumps(feat, ensure_ascii=False).encode("utf-8"))
+                fout.write(b"\n")
+                kept += 1
+    size_mb = out_path.stat().st_size / 1024 / 1024
+    print(f"Wrote {out_path} ({size_mb:.1f} MB, {kept} admin polygons)")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
+    all_layers = [*list(_LAYER_FILTERS.keys()), "raions"]
     p.add_argument(
         "--src", type=Path, default=_DEFAULT_SRC, help="Source PBF (clipped to agglomeration)"
     )
@@ -107,8 +168,8 @@ def main() -> None:
     p.add_argument(
         "--layers",
         nargs="+",
-        default=list(_LAYER_FILTERS.keys()),
-        choices=list(_LAYER_FILTERS.keys()),
+        default=all_layers,
+        choices=all_layers,
         help="Layer names to extract (default: all)",
     )
     p.add_argument("--force", action="store_true", help="Rebuild even if output exists")
@@ -120,7 +181,10 @@ def main() -> None:
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
     for layer in args.layers:
-        _extract_layer(args.src, layer, _LAYER_FILTERS[layer], args.out_dir, args.force)
+        if layer == "raions":
+            _extract_raions(args.src, args.out_dir, args.force)
+        else:
+            _extract_layer(args.src, layer, _LAYER_FILTERS[layer], args.out_dir, args.force)
 
 
 if __name__ == "__main__":

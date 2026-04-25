@@ -19,6 +19,10 @@ _NON_FEATURE_COLUMNS = frozenset(
         "lon",
         "synthetic_target_rub_per_m2",
         "cost_value_rub",
+        # Block 4 (ADR-0015): identity / provenance, not features.
+        "cad_num",
+        "readable_address",
+        "mun_source",
     }
 )
 _NON_FEATURE_PREFIXES = ("parent_h3_p",)
