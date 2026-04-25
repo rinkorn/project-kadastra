@@ -51,4 +51,62 @@ class AssembleNspdValuationObjects:
     def execute(
         self, region_code: str, *, asset_classes: list[AssetClass]
     ) -> None:
-        raise NotImplementedError
+        buildings_needed = any(
+            ac is not AssetClass.LANDPLOT for ac in asset_classes
+        )
+        landplots_needed = AssetClass.LANDPLOT in asset_classes
+
+        objects = pl.DataFrame(schema=_OUTPUT_SCHEMA)
+
+        if buildings_needed:
+            buildings = self._silver_store.load(region_code, "buildings")
+            objects = pl.concat(
+                [objects, _to_valuation_objects_buildings(buildings)],
+                how="diagonal_relaxed",
+            )
+
+        if landplots_needed:
+            landplots = self._silver_store.load(region_code, "landplots")
+            objects = pl.concat(
+                [objects, _to_valuation_objects_landplots(landplots)],
+                how="diagonal_relaxed",
+            )
+
+        objects = objects.filter(
+            pl.col("asset_class").is_not_null()
+            & pl.col("synthetic_target_rub_per_m2").is_not_null()
+        )
+
+        for asset_class in asset_classes:
+            slice_df = objects.filter(
+                pl.col("asset_class") == asset_class.value
+            ).select(list(_OUTPUT_SCHEMA.keys()))
+            self._valuation_object_store.save(region_code, asset_class, slice_df)
+
+
+def _to_valuation_objects_buildings(silver: pl.DataFrame) -> pl.DataFrame:
+    return silver.with_columns(
+        [
+            (pl.lit("nspd-building/") + pl.col("geom_data_id").cast(pl.Utf8)).alias(
+                "object_id"
+            ),
+            pl.col("floors").alias("levels"),
+            pl.lit(None).cast(pl.Int64).alias("flats"),
+            pl.col("cost_index_rub_per_m2").alias("synthetic_target_rub_per_m2"),
+        ]
+    ).select(list(_OUTPUT_SCHEMA.keys()))
+
+
+def _to_valuation_objects_landplots(silver: pl.DataFrame) -> pl.DataFrame:
+    return silver.with_columns(
+        [
+            (pl.lit("nspd-landplot/") + pl.col("geom_data_id").cast(pl.Utf8)).alias(
+                "object_id"
+            ),
+            pl.lit(None).cast(pl.Int64).alias("levels"),
+            pl.lit(None).cast(pl.Int64).alias("flats"),
+            pl.lit(None).cast(pl.Int64).alias("year_built"),
+            pl.lit(None).cast(pl.Utf8).alias("materials"),
+            pl.col("cost_index_rub_per_m2").alias("synthetic_target_rub_per_m2"),
+        ]
+    ).select(list(_OUTPUT_SCHEMA.keys()))
