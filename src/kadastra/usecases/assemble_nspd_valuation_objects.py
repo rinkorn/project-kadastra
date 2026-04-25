@@ -77,10 +77,21 @@ class AssembleNspdValuationObjects:
                 how="diagonal_relaxed",
             )
 
+        # Drop:
+        # - rows without an asset_class (e.g. NSPD purpose «Гараж»)
+        # - rows without a positive ЕГРН target. Both target<=0 and
+        #   cost_value_rub<=0 are broken NSPD records (e.g. cost field
+        #   missing → 0; or area = 0 → target = cost / 0). Visible in
+        #   inspector as |MAPE|>100% outliers.
+        # - exact duplicate object_id rows (NSPD occasionally emits the
+        #   same record twice for re-cadastered objects). Keep first.
         objects = objects.filter(
             pl.col("asset_class").is_not_null()
             & pl.col("synthetic_target_rub_per_m2").is_not_null()
-        )
+            & (pl.col("synthetic_target_rub_per_m2") > 0)
+            & pl.col("cost_value_rub").is_not_null()
+            & (pl.col("cost_value_rub") > 0)
+        ).unique(subset=["object_id"], keep="first", maintain_order=True)
 
         for asset_class in asset_classes:
             slice_df = objects.filter(

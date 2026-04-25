@@ -190,6 +190,79 @@ def test_drops_rows_with_null_asset_class() -> None:
     assert saved["house"].height == 1
 
 
+def test_drops_rows_with_zero_or_negative_target() -> None:
+    """NSPD occasionally emits rows with cost_value_rub=0 or area=0 →
+    target=0. They are broken records, surface as |MAPE|>100% outliers
+    in the inspector and must be dropped at assemble time."""
+    buildings = _silver_buildings().with_columns(
+        pl.when(pl.col("geom_data_id") == 1)
+        .then(0.0)
+        .otherwise(pl.col("cost_index_rub_per_m2"))
+        .alias("cost_index_rub_per_m2"),
+        pl.when(pl.col("geom_data_id") == 2)
+        .then(-100.0)
+        .otherwise(pl.col("cost_index_rub_per_m2"))
+        .alias("cost_index_rub_per_m2_negative_marker"),
+    )
+    # Apply both: rows 1 (zero) and 2 (negative) should drop.
+    buildings = buildings.with_columns(
+        pl.when(pl.col("geom_data_id") == 2)
+        .then(-100.0)
+        .otherwise(pl.col("cost_index_rub_per_m2"))
+        .alias("cost_index_rub_per_m2")
+    ).drop("cost_index_rub_per_m2_negative_marker")
+    silver = _FakeSilverStore(buildings=buildings, landplots=_silver_landplots())
+    store = _FakeValuationObjectStore()
+    AssembleNspdValuationObjects(
+        silver_store=silver, valuation_object_store=store
+    ).execute(
+        "RU-KAZAN-AGG", asset_classes=[AssetClass.HOUSE, AssetClass.APARTMENT]
+    )
+    saved = {c.value: df for _, c, df in store.calls}
+    # House had 2 rows; geom_data_id=1 (zero) and id=4 are houses → only id=4
+    # remains. Apartment had 2 rows; geom_data_id=2 (negative) and id=5 →
+    # only id=5 remains.
+    assert saved["house"].height == 1
+    assert saved["apartment"].height == 1
+
+
+def test_drops_rows_with_zero_cost_value() -> None:
+    """``cost_value_rub == 0`` is a separate broken-record signal: the
+    cost is missing in NSPD but the area+target field is non-null
+    (computed from a stale cache)."""
+    buildings = _silver_buildings().with_columns(
+        pl.when(pl.col("geom_data_id") == 1)
+        .then(0.0)
+        .otherwise(pl.col("cost_value_rub"))
+        .alias("cost_value_rub")
+    )
+    silver = _FakeSilverStore(buildings=buildings, landplots=_silver_landplots())
+    store = _FakeValuationObjectStore()
+    AssembleNspdValuationObjects(
+        silver_store=silver, valuation_object_store=store
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.HOUSE])
+    df = store.calls[0][2]
+    assert df.height == 1
+
+
+def test_dedupes_by_object_id() -> None:
+    """NSPD can emit the same record twice (e.g. re-cadastered objects).
+    Inspector revealed ~1 200 dup rows in gold for Kazan; the fix is to
+    keep the first occurrence of each object_id at assemble time."""
+    base = _silver_buildings()
+    # Duplicate row 4 (house, geom_data_id=4) by appending a copy.
+    duplicated = pl.concat([base, base.filter(pl.col("geom_data_id") == 4)])
+    silver = _FakeSilverStore(buildings=duplicated, landplots=_silver_landplots())
+    store = _FakeValuationObjectStore()
+    AssembleNspdValuationObjects(
+        silver_store=silver, valuation_object_store=store
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.HOUSE])
+    df = store.calls[0][2]
+    # Originally 2 houses; even after duplicating one, output is still 2.
+    assert df.height == 2
+    assert df["object_id"].n_unique() == 2
+
+
 def test_landplots_partition_skipped_when_landplot_not_requested() -> None:
     silver = _FakeSilverStore(
         buildings=_silver_buildings(), landplots=_silver_landplots()
