@@ -43,3 +43,6 @@ class Settings(BaseSettings):
     mlflow_enabled: bool = False
     mlflow_tracking_uri: str | None = None
     mlflow_experiment_name: str = "kadastra-valuation"
+
+    serve_host: str = "127.0.0.1"
+    serve_port: int = 15777
