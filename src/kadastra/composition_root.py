@@ -1,9 +1,11 @@
 from kadastra.adapters.local_geojson_region_boundary import LocalGeoJsonRegionBoundary
 from kadastra.adapters.parquet_coverage_store import ParquetCoverageStore
 from kadastra.adapters.parquet_feature_store import ParquetFeatureStore
+from kadastra.adapters.parquet_gold_feature_store import ParquetGoldFeatureStore
 from kadastra.adapters.s3_raw_data import S3RawData
 from kadastra.config import Settings
 from kadastra.usecases.build_buildings_features import BuildBuildingsFeatures
+from kadastra.usecases.build_gold_features import BuildGoldFeatures
 from kadastra.usecases.build_metro_features import BuildMetroFeatures
 from kadastra.usecases.build_region_coverage import BuildRegionCoverage
 from kadastra.usecases.build_road_features import BuildRoadFeatures
@@ -62,4 +64,13 @@ class Container:
             raw_data=self.build_s3_raw_data(),
             feature_store=ParquetFeatureStore(s.feature_store_path),
             roads_key=s.roads_key,
+        )
+
+    def build_gold_features(self) -> BuildGoldFeatures:
+        s = self._settings
+        return BuildGoldFeatures(
+            coverage_reader=ParquetCoverageStore(s.coverage_store_path),
+            feature_reader=ParquetFeatureStore(s.feature_store_path),
+            gold_store=ParquetGoldFeatureStore(s.gold_store_path),
+            feature_sets=s.gold_feature_sets,
         )
