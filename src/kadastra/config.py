@@ -22,3 +22,4 @@ class Settings(BaseSettings):
     feature_store_path: Path = Path("data/silver/features")
     metro_stations_key: str = "Kadatastr/metro/metro_stations.csv"
     metro_entrances_key: str = "Kadatastr/metro/metro_entrances.csv"
+    buildings_key: str = "Kadatastr/rosreestr/osm_buildings_kazan.csv"
