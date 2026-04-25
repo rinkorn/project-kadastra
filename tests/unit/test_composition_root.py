@@ -6,6 +6,7 @@ from kadastra.adapters.s3_raw_data import S3RawData
 from kadastra.composition_root import Container
 from kadastra.config import Settings
 from kadastra.usecases.build_region_coverage import BuildRegionCoverage
+from kadastra.usecases.build_synthetic_target import BuildSyntheticTarget
 
 
 def test_container_builds_region_coverage_usecase(tmp_path: Path) -> None:
@@ -56,3 +57,26 @@ def test_container_raises_when_s3_credentials_missing(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeError, match="S3 credentials"):
         container.build_s3_raw_data()
+
+
+def test_container_builds_synthetic_target_usecase(tmp_path: Path) -> None:
+    settings = Settings(
+        region_boundary_path=tmp_path / "b.geojson",
+        coverage_store_path=tmp_path / "c",
+        gold_store_path=tmp_path / "gold",
+        synthetic_target_store_path=tmp_path / "targets",
+    )
+    container = Container(settings)
+
+    usecase = container.build_synthetic_target()
+
+    assert isinstance(usecase, BuildSyntheticTarget)
+
+
+def test_settings_has_synthetic_target_defaults() -> None:
+    settings = Settings()
+
+    assert settings.synthetic_target_store_path.as_posix().endswith(
+        "data/gold/targets"
+    )
+    assert settings.synthetic_target_seed == 42
