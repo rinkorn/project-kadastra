@@ -3,6 +3,7 @@ from kadastra.adapters.parquet_coverage_store import ParquetCoverageStore
 from kadastra.adapters.parquet_feature_store import ParquetFeatureStore
 from kadastra.adapters.s3_raw_data import S3RawData
 from kadastra.config import Settings
+from kadastra.usecases.build_buildings_features import BuildBuildingsFeatures
 from kadastra.usecases.build_metro_features import BuildMetroFeatures
 from kadastra.usecases.build_region_coverage import BuildRegionCoverage
 
@@ -42,4 +43,13 @@ class Container:
             feature_store=ParquetFeatureStore(s.feature_store_path),
             stations_key=s.metro_stations_key,
             entrances_key=s.metro_entrances_key,
+        )
+
+    def build_buildings_features(self) -> BuildBuildingsFeatures:
+        s = self._settings
+        return BuildBuildingsFeatures(
+            coverage_reader=ParquetCoverageStore(s.coverage_store_path),
+            raw_data=self.build_s3_raw_data(),
+            feature_store=ParquetFeatureStore(s.feature_store_path),
+            buildings_key=s.buildings_key,
         )
