@@ -76,7 +76,9 @@ _MOSCOW_3857 = [
 ]
 
 
-def _building_feature(idx: int, *, coords: list, purpose: str = "Жилой дом") -> dict[str, Any]:
+def _building_feature(
+    idx: int, *, coords: list[list[list[float]]], purpose: str = "Жилой дом"
+) -> dict[str, Any]:
     return {
         "id": 100000 + idx,
         "type": "Feature",

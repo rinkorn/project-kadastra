@@ -21,7 +21,7 @@ from kadastra.etl.parse_nspd_feature import (
     parse_nspd_landplot_feature,
 )
 
-_BUILDINGS_SCHEMA: dict[str, pl.DataType] = {
+_BUILDINGS_SCHEMA: dict[str, type[pl.DataType] | pl.DataType] = {
     "geom_data_id": pl.Int64,
     "cad_num": pl.Utf8,
     "purpose": pl.Utf8,
@@ -41,7 +41,7 @@ _BUILDINGS_SCHEMA: dict[str, pl.DataType] = {
     "polygon_wkt_3857": pl.Utf8,
 }
 
-_LANDPLOTS_SCHEMA: dict[str, pl.DataType] = {
+_LANDPLOTS_SCHEMA: dict[str, type[pl.DataType] | pl.DataType] = {
     "geom_data_id": pl.Int64,
     "cad_num": pl.Utf8,
     "asset_class": pl.Utf8,
@@ -62,14 +62,13 @@ _LANDPLOTS_SCHEMA: dict[str, pl.DataType] = {
 def _iter_features(directory: Path) -> Iterable[dict[str, Any]]:
     for page in sorted(directory.glob("page-*.json")):
         payload = json.loads(page.read_text(encoding="utf-8"))
-        for feature in payload.get("data", {}).get("features", []):
-            yield feature
+        yield from payload.get("data", {}).get("features", [])
 
 
 def _read_dir(
     directory: Path,
     parse: Callable[[dict[str, Any]], dict[str, Any]],
-    schema: dict[str, pl.DataType],
+    schema: dict[str, type[pl.DataType] | pl.DataType],
 ) -> pl.DataFrame:
     rows: list[dict[str, Any]] = [parse(f) for f in _iter_features(directory)]
     if not rows:

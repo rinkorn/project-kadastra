@@ -6,7 +6,6 @@ import polars as pl
 from kadastra.domain.asset_class import AssetClass
 from kadastra.usecases.build_valuation_objects import BuildValuationObjects
 
-
 _CSV_HEADER = (
     "osm_id,osm_type,lat,lon,building,levels,flats,material,wall,street,"
     "housenumber,postcode,city,start_date,name,energy_class\n"

@@ -5,7 +5,6 @@ import polars as pl
 from kadastra.domain.asset_class import AssetClass
 from kadastra.usecases.build_object_synthetic_target import BuildObjectSyntheticTarget
 
-
 _FEATURE_SCHEMA = {
     "object_id": pl.Utf8,
     "asset_class": pl.Utf8,

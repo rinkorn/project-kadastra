@@ -13,8 +13,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import polars as pl
-
 from kadastra.etl.filter_inside_polygon import filter_inside_polygon
 from kadastra.etl.read_nspd_dir import (
     read_nspd_buildings_dir,
@@ -43,11 +41,11 @@ class LoadNspdRawObjects:
 
         polygon = self._region_boundary.get_boundary(region_code)
 
-        df: pl.DataFrame
-        if source == "buildings":
-            df = read_nspd_buildings_dir(raw_dir)
-        else:
-            df = read_nspd_landplots_dir(raw_dir)
+        df = (
+            read_nspd_buildings_dir(raw_dir)
+            if source == "buildings"
+            else read_nspd_landplots_dir(raw_dir)
+        )
 
         filtered = filter_inside_polygon(df, polygon)
         self._silver_store.save(region_code, source, filtered)

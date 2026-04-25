@@ -24,7 +24,7 @@ from kadastra.domain.asset_class import AssetClass
 from kadastra.ports.nspd_silver_store import NspdSilverStorePort
 from kadastra.ports.valuation_object_store import ValuationObjectStorePort
 
-_OUTPUT_SCHEMA: dict[str, pl.DataType] = {
+_OUTPUT_SCHEMA: dict[str, type[pl.DataType] | pl.DataType] = {
     "object_id": pl.Utf8,
     "asset_class": pl.Utf8,
     "lat": pl.Float64,

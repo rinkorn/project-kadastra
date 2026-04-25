@@ -14,7 +14,7 @@ def main() -> None:
     container = Container(settings)
     usecase = container.build_load_nspd_raw_objects()
 
-    sources: list[tuple[str, "object"]] = [
+    sources: list[tuple[str, object]] = [
         ("buildings", settings.nspd_buildings_raw_dir),
         ("landplots", settings.nspd_landplots_raw_dir),
     ]

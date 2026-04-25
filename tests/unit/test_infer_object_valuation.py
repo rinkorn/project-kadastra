@@ -54,8 +54,12 @@ def _featured(ac: AssetClass, n: int = 30) -> pl.DataFrame:
     )
 
 
-_NUMERIC_DTYPES = (pl.Float32, pl.Float64, pl.Int8, pl.Int16, pl.Int32, pl.Int64)
-_CATEGORICAL_DTYPES = (pl.Utf8, pl.Categorical)
+def _is_numeric(dtype: pl.DataType) -> bool:
+    return dtype.is_numeric()
+
+
+def _is_categorical(dtype: pl.DataType) -> bool:
+    return dtype == pl.Utf8 or dtype == pl.Categorical
 
 
 def _trained_model(df: pl.DataFrame) -> CatBoostRegressor:
@@ -74,12 +78,12 @@ def _trained_model(df: pl.DataFrame) -> CatBoostRegressor:
     numeric_cols = [
         c
         for c in df.columns
-        if c not in excluded and df.schema[c] in _NUMERIC_DTYPES
+        if c not in excluded and _is_numeric(df.schema[c])
     ]
     categorical_cols = [
         c
         for c in df.columns
-        if c not in excluded and df.schema[c] in _CATEGORICAL_DTYPES
+        if c not in excluded and _is_categorical(df.schema[c])
     ]
     feature_cols = numeric_cols + categorical_cols
     cat_indices = list(range(len(numeric_cols), len(feature_cols)))

@@ -151,10 +151,10 @@ def test_predictions_match_direct_model_predict() -> None:
 
 def test_execute_propagates_loader_not_found() -> None:
     class FailingLoader:
-        def load(self, run_id: str) -> CatBoostRegressor:  # noqa: ARG002
+        def load(self, run_id: str) -> CatBoostRegressor:
             raise FileNotFoundError("nope")
 
-        def find_latest_run_id(self, run_name_prefix: str) -> str:  # noqa: ARG002
+        def find_latest_run_id(self, run_name_prefix: str) -> str:
             raise FileNotFoundError("no runs")
 
     usecase = InferValuation(
