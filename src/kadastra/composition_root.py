@@ -221,6 +221,8 @@ class Container:
             road_graph=self.build_road_graph(),
             relative_feature_parent_resolutions=s.relative_feature_parent_resolutions,
             relative_feature_columns=s.relative_feature_columns,
+            zonal_radii_m=s.zonal_radii_m,
+            zonal_layer_names=s.zonal_layer_names,
         )
 
     def build_object_synthetic_target(self) -> BuildObjectSyntheticTarget:
