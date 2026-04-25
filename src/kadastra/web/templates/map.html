@@ -40,6 +40,14 @@
   <div class="panel">
     <strong>kadastra</strong>
     <span class="badge" title="Target is a feature-driven synthetic proxy, not real cadastral prices. Buildings cover the Kazan agglomeration; metro is Kazan-only.">synthetic proxy</span>
+    <label>Mode:
+      <select id="mode">
+        <option value="hex" selected>Hex feature</option>
+        <option value="object:apartment">Objects: apartment</option>
+        <option value="object:house">Objects: house</option>
+        <option value="object:commercial">Objects: commercial</option>
+      </select>
+    </label>
     <label>Feature:
       <select id="feature">
         {% for f in features %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
@@ -148,60 +156,119 @@ function buildScaler(values, mode) {
   return { lo, hi, normalize: v => Math.min(Math.max((transform(v) - lo) / range, 0), 1) };
 }
 
-async function refresh() {
+async function refreshHex() {
   const feature = document.getElementById('feature').value;
   const resolution = parseInt(document.getElementById('resolution').value, 10);
   const scaleMode = document.getElementById('scale').value;
   const stat = document.getElementById('stat');
   stat.textContent = 'loading…';
+  const r = await fetch(`/api/hex_features?resolution=${resolution}&feature=${encodeURIComponent(feature)}`);
+  if (!r.ok) {
+    stat.textContent = `error ${r.status}`;
+    deckOverlay.setProps({ layers: [] });
+    return;
+  }
+  const payload = await r.json();
+  const data = payload.data;
+  if (data.length === 0) {
+    stat.textContent = '0 hexes';
+    deckOverlay.setProps({ layers: [] });
+    return;
+  }
+  const values = data.map(d => d.value);
+  const scaler = buildScaler(values, scaleMode);
+  const layer = new deck.H3HexagonLayer({
+    id: 'hex',
+    data,
+    getHexagon: d => d.hex,
+    getFillColor: d => colorRamp(scaler.normalize(d.value)),
+    stroked: false,
+    extruded: false,
+    pickable: true
+  });
+  deckOverlay.setProps({
+    layers: [layer],
+    getTooltip: ({ object }) => object && `${feature}: ${object.value}`
+  });
+  document.getElementById('legend-feature').textContent = `${feature} (${scaleMode})`;
+  updateLegend(values, scaleMode);
+  stat.textContent = `${data.length.toLocaleString()} hexes`;
+}
+
+async function refreshObjects(assetClass) {
+  const scaleMode = document.getElementById('scale').value;
+  const stat = document.getElementById('stat');
+  stat.textContent = 'loading…';
+  const r = await fetch(`/api/object_predictions?asset_class=${encodeURIComponent(assetClass)}`);
+  if (!r.ok) {
+    stat.textContent = `error ${r.status}`;
+    deckOverlay.setProps({ layers: [] });
+    return;
+  }
+  const payload = await r.json();
+  const data = payload.data;
+  if (data.length === 0) {
+    stat.textContent = '0 objects';
+    deckOverlay.setProps({ layers: [] });
+    return;
+  }
+  const values = data.map(d => d.value);
+  const scaler = buildScaler(values, scaleMode);
+  const layer = new deck.ScatterplotLayer({
+    id: 'objects',
+    data,
+    getPosition: d => [d.lon, d.lat],
+    getFillColor: d => colorRamp(scaler.normalize(d.value)),
+    radiusUnits: 'meters',
+    getRadius: 18,
+    stroked: false,
+    pickable: true
+  });
+  deckOverlay.setProps({
+    layers: [layer],
+    getTooltip: ({ object }) =>
+      object && `${assetClass} ${object.object_id}: ${Math.round(object.value).toLocaleString()} ₽/м²`
+  });
+  document.getElementById('legend-feature').textContent = `${assetClass} predicted ₽/м² (${scaleMode})`;
+  updateLegend(values, scaleMode);
+  stat.textContent = `${data.length.toLocaleString()} objects`;
+}
+
+function updateLegend(values, scaleMode) {
+  const sorted = [...values].sort((a, b) => a - b);
+  let lo, hi;
+  if (scaleMode === 'p98') {
+    lo = quantile(sorted, 0.02);
+    hi = quantile(sorted, 0.98);
+  } else {
+    lo = sorted[0];
+    hi = sorted[sorted.length - 1];
+  }
+  document.getElementById('legend-min').textContent = lo.toFixed(2);
+  document.getElementById('legend-max').textContent = hi.toFixed(2);
+}
+
+async function refresh() {
   try {
-    const r = await fetch(`/api/hex_features?resolution=${resolution}&feature=${encodeURIComponent(feature)}`);
-    if (!r.ok) {
-      stat.textContent = `error ${r.status}`;
-      return;
-    }
-    const payload = await r.json();
-    const data = payload.data;
-    if (data.length === 0) {
-      stat.textContent = '0 hexes';
-      deckOverlay.setProps({ layers: [] });
-      return;
-    }
-    const values = data.map(d => d.value);
-    const scaler = buildScaler(values, scaleMode);
-    const layer = new deck.H3HexagonLayer({
-      id: 'hex',
-      data,
-      getHexagon: d => d.hex,
-      getFillColor: d => colorRamp(scaler.normalize(d.value)),
-      stroked: false,
-      extruded: false,
-      pickable: true
-    });
-    deckOverlay.setProps({
-      layers: [layer],
-      getTooltip: ({ object }) => object && `${feature}: ${object.value}`
-    });
-    document.getElementById('legend-feature').textContent = `${feature} (${scaleMode})`;
-    const sorted = [...values].sort((a, b) => a - b);
-    const dataMin = sorted[0];
-    const dataMax = sorted[sorted.length - 1];
-    let lo, hi;
-    if (scaleMode === 'p98') {
-      lo = quantile(sorted, 0.02);
-      hi = quantile(sorted, 0.98);
+    const mode = document.getElementById('mode').value;
+    const featureControls = document.getElementById('feature').parentElement;
+    const resolutionControls = document.getElementById('resolution').parentElement;
+    if (mode === 'hex') {
+      featureControls.style.display = '';
+      resolutionControls.style.display = '';
+      await refreshHex();
     } else {
-      lo = dataMin;
-      hi = dataMax;
+      const assetClass = mode.split(':')[1];
+      featureControls.style.display = 'none';
+      resolutionControls.style.display = 'none';
+      await refreshObjects(assetClass);
     }
-    document.getElementById('legend-min').textContent = lo.toFixed(2);
-    document.getElementById('legend-max').textContent = hi.toFixed(2);
-    stat.textContent = `${data.length.toLocaleString()} hexes`;
   } catch (e) {
-    stat.textContent = `error: ${e.message}`;
+    document.getElementById('stat').textContent = `error: ${e.message}`;
   }
 }
 
+document.getElementById('mode').addEventListener('change', refresh);
 document.getElementById('feature').addEventListener('change', refresh);
 document.getElementById('resolution').addEventListener('change', refresh);
 document.getElementById('scale').addEventListener('change', refresh);
