@@ -12,4 +12,5 @@ class ModelRegistryPort(Protocol):
         params: Mapping[str, Any],
         metrics: Mapping[str, float],
         model: CatBoostRegressor,
+        artifacts: Mapping[str, bytes] | None = None,
     ) -> str: ...

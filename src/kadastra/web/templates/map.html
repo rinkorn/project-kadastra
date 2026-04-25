@@ -1,82 +1,123 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="utf-8">
-  <title>kadastra — Tatarstan hex features</title>
+  <title>kadastra — inspector</title>
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.0.0/dist/maplibre-gl.css">
   <script src="https://unpkg.com/maplibre-gl@5.0.0/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/h3-js@4.2.1/dist/h3-js.umd.js"></script>
   <script src="https://unpkg.com/deck.gl@9.1.0/dist.min.js"></script>
   <style>
-    body { margin: 0; font-family: system-ui, sans-serif; }
-    #map { position: absolute; top: 56px; bottom: 0; left: 0; right: 0; }
-    .panel {
-      position: absolute; top: 0; left: 0; right: 0; height: 56px;
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #0b1220; color: #e5e7eb; }
+    .topbar {
+      position: fixed; top: 0; left: 0; right: 0; height: 56px;
       display: flex; align-items: center; gap: 12px;
       padding: 0 16px;
-      background: #1f2937; color: #fff; z-index: 10;
+      background: #1f2937; color: #fff; z-index: 20;
+      border-bottom: 1px solid #374151;
     }
-    .panel select, .panel input {
-      padding: 6px 8px; border-radius: 4px; border: 1px solid #4b5563;
-      background: #111827; color: #fff;
+    .topbar strong { font-size: 16px; }
+    .topbar label { font-size: 12px; display: inline-flex; flex-direction: column; gap: 2px; opacity: 0.85; }
+    .topbar select, .topbar input {
+      padding: 4px 6px; border-radius: 4px; border: 1px solid #4b5563;
+      background: #111827; color: #fff; font-size: 13px;
     }
-    .panel .badge {
+    .topbar .stat { margin-left: auto; opacity: 0.85; font-size: 12px; }
+    .topbar .badge {
       padding: 3px 8px; border-radius: 10px; font-size: 11px;
       background: #b45309; color: #fff; cursor: help; user-select: none;
     }
-    .panel .stat { margin-left: auto; opacity: 0.85; font-size: 14px; }
-    .legend {
-      position: absolute; bottom: 16px; left: 16px;
-      background: rgba(31, 41, 55, 0.9); color: #fff;
-      padding: 8px 12px; border-radius: 6px; font-size: 12px; z-index: 10;
+    #map { position: fixed; top: 56px; bottom: 0; left: 0; right: 380px; }
+    .panel {
+      position: fixed; top: 56px; bottom: 0; right: 0; width: 380px;
+      background: #111827; border-left: 1px solid #374151;
+      overflow-y: auto; padding: 12px 16px; z-index: 10;
+      font-size: 12px;
     }
-    .legend .gradient { width: 200px; height: 8px; margin-top: 4px;
+    .panel h2 { font-size: 14px; margin: 4px 0 8px; color: #f3f4f6; }
+    .panel .empty { color: #6b7280; font-style: italic; }
+    .panel .row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; border-bottom: 1px solid #1f2937; }
+    .panel .row .key { color: #9ca3af; }
+    .panel .row .val { font-family: ui-monospace, SFMono-Regular, monospace; word-break: break-all; text-align: right; }
+    .panel .section { margin-bottom: 12px; }
+    .panel .section.summary .row .val { color: #fde68a; }
+    .legend {
+      position: fixed; bottom: 16px; left: 16px;
+      background: rgba(31, 41, 55, 0.92); color: #fff;
+      padding: 8px 12px; border-radius: 6px; font-size: 11px; z-index: 12;
+      max-width: 320px;
+    }
+    .legend .gradient { width: 240px; height: 8px; margin-top: 4px;
       background: linear-gradient(to right, #2c7bb6, #abd9e9, #ffffbf, #fdae61, #d7191c);
     }
+    .legend .gradient.diverging { background: linear-gradient(to right, #2166ac, #67a9cf, #d1e5f0, #f7f7f7, #fddbc7, #ef8a62, #b2182b); }
     .legend .ticks { display: flex; justify-content: space-between; margin-top: 2px; }
+    .legend .swatches { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; }
+    .legend .swatches span { display: inline-flex; align-items: center; gap: 4px; }
+    .legend .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
   </style>
 </head>
 <body>
-  <div class="panel">
+  <div class="topbar">
     <strong>kadastra</strong>
-    <span class="badge" title="Object targets are real ЕГРН cost_index values from NSPD (per ADR-0009). Hex features are still OSM-derived; metro is Kazan-only.">ЕГРН cost_index</span>
-    <label>Mode:
-      <select id="mode">
-        <option value="hex" selected>Hex feature</option>
-        <option value="object:apartment">Objects: apartment</option>
-        <option value="object:house">Objects: house</option>
-        <option value="object:commercial">Objects: commercial</option>
-        <option value="object:landplot">Objects: landplot</option>
+    <span class="badge" title="Target = synthetic_target_rub_per_m2 (= cost_index из ЕГРН по ADR-0009/0010, interim placeholder до подключения сделок). y_pred_oof = spatial-CV out-of-fold prediction.">target = ЕГРН cost_index</span>
+    <label>Layer
+      <select id="layer">
+        <option value="hex" selected>Hex aggregate</option>
+        <option value="object">Object scatter</option>
       </select>
     </label>
-    <label>Feature:
-      <select id="feature">
-        {% for f in features %}<option value="{{ f }}">{{ f }}</option>{% endfor %}
+    <label>Asset class
+      <select id="asset_class">
+        <option value="all">all</option>
+        <option value="apartment" selected>apartment</option>
+        <option value="house">house</option>
+        <option value="commercial">commercial</option>
+        <option value="landplot">landplot</option>
       </select>
     </label>
-    <label>Resolution:
-      <select id="resolution">
-        <option value="7">7 (~5 km², ~1.4 km)</option>
-        <option value="8">8 (~0.7 km², ~530 m)</option>
-        <option value="9">9 (~0.1 km², ~200 m)</option>
-        <option value="10" selected>10 (~15 000 m², ~75 m)</option>
-        <option value="11">11 (~2 100 m², ~28 m)</option>
+    <label id="hex-feature-wrap">Feature
+      <select id="hex_feature"></select>
+    </label>
+    <label id="hex-resolution-wrap">Resolution
+      <select id="hex_resolution">
+        <option value="7">7 (~5 km²)</option>
+        <option value="8" selected>8 (~0.7 km²)</option>
+        <option value="9">9 (~0.1 km²)</option>
+        <option value="10">10 (~15k m²)</option>
       </select>
     </label>
-    <label>Scale:
+    <label id="object-mode-wrap" style="display:none">Mode
+      <select id="object_mode">
+        <option value="y_true" selected>y_true (ЕГРН)</option>
+        <option value="y_pred_oof">y_pred_oof (CV)</option>
+        <option value="residual">residual (pred − true)</option>
+        <option value="fold_id">fold_id (spatial split)</option>
+      </select>
+    </label>
+    <label>Scale
       <select id="scale">
-        <option value="log" selected>log (min–max)</option>
-        <option value="p98">linear (p2–p98)</option>
+        <option value="p98" selected>linear (p2–p98)</option>
+        <option value="log">log (min–max)</option>
         <option value="linear">linear (min–max)</option>
       </select>
     </label>
     <span class="stat" id="stat"></span>
   </div>
+
   <div id="map"></div>
-  <div class="legend">
+
+  <aside class="panel" id="panel">
+    <h2>Inspector</h2>
+    <p class="empty">Click on a hex or object to inspect.</p>
+  </aside>
+
+  <div class="legend" id="legend" style="display:none">
     <div id="legend-feature"></div>
-    <div class="gradient"></div>
-    <div class="ticks"><span id="legend-min">min</span><span id="legend-max">max</span></div>
+    <div class="gradient" id="legend-gradient"></div>
+    <div class="ticks"><span id="legend-min"></span><span id="legend-max"></span></div>
+    <div class="swatches" id="legend-swatches" style="display:none"></div>
   </div>
 
 <script>
@@ -98,21 +139,25 @@ const map = new maplibregl.Map({
   zoom: 9
 });
 
-const deckOverlay = new deck.MapboxOverlay({
-  interleaved: false,
-  layers: []
-});
+const deckOverlay = new deck.MapboxOverlay({ interleaved: false, layers: [] });
 map.addControl(deckOverlay);
 
-function colorRamp(t) {
-  // Inferno-ish: dark blue -> light blue -> yellow -> orange -> red
-  const stops = [
-    [44, 123, 182],
-    [171, 217, 233],
-    [255, 255, 191],
-    [253, 174, 97],
-    [215, 25, 28]
-  ];
+let featureOptions = null; // populated from /api/feature_options
+let lastDataset = null;    // last fetched payload (for re-color on scale change)
+let categoricalPalette = {};
+
+// ---------- color helpers ----------
+
+const SEQ_RAMP = [
+  [44, 123, 182], [171, 217, 233], [255, 255, 191], [253, 174, 97], [215, 25, 28]
+];
+const DIV_RAMP = [
+  [33, 102, 172], [103, 169, 207], [209, 229, 240],
+  [247, 247, 247],
+  [253, 219, 199], [239, 138, 98], [178, 24, 43]
+];
+
+function rampColor(stops, t) {
   const k = Math.min(Math.max(t, 0), 1) * (stops.length - 1);
   const i = Math.floor(k);
   const f = k - i;
@@ -138,142 +183,339 @@ function quantile(sortedValues, q) {
 }
 
 function buildScaler(values, mode) {
-  const sorted = [...values].sort((a, b) => a - b);
+  const sorted = [...values].filter(v => Number.isFinite(v)).sort((a, b) => a - b);
+  if (sorted.length === 0) return { lo: 0, hi: 1, normalize: () => 0.5 };
   let lo, hi, transform;
   if (mode === 'log') {
     transform = v => Math.log(Math.max(v, 1));
-    lo = transform(sorted[0]);
-    hi = transform(sorted[sorted.length - 1]);
+    lo = transform(sorted[0]); hi = transform(sorted[sorted.length - 1]);
   } else if (mode === 'p98') {
     transform = v => v;
-    lo = quantile(sorted, 0.02);
-    hi = quantile(sorted, 0.98);
+    lo = quantile(sorted, 0.02); hi = quantile(sorted, 0.98);
   } else {
     transform = v => v;
-    lo = sorted[0];
-    hi = sorted[sorted.length - 1];
+    lo = sorted[0]; hi = sorted[sorted.length - 1];
   }
   const range = hi - lo || 1;
   return { lo, hi, normalize: v => Math.min(Math.max((transform(v) - lo) / range, 0), 1) };
 }
 
-async function refreshHex() {
-  const feature = document.getElementById('feature').value;
-  const resolution = parseInt(document.getElementById('resolution').value, 10);
-  const scaleMode = document.getElementById('scale').value;
-  const stat = document.getElementById('stat');
-  stat.textContent = 'loading…';
-  const r = await fetch(`/api/hex_features?resolution=${resolution}&feature=${encodeURIComponent(feature)}`);
-  if (!r.ok) {
-    stat.textContent = `error ${r.status}`;
-    deckOverlay.setProps({ layers: [] });
-    return;
+function buildDivergingScaler(values) {
+  // For signed metrics (residuals, fold) — center at 0, symmetric range.
+  const sorted = [...values].filter(v => Number.isFinite(v)).sort((a, b) => Math.abs(a) - Math.abs(b));
+  const max = sorted.length ? Math.abs(sorted[sorted.length - 1]) : 1;
+  return {
+    lo: -max, hi: max,
+    normalize: v => Math.min(Math.max((v / (2 * max)) + 0.5, 0), 1),
+  };
+}
+
+// Stable hash → integer for category coloring.
+function categoryColor(key) {
+  if (!categoricalPalette[key]) {
+    let h = 0;
+    for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
+    const hue = Math.abs(h) % 360;
+    categoricalPalette[key] = hslToRgb(hue, 65, 55);
   }
-  const payload = await r.json();
+  return [...categoricalPalette[key], 200];
+}
+
+function hslToRgb(h, s, l) {
+  s /= 100; l /= 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) [r, g, b] = [c, x, 0];
+  else if (h < 120) [r, g, b] = [x, c, 0];
+  else if (h < 180) [r, g, b] = [0, c, x];
+  else if (h < 240) [r, g, b] = [0, x, c];
+  else if (h < 300) [r, g, b] = [x, 0, c];
+  else [r, g, b] = [c, 0, x];
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+
+// ---------- data fetching ----------
+
+async function loadFeatureOptions() {
+  const r = await fetch('/api/feature_options');
+  featureOptions = await r.json();
+  const sel = document.getElementById('hex_feature');
+  sel.innerHTML = '';
+  for (const f of [...featureOptions.numeric_features, ...featureOptions.categorical_features]) {
+    const opt = document.createElement('option');
+    opt.value = f; opt.textContent = f;
+    if (f === 'median_target_rub_per_m2') opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+async function fetchHex() {
+  const resolution = +document.getElementById('hex_resolution').value;
+  const ac = document.getElementById('asset_class').value;
+  const feature = document.getElementById('hex_feature').value;
+  const r = await fetch(`/api/hex_aggregates?resolution=${resolution}&asset_class=${ac}&feature=${encodeURIComponent(feature)}`);
+  if (!r.ok) throw new Error(`hex ${r.status}: ${(await r.json()).detail}`);
+  return await r.json();
+}
+
+async function fetchObjects() {
+  const ac = document.getElementById('asset_class').value;
+  if (ac === 'all') throw new Error('object scatter does not support "all"; choose a class');
+  const r = await fetch(`/api/inspection?asset_class=${ac}`);
+  if (!r.ok) throw new Error(`inspection ${r.status}: ${(await r.json()).detail}`);
+  return await r.json();
+}
+
+async function fetchObjectDetail(objectId, assetClass) {
+  const r = await fetch(`/api/inspection/${encodeURIComponent(objectId)}?asset_class=${assetClass}`);
+  if (!r.ok) return null;
+  return (await r.json()).data;
+}
+
+// ---------- rendering ----------
+
+function renderHex(payload) {
   const data = payload.data;
+  const stat = document.getElementById('stat');
   if (data.length === 0) {
     stat.textContent = '0 hexes';
     deckOverlay.setProps({ layers: [] });
+    setLegend(null);
     return;
   }
-  const values = data.map(d => d.value);
-  const scaler = buildScaler(values, scaleMode);
+  const isCategorical = payload.is_categorical;
+  let getFillColor;
+  if (isCategorical) {
+    getFillColor = d => categoryColor(String(d.value));
+  } else {
+    const scaler = buildScaler(data.map(d => d.value), document.getElementById('scale').value);
+    getFillColor = d => rampColor(SEQ_RAMP, scaler.normalize(d.value));
+  }
   const layer = new deck.H3HexagonLayer({
     id: 'hex',
     data,
     getHexagon: d => d.hex,
-    getFillColor: d => colorRamp(scaler.normalize(d.value)),
-    stroked: false,
+    getFillColor,
+    stroked: true,
+    getLineColor: [0, 0, 0, 60],
+    lineWidthMinPixels: 0.5,
     extruded: false,
-    pickable: true
+    pickable: true,
+    onClick: ({ object }) => object && showHexInspector(object, payload),
   });
   deckOverlay.setProps({
     layers: [layer],
-    getTooltip: ({ object }) => object && `${feature}: ${object.value}`
+    getTooltip: ({ object }) => object && `${payload.feature}: ${formatValue(object.value)}`,
   });
-  document.getElementById('legend-feature').textContent = `${feature} (${scaleMode})`;
-  updateLegend(values, scaleMode);
-  stat.textContent = `${data.length.toLocaleString()} hexes`;
+  stat.textContent = `${data.length.toLocaleString()} hexes (${payload.feature}, ${payload.asset_class})`;
+  setLegend({ payload, isCategorical, values: data.map(d => d.value) });
 }
 
-async function refreshObjects(assetClass) {
-  const scaleMode = document.getElementById('scale').value;
+function renderObjects(payload) {
   const stat = document.getElementById('stat');
-  stat.textContent = 'loading…';
-  const r = await fetch(`/api/object_predictions?asset_class=${encodeURIComponent(assetClass)}`);
-  if (!r.ok) {
-    stat.textContent = `error ${r.status}`;
-    deckOverlay.setProps({ layers: [] });
-    return;
-  }
-  const payload = await r.json();
-  const data = payload.data;
+  const rawData = payload.data;
+  const mode = document.getElementById('object_mode').value;
+  const data = rawData.filter(d => d[mode] !== null && d[mode] !== undefined);
   if (data.length === 0) {
-    stat.textContent = '0 objects';
+    stat.textContent = `0 objects (${mode} all-null — train OOF artifact may be missing for ${payload.asset_class})`;
     deckOverlay.setProps({ layers: [] });
+    setLegend(null);
     return;
   }
-  const values = data.map(d => d.value);
-  const scaler = buildScaler(values, scaleMode);
+  let getFillColor;
+  let isDiverging = false;
+  let isCategorical = false;
+  if (mode === 'fold_id') {
+    isCategorical = true;
+    getFillColor = d => categoryColor('fold_' + d.fold_id);
+  } else if (mode === 'residual') {
+    isDiverging = true;
+    const scaler = buildDivergingScaler(data.map(d => d[mode]));
+    getFillColor = d => rampColor(DIV_RAMP, scaler.normalize(d[mode]));
+  } else {
+    const scaler = buildScaler(data.map(d => d[mode]), document.getElementById('scale').value);
+    getFillColor = d => rampColor(SEQ_RAMP, scaler.normalize(d[mode]));
+  }
   const layer = new deck.ScatterplotLayer({
     id: 'objects',
     data,
     getPosition: d => [d.lon, d.lat],
-    getFillColor: d => colorRamp(scaler.normalize(d.value)),
+    getFillColor,
     radiusUnits: 'meters',
-    getRadius: 18,
+    getRadius: 14,
     stroked: false,
-    pickable: true
+    pickable: true,
+    onClick: ({ object }) => object && showObjectInspector(object, payload.asset_class),
   });
   deckOverlay.setProps({
     layers: [layer],
     getTooltip: ({ object }) =>
-      object && `${assetClass} ${object.object_id}: ${Math.round(object.value).toLocaleString()} ₽/м²`
+      object &&
+      `${payload.asset_class} ${object.object_id}\n${mode}: ${formatValue(object[mode])}`,
   });
-  document.getElementById('legend-feature').textContent = `${assetClass} predicted ₽/м² (${scaleMode})`;
-  updateLegend(values, scaleMode);
-  stat.textContent = `${data.length.toLocaleString()} objects`;
+  stat.textContent = `${data.length.toLocaleString()} / ${rawData.length.toLocaleString()} objects (${mode}, ${payload.asset_class})`;
+  setLegend({
+    payload: { feature: mode, asset_class: payload.asset_class },
+    isCategorical, isDiverging,
+    values: data.map(d => d[mode]),
+  });
 }
 
-function updateLegend(values, scaleMode) {
-  const sorted = [...values].sort((a, b) => a - b);
-  let lo, hi;
-  if (scaleMode === 'p98') {
-    lo = quantile(sorted, 0.02);
-    hi = quantile(sorted, 0.98);
-  } else {
-    lo = sorted[0];
-    hi = sorted[sorted.length - 1];
-  }
-  document.getElementById('legend-min').textContent = lo.toFixed(2);
-  document.getElementById('legend-max').textContent = hi.toFixed(2);
+// ---------- inspector panel ----------
+
+function showHexInspector(hex, payload) {
+  const panel = document.getElementById('panel');
+  const sections = [];
+  sections.push(`<h2>Hex inspector</h2>`);
+  sections.push(rowsSection('summary', [
+    ['h3_index', hex.hex],
+    ['resolution', payload.resolution],
+    ['asset_class', payload.asset_class],
+    ['feature', payload.feature],
+    ['value', formatValue(hex.value)],
+  ]));
+  sections.push(`<p style="font-size:11px;color:#9ca3af">For more per-hex stats use the per-object scatter mode and click an individual object.</p>`);
+  panel.innerHTML = sections.join('');
 }
+
+async function showObjectInspector(obj, assetClass) {
+  const panel = document.getElementById('panel');
+  panel.innerHTML = `<h2>Loading inspector for ${escapeHtml(obj.object_id)}…</h2>`;
+  const detail = await fetchObjectDetail(obj.object_id, assetClass);
+  if (!detail) {
+    panel.innerHTML = `<h2>Inspector</h2><p class="empty">Could not load detail for ${escapeHtml(obj.object_id)}.</p>`;
+    return;
+  }
+  const sections = [];
+  sections.push(`<h2>Object inspector</h2>`);
+  // Summary first.
+  const summary = ['object_id', 'asset_class', 'lat', 'lon', 'cad_num', 'readable_address',
+    'mun_okrug_name', 'intra_city_raion', 'settlement_name', 'mun_source',
+    'y_true', 'y_pred_oof', 'residual', 'fold_id'];
+  const summaryRows = summary
+    .filter(k => detail[k] !== undefined)
+    .map(k => [k, formatValue(detail[k])]);
+  sections.push(rowsSection('summary', summaryRows));
+  // Everything else — sorted alphabetically.
+  const rest = Object.keys(detail)
+    .filter(k => !summary.includes(k))
+    .sort()
+    .map(k => [k, formatValue(detail[k])]);
+  if (rest.length) {
+    sections.push(`<h2>All features</h2>`);
+    sections.push(rowsSection('all', rest));
+  }
+  panel.innerHTML = sections.join('');
+}
+
+function rowsSection(cls, rows) {
+  return `<div class="section ${cls}">` + rows.map(([k, v]) =>
+    `<div class="row"><span class="key">${escapeHtml(k)}</span><span class="val">${escapeHtml(String(v))}</span></div>`
+  ).join('') + `</div>`;
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+}
+
+function formatValue(v) {
+  if (v === null || v === undefined) return '—';
+  if (typeof v === 'number') {
+    if (!Number.isFinite(v)) return String(v);
+    if (Math.abs(v) >= 1000) return Math.round(v).toLocaleString();
+    if (Math.abs(v) >= 1) return v.toFixed(2);
+    return v.toString();
+  }
+  return String(v);
+}
+
+// ---------- legend ----------
+
+function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
+  const legend = document.getElementById('legend');
+  if (!payload) { legend.style.display = 'none'; return; }
+  legend.style.display = '';
+  document.getElementById('legend-feature').textContent =
+    `${payload.feature} (${payload.asset_class})`;
+  const gradient = document.getElementById('legend-gradient');
+  const swatches = document.getElementById('legend-swatches');
+  if (isCategorical) {
+    gradient.style.display = 'none';
+    document.getElementById('legend-min').textContent = '';
+    document.getElementById('legend-max').textContent = '';
+    swatches.style.display = 'flex';
+    const uniq = [...new Set(values)].sort();
+    swatches.innerHTML = uniq.map(v => {
+      const [r, g, b] = categoryColor(String(v));
+      return `<span><span class="swatch" style="background: rgb(${r},${g},${b})"></span>${escapeHtml(String(v))}</span>`;
+    }).join('');
+  } else if (isDiverging) {
+    gradient.style.display = '';
+    gradient.classList.add('diverging');
+    swatches.style.display = 'none';
+    const max = Math.max(...values.map(v => Math.abs(v)));
+    document.getElementById('legend-min').textContent = formatValue(-max);
+    document.getElementById('legend-max').textContent = formatValue(max);
+  } else {
+    gradient.style.display = '';
+    gradient.classList.remove('diverging');
+    swatches.style.display = 'none';
+    const sorted = [...values].sort((a, b) => a - b);
+    const mode = document.getElementById('scale').value;
+    let lo, hi;
+    if (mode === 'p98') { lo = quantile(sorted, 0.02); hi = quantile(sorted, 0.98); }
+    else { lo = sorted[0]; hi = sorted[sorted.length - 1]; }
+    document.getElementById('legend-min').textContent = formatValue(lo);
+    document.getElementById('legend-max').textContent = formatValue(hi);
+  }
+}
+
+// ---------- main ----------
 
 async function refresh() {
+  const layer = document.getElementById('layer').value;
+  document.getElementById('hex-feature-wrap').style.display = layer === 'hex' ? '' : 'none';
+  document.getElementById('hex-resolution-wrap').style.display = layer === 'hex' ? '' : 'none';
+  document.getElementById('object-mode-wrap').style.display = layer === 'object' ? '' : 'none';
+  const stat = document.getElementById('stat');
+  stat.textContent = 'loading…';
   try {
-    const mode = document.getElementById('mode').value;
-    const featureControls = document.getElementById('feature').parentElement;
-    const resolutionControls = document.getElementById('resolution').parentElement;
-    if (mode === 'hex') {
-      featureControls.style.display = '';
-      resolutionControls.style.display = '';
-      await refreshHex();
+    if (layer === 'hex') {
+      const payload = await fetchHex();
+      lastDataset = { kind: 'hex', payload };
+      renderHex(payload);
     } else {
-      const assetClass = mode.split(':')[1];
-      featureControls.style.display = 'none';
-      resolutionControls.style.display = 'none';
-      await refreshObjects(assetClass);
+      const payload = await fetchObjects();
+      lastDataset = { kind: 'object', payload };
+      renderObjects(payload);
     }
   } catch (e) {
-    document.getElementById('stat').textContent = `error: ${e.message}`;
+    stat.textContent = `error: ${e.message}`;
+    deckOverlay.setProps({ layers: [] });
+    setLegend(null);
   }
 }
 
-document.getElementById('mode').addEventListener('change', refresh);
-document.getElementById('feature').addEventListener('change', refresh);
-document.getElementById('resolution').addEventListener('change', refresh);
-document.getElementById('scale').addEventListener('change', refresh);
-map.on('load', refresh);
+// Re-render without re-fetching (e.g. mode/scale change).
+function recolor() {
+  if (!lastDataset) return;
+  if (lastDataset.kind === 'hex') renderHex(lastDataset.payload);
+  else renderObjects(lastDataset.payload);
+}
+
+['layer', 'asset_class', 'hex_feature', 'hex_resolution'].forEach(id =>
+  document.getElementById(id).addEventListener('change', refresh)
+);
+['object_mode', 'scale'].forEach(id =>
+  document.getElementById(id).addEventListener('change', recolor)
+);
+
+map.on('load', async () => {
+  await loadFeatureOptions();
+  await refresh();
+});
 </script>
 </body>
 </html>

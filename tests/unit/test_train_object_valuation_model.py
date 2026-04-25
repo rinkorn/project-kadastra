@@ -1,3 +1,4 @@
+import io
 from collections.abc import Mapping
 from typing import Any
 
@@ -30,9 +31,16 @@ class _FakeRegistry:
         params: Mapping[str, Any],
         metrics: Mapping[str, float],
         model: CatBoostRegressor,
+        artifacts: Mapping[str, bytes] | None = None,
     ) -> str:
         self.calls.append(
-            {"run_name": run_name, "params": dict(params), "metrics": dict(metrics), "model": model}
+            {
+                "run_name": run_name,
+                "params": dict(params),
+                "metrics": dict(metrics),
+                "model": model,
+                "artifacts": dict(artifacts) if artifacts else {},
+            }
         )
         return f"run_{len(self.calls)}"
 
@@ -185,6 +193,42 @@ def test_excludes_cost_value_rub_as_target_leak() -> None:
 
     feature_cols = set(registry.calls[0]["params"]["feature_columns"])
     assert "cost_value_rub" not in feature_cols
+
+
+def test_logs_oof_predictions_artifact() -> None:
+    """``cross_validate`` collects out-of-fold predictions; the use case
+    must serialize them as parquet bytes under the
+    ``oof_predictions.parquet`` artifact name. Inspector / map read
+    this to compare y_true vs y_pred_oof per object."""
+    reader = _FakeReader({AssetClass.APARTMENT: _featured(AssetClass.APARTMENT, 60)})
+    registry = _FakeRegistry()
+
+    _usecase(reader, registry).execute("RU-KAZAN-AGG", AssetClass.APARTMENT)
+
+    artifacts = registry.calls[0]["artifacts"]
+    assert "oof_predictions.parquet" in artifacts
+    blob = artifacts["oof_predictions.parquet"]
+    assert isinstance(blob, bytes) and len(blob) > 0
+
+    df = pl.read_parquet(io.BytesIO(blob))
+    assert set(df.columns) == {
+        "object_id",
+        "lat",
+        "lon",
+        "fold_id",
+        "y_true",
+        "y_pred_oof",
+    }
+    # Every input row appears once in OOF (each row is in exactly one
+    # validation fold under spatial_kfold_split).
+    assert df.height == 60
+    # Sorted by object_id for stable lookups.
+    obj_ids = df["object_id"].to_list()
+    assert obj_ids == sorted(obj_ids)
+    # All y_pred_oof are finite floats; fold_ids are 0..n_splits-1.
+    assert df["y_pred_oof"].is_not_null().all()
+    fold_ids = set(df["fold_id"].to_list())
+    assert fold_ids == {0, 1, 2}  # n_splits=3 in _usecase fixture
 
 
 def test_passes_string_columns_as_categorical_features() -> None:

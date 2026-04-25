@@ -90,6 +90,10 @@ class Settings(BaseSettings):
 
     road_graph_edges_path: Path = Path("data/silver/road_graph/edges.parquet")
     model_registry_path: Path = Path("data/models")
+    # Per-hex aggregates (BuildHexAggregates output): consumed by the
+    # map UI's hex-mode in addition to per-object scatter mode.
+    hex_aggregates_base_path: Path = Path("data/gold/hex_aggregates")
+    hex_aggregates_resolutions: list[int] = [7, 8, 9, 10]
     catboost_iterations: int = 500
     catboost_learning_rate: float = 0.05
     catboost_depth: int = 6

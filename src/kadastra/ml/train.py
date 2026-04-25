@@ -44,7 +44,26 @@ def cross_validate(
     n_splits: int,
     parent_resolution: int,
     cat_features: list[int] | None = None,
-) -> dict[str, list[float] | float]:
+) -> dict[str, list[float] | list[int] | float]:
+    """Spatial-CV training. In addition to per-fold + aggregate metrics,
+    collects out-of-fold predictions: for each input row, the prediction
+    came from a model that did **not** see that row in training. This
+    is the honest spatial-CV view of the model's behavior over the
+    full dataset and feeds the per-object inspector / map.
+
+    Returns a dict with:
+
+    - ``fold_mae`` / ``fold_rmse`` / ``fold_mape`` — per-fold metrics
+    - ``mean_mae`` / ``mean_rmse`` / ``mean_mape`` — aggregate metrics
+    - ``oof_indices`` — list of original row indices (unsorted; same
+      order as folds were produced)
+    - ``oof_fold_ids`` — fold id (0..n_splits-1) for each OOF index
+    - ``oof_y_pred`` — predicted y for each OOF index
+
+    The three OOF lists are parallel and have length ``len(y)`` when
+    every row is in exactly one validation fold (the standard k-fold
+    case for ``spatial_kfold_split``).
+    """
     folds = spatial_kfold_split(
         h3_indices, n_splits=n_splits, parent_resolution=parent_resolution, seed=params.seed
     )
@@ -52,8 +71,11 @@ def cross_validate(
     fold_mae: list[float] = []
     fold_rmse: list[float] = []
     fold_mape: list[float] = []
+    oof_indices: list[int] = []
+    oof_fold_ids: list[int] = []
+    oof_y_pred: list[float] = []
 
-    for train_idx, val_idx in folds:
+    for fold_id, (train_idx, val_idx) in enumerate(folds):
         model = train_catboost(
             X[train_idx], y[train_idx], params, cat_features=cat_features
         )
@@ -62,6 +84,9 @@ def cross_validate(
         fold_mae.append(m["mae"])
         fold_rmse.append(m["rmse"])
         fold_mape.append(m["mape"])
+        oof_indices.extend(int(i) for i in val_idx)
+        oof_fold_ids.extend(fold_id for _ in val_idx)
+        oof_y_pred.extend(float(p) for p in preds)
 
     return {
         "fold_mae": fold_mae,
@@ -70,4 +95,7 @@ def cross_validate(
         "mean_mae": float(np.mean(fold_mae)),
         "mean_rmse": float(np.mean(fold_rmse)),
         "mean_mape": float(np.nanmean(fold_mape)),
+        "oof_indices": oof_indices,
+        "oof_fold_ids": oof_fold_ids,
+        "oof_y_pred": oof_y_pred,
     }
