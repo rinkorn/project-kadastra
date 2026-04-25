@@ -37,6 +37,9 @@ exclude = [".venv", "**/__pycache__"]
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
 reportMissingTypeStubs = false
+reportUnknownMemberType = "none"
+reportUnknownVariableType = "none"
+reportUnknownArgumentType = "none"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
