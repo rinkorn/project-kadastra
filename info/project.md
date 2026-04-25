@@ -20,9 +20,10 @@
 - ✅ Гексагональная сетка H3, hexagonal-архитектура, TDD, spatial CV, per-class модели, NSPD как источник объектов.
 - ✅ **Граф OSM (путевое расстояние)** — `dist_metro_m`/`dist_entrance_m` считаются по пешеходному графу OSM через `RoadGraphPort` ([ADR-0011](decisions/0011-graph-based-distance-features.md)). Time-веса по классу дороги — отдельным ADR, когда впервые понадобится автомобильная ЦОФ.
 - ✅ **Относительные ЦОФ через H3 parent-агрегаты** — для каждого числового ЦОФ считаются `diff/ratio/z_iqr` относительно медиан/IQR родительских гексов res=7/8 ([ADR-0012](decisions/0012-relative-features-via-h3-parent-aggregations.md)). Эффект на CatBoost-метриках околонулевой; реальный выигрыш — на White Box моделях квартета (блок 5).
-- ✅ **Зональные ЦОФ — плотность точек в 4 радиусах** — `{layer}_within_{R}m` на 100/300/500/800 м для 5 слоёв (stations/entrances/apartments/houses/commercial), 20 фичей ([ADR-0013](decisions/0013-zonal-density-features-multi-radius.md)). Первый методологический блок с явным MAPE-выигрышем на CatBoost: house -1.5 п.п., landplot -3.4 п.п. от block 1. Поли-площадь (вода/парки/промзоны) — следующим ADR после OSM-полигональной выгрузки.
+- ✅ **Зональные ЦОФ — плотность точек в 4 радиусах** — `{layer}_within_{R}m` на 100/300/500/800 м для 5 слоёв (stations/entrances/apartments/houses/commercial), 20 фичей ([ADR-0013](decisions/0013-zonal-density-features-multi-radius.md)). Первый методологический блок с явным MAPE-выигрышем на CatBoost: house -1.5 п.п., landplot -3.4 п.п. от block 1.
+- ✅ **Поли-площадные ЗОФ — доли OSM-полигональных слоёв в буфере** — `{layer}_share_{R}m` на тех же радиусах для 4 слоёв (water/park/industrial/cemetery), 16 фичей ([ADR-0014](decisions/0014-poly-area-buffer-features.md)). Полигоны достаются из OSM PBF Казанской агломерации через `osmium tags-filter`, считается через UTM 39N + shapely.
 - ⚠️ **Target** — сейчас `cost_index` из ЕГРН как **interim placeholder** (правильный target — рыночные сделки, источник пока не подключён → трек 1 заблокирован).
-- ❌ Поли-площадные ЗОФ, территориальные ЦОФ, темпоральные срезы, квартет Black/Grey/White Box моделей — gap'ы трека 2, идём по дорожной карте.
+- ❌ Территориальные ЦОФ, темпоральные срезы, квартет Black/Grey/White Box моделей — gap'ы трека 2, идём по дорожной карте.
 
 ## Доменный стек
 

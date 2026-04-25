@@ -223,6 +223,8 @@ class Container:
             relative_feature_columns=s.relative_feature_columns,
             zonal_radii_m=s.zonal_radii_m,
             zonal_layer_names=s.zonal_layer_names,
+            poly_area_radii_m=s.poly_area_radii_m,
+            poly_area_layer_paths=s.poly_area_layer_paths,
         )
 
     def build_object_synthetic_target(self) -> BuildObjectSyntheticTarget:

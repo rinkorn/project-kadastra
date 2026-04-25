@@ -1,12 +1,16 @@
 import io
 import json
+from pathlib import Path
 from typing import Any, cast
 
 import polars as pl
+from shapely.geometry import shape
+from shapely.geometry.base import BaseGeometry
 
 from kadastra.domain.asset_class import AssetClass
 from kadastra.etl.object_metro_features import compute_object_metro_features
 from kadastra.etl.object_neighbor_features import compute_object_neighbor_features
+from kadastra.etl.object_polygon_features import compute_object_polygon_features
 from kadastra.etl.object_road_features import compute_object_road_features
 from kadastra.etl.object_zonal_features import compute_object_zonal_features
 from kadastra.etl.relative_features import compute_relative_features
@@ -32,6 +36,8 @@ class BuildObjectFeatures:
         relative_feature_columns: list[str],
         zonal_radii_m: list[int],
         zonal_layer_names: list[str],
+        poly_area_radii_m: list[int],
+        poly_area_layer_paths: dict[str, str],
     ) -> None:
         self._reader = reader
         self._store = store
@@ -46,6 +52,8 @@ class BuildObjectFeatures:
         self._relative_feature_columns = relative_feature_columns
         self._zonal_radii_m = zonal_radii_m
         self._zonal_layer_names = zonal_layer_names
+        self._poly_area_radii_m = poly_area_radii_m
+        self._poly_area_layer_paths = poly_area_layer_paths
 
     def execute(self, region_code: str, asset_classes: list[AssetClass]) -> None:
         stations = pl.read_csv(
@@ -87,6 +95,14 @@ class BuildObjectFeatures:
         enriched = compute_object_zonal_features(
             enriched, layers=zonal_layers, radii_m=self._zonal_radii_m
         )
+        # Poly-area buffer features (ADR-0014). Layers are loaded once
+        # from disk; missing files yield empty layers (zero share).
+        poly_layers = self._load_poly_area_layers()
+        enriched = compute_object_polygon_features(
+            enriched,
+            polygons_by_layer=poly_layers,
+            radii_m=self._poly_area_radii_m,
+        )
         # Filter feature_columns to those present (allows configuring a
         # superset in Settings — missing ones are simply skipped, not
         # errors, so per-class slices with different schemas don't crash).
@@ -102,6 +118,33 @@ class BuildObjectFeatures:
         for asset_class in asset_classes:
             slice_df = enriched.filter(pl.col("asset_class") == asset_class.value)
             self._store.save(region_code, asset_class, slice_df)
+
+    def _load_poly_area_layers(self) -> dict[str, list[BaseGeometry]]:
+        layers: dict[str, list[BaseGeometry]] = {}
+        for name, path_str in self._poly_area_layer_paths.items():
+            path = Path(path_str)
+            if not path.is_file():
+                # Missing extraction — emit as empty layer; downstream will
+                # produce zero-share columns. Keeps the pipeline composable
+                # while OSM extractions are still being run.
+                layers[name] = []
+                continue
+            polys: list[BaseGeometry] = []
+            with path.open("r", encoding="utf-8") as f:
+                for raw_line in f:
+                    line = raw_line.strip()
+                    if not line or line.startswith("\x1e"):
+                        # GeoJSON-seq lines may be RS-prefixed; skip if so.
+                        line = line.lstrip("\x1e").strip()
+                        if not line:
+                            continue
+                    feature = json.loads(line)
+                    geom = feature.get("geometry")
+                    if geom is None:
+                        continue
+                    polys.append(shape(geom))
+            layers[name] = polys
+        return layers
 
     def _build_zonal_layers(
         self,

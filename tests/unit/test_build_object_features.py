@@ -134,6 +134,8 @@ def _usecase(
     relative_feature_columns: list[str] | None = None,
     zonal_radii_m: list[int] | None = None,
     zonal_layer_names: list[str] | None = None,
+    poly_area_radii_m: list[int] | None = None,
+    poly_area_layer_paths: dict[str, str] | None = None,
 ) -> BuildObjectFeatures:
     return BuildObjectFeatures(
         reader=store,
@@ -162,6 +164,12 @@ def _usecase(
             zonal_layer_names
             if zonal_layer_names is not None
             else ["stations", "entrances", "apartments", "houses", "commercial"]
+        ),
+        poly_area_radii_m=(
+            poly_area_radii_m if poly_area_radii_m is not None else [100, 800]
+        ),
+        poly_area_layer_paths=(
+            poly_area_layer_paths if poly_area_layer_paths is not None else {}
         ),
     )
 
@@ -374,6 +382,68 @@ def test_appends_zonal_density_columns_per_layer_and_radius() -> None:
     assert expected.issubset(set(df.columns)), (
         f"missing columns: {expected - set(df.columns)}"
     )
+
+
+def test_appends_poly_area_share_columns_for_each_layer_path(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """BuildObjectFeatures must read each poly-area layer GeoJSON-seq
+    file from disk and surface `{layer}_share_{R}m` columns in each
+    saved partition. Without this the methodological-block-3b win
+    (ADR-0014) doesn't reach the model.
+    """
+    # Synthetic GeoJSON-seq with one polygon covering Kazan center.
+    geojson_path = tmp_path / "water.geojsonseq"
+    geojson_path.write_text(
+        '{"type":"Feature","properties":{},"geometry":{"type":"Polygon",'
+        '"coordinates":[[[49.10,55.78],[49.14,55.78],[49.14,55.80],[49.10,55.80],[49.10,55.78]]]}}\n'
+    )
+
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        poly_area_radii_m=[100, 800],
+        poly_area_layer_paths={"water": str(geojson_path)},
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "water_share_100m" in df.columns
+    assert "water_share_800m" in df.columns
+    # KAZAN_LAT/KAZAN_LON is inside the polygon; share should be 1.0 at both radii.
+    assert df["water_share_100m"][0] > 0.99
+    assert df["water_share_800m"][0] > 0.99
+
+
+def test_missing_poly_area_layer_path_is_skipped_gracefully(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """If a configured poly-area layer's file does not exist, the
+    pipeline must not crash — it just emits zero-share columns. This
+    keeps `Settings.poly_area_layer_paths` configurable as a superset
+    even when some extractions haven't been run yet.
+    """
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        poly_area_radii_m=[100],
+        poly_area_layer_paths={"water": str(tmp_path / "missing.geojsonseq")},
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "water_share_100m" in df.columns
+    assert df["water_share_100m"][0] == 0.0
 
 
 def test_handles_empty_partition_gracefully() -> None:

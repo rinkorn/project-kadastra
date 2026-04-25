@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     object_predictions_store_path: Path = Path("data/gold/object_predictions")
     object_neighbor_radius_m: float = 500.0
     object_road_radius_m: float = 500.0
+    poly_area_radii_m: list[int] = [100, 300, 500, 800]
+    poly_area_layer_paths: dict[str, str] = {
+        "water": "data/raw/osm/kazan-agg-water.geojsonseq",
+        "park": "data/raw/osm/kazan-agg-park.geojsonseq",
+        "industrial": "data/raw/osm/kazan-agg-industrial.geojsonseq",
+        "cemetery": "data/raw/osm/kazan-agg-cemetery.geojsonseq",
+    }
     zonal_radii_m: list[int] = [100, 300, 500, 800]
     zonal_layer_names: list[str] = [
         "stations",
