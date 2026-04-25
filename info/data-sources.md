@@ -32,7 +32,7 @@ prefix:   Kadatastr/
 
 ## Чего не хватает
 
-- **Целевая переменная.** Кадастровая стоимость или рыночные сделки в бакете отсутствуют. Без них модель оценки обучить нельзя — нужно либо найти источник (ПКК Росреестра, Avito/Cian, региональные опендата), либо принять решение о синтетическом proxy-таргете для пилота.
+- **Целевая переменная (реальная).** Кадастровая стоимость или рыночные сделки в бакете отсутствуют. На пилот принят синтетический proxy — см. [ADR-0004](decisions/0004-synthetic-target.md). Реальный таргет будет подключён отдельным слоем `data/gold/targets_real/...`, когда найдём источник.
 
 ## Локальные пути по умолчанию
 
@@ -42,5 +42,6 @@ prefix:   Kadatastr/
 | ---- | --- | ------ |
 | `data/raw/` | Сырые входы (geoBoundaries, S3-выгрузки) | нет (gitignore) |
 | `data/silver/coverage/region={code}/resolution={r}/data.parquet` | Покрытие региона H3-сеткой, hive-партицировано | нет (gitignore) |
-| `data/silver/features/...` | Hex-агрегаты признаков (будут) | нет (gitignore) |
-| `data/gold/...` | Финальные feature-таблицы для модели (будут) | нет (gitignore) |
+| `data/silver/features/...` | Hex-агрегаты признаков | нет (gitignore) |
+| `data/gold/features/region={code}/resolution={r}/data.parquet` | Финальная feature-таблица для модели | нет (gitignore) |
+| `data/gold/targets/region={code}/resolution={r}/data.parquet` | Синтетический таргет ([ADR-0004](decisions/0004-synthetic-target.md)) | нет (gitignore) |
