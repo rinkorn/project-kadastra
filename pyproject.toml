@@ -43,10 +43,10 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 # Russian-language project: cadastral data (NSPD/EГРН), ADRs and inline
-# comments use Cyrillic on purpose. RUF001/RUF002 flag every Cyrillic
-# letter that has a confusable Latin glyph as 'ambiguous' — pure noise
-# for this codebase, not a real defect class to enforce.
-ignore = ["RUF001", "RUF002"]
+# comments use Cyrillic on purpose. RUF001/RUF002/RUF003 flag every
+# Cyrillic letter that has a confusable Latin glyph as 'ambiguous' —
+# pure noise for this codebase, not a real defect class to enforce.
+ignore = ["RUF001", "RUF002", "RUF003"]
 
 [tool.pyright]
 include = ["src", "tests"]

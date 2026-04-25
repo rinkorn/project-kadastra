@@ -11,12 +11,10 @@ projection for area calculation; the helper internally projects.
 
 from __future__ import annotations
 
-import math
-
 import polars as pl
 import pytest
 from pyproj import Transformer
-from shapely.geometry import Point, Polygon
+from shapely.geometry import Polygon
 from shapely.geometry.base import BaseGeometry
 
 from kadastra.etl.object_polygon_features import compute_object_polygon_features
@@ -222,10 +220,12 @@ def test_share_is_in_zero_one_range_per_layer() -> None:
     assert 0.0 <= out["poly_share_800m"][0] <= 1.0 + 1e-9
 
 
-def test_circle_buffer_area_uses_pi_r_squared_normalization() -> None:
-    """Sanity: for a polygon with area exactly equal to the circle-buffer
-    area at radius R, share should be ~1.0. Constructed via a square of
-    side 2R (area 4R²) cropped by the circle (area πR²)."""
+def test_full_coverage_share_is_exactly_one() -> None:
+    """Sanity: when the layer fully contains the buffer, share == 1.0
+    exactly (modulo floating-point), independent of the polygon
+    discretization shapely uses to approximate the circle. The
+    implementation normalizes by the buffer's actual area, not by
+    π·r², so this holds at any quad_segs value."""
     objects = _objects([{"object_id": "a", "lat": KAZAN_LAT, "lon": KAZAN_LON}])
     R = 300
     # Big enough to fully cover the 300 m buffer.
@@ -235,8 +235,4 @@ def test_circle_buffer_area_uses_pi_r_squared_normalization() -> None:
         objects, polygons_by_layer={"poly": [poly]}, radii_m=[R]
     )
 
-    assert out[f"poly_share_{R}m"][0] == pytest.approx(1.0, abs=0.005)
-    # Sanity check our test fixture: the circle area really is π·R².
-    cx, cy = _TO_UTM.transform(KAZAN_LON, KAZAN_LAT)
-    circle = Point(cx, cy).buffer(R)
-    assert circle.area == pytest.approx(math.pi * R**2, rel=0.01)
+    assert out[f"poly_share_{R}m"][0] == pytest.approx(1.0, abs=1e-6)
