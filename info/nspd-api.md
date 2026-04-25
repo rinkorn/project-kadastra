@@ -1,370 +1,272 @@
-# NSPD API — разведка для LandPlot
+# NSPD API — открытый канал к реальным кадастровым данным
 
-Результаты разведки публичного API НСПД (Национальная Система Пространственных Данных, преемник ПКК) для извлечения данных земельных участков ЕГРН.
+> Файл написан по итогам разведки 2026-04-25. Цель — задокументировать, как мы можем легально и анонимно получать данные ЕГРН (земельные участки, здания) с публичного картографического сервиса НСПД, чтобы в проекте появился настоящий кадастровый таргет вместо синтетического прокси.
 
-**Дата разведки:** 2026-04-25
-**База:** `https://nspd.gov.ru`
-**Авторизация:** анонимный доступ с домашнего RU IP, без cookies/токенов.
+## Зачем это всё
 
-## Ключевой вывод
+В пилоте до сих пор использовался **synthetic proxy** ([ADR-0004](decisions/0004-synthetic-target.md)) — формула, которая делает вид, что предсказывает кадастровую стоимость. Это нужно было, потому что в S3-бакете проекта (`s3://kadastrova/Kadatastr/`) лежат только OSM-выгрузки и ГАР XML, а в ГАР `AS_STEADS` нет ни координат, ни цен — только идентификаторы. Реальной цены на квадратный метр у нас не было.
 
-**`cost_index` (₽/м²) и `cost_value` (₽) из ЕГРН — это РЕАЛЬНЫЙ кадастровый таргет**, а не synthetic proxy. Это закрывает «открытый вопрос» из [ADR-0004](decisions/0004-synthetic-target.md), [ADR-0007](decisions/0007-kazan-agglomeration-scope.md), [ADR-0008](decisions/0008-per-building-multi-class-valuation.md): *«Synthetic proxy остаётся; реальные кадастровые цены подключатся отдельным слоем `targets_real/`»*.
+Параллельно в [ADR-0008](decisions/0008-per-building-multi-class-valuation.md) мы запланировали четвёртый класс — `LandPlot` — но «отложили его до момента, когда найдём источник с геопривязкой и кадастром».
 
-Поля доступны и для **участков** (L36048), и для **зданий** (L36049). То есть NSPD potentially даёт реальный таргет не только для нового LandPlot-слоя, но и ретроспективно для apartment/house/commercial.
+Разведка НСПД (Национальная Система Пространственных Данных, gov-преемник «публичной кадастровой карты» pkk.rosreestr.ru) показала: и геопривязка, и кадастровые номера, и **реальные цены ЕГРН** доступны анонимно. Это закрывает оба открытых вопроса разом — для всех четырёх классов, не только для участков.
 
-## Технические детали
+## Что мы получили в итоге одним POST-запросом
 
-### TLS
+Пример выдачи на одну точку в центре Казани:
 
-Сертификаты NSPD/Rosreestr подписаны российским Минцифры (`Russian Trusted Sub CA`), которого нет в `certifi`-бандле Python. Варианты:
-
-1. **dev/probing:** `verify=False` (только для разведки, не для прода).
-2. **прод:** установить Russian Trusted Root CA из gosuslugi.ru/crt в собственный CA-bundle и пользовать через `REQUESTS_CA_BUNDLE` или `verify=/path/to/bundle.pem`.
-
-### Сеть
-
-С домашнего RU IP (89.179.127.188) идёт напрямую (split-tunnel мимо VPN). VPN-выход (149.50.212.241 US) блокируется TCP-уровнем — добавлять exit-IP в исключения **не нужно**, нужно держать `nspd.gov.ru` в исключениях VPN.
-
-Проверка маршрута:
-
-```bash
-echo | openssl s_client -connect nspd.gov.ru:443 -servername nspd.gov.ru 2>/dev/null \
-  | openssl x509 -noout -issuer -subject
+```json
+{
+  "cad_num": "16:50:010406:40",
+  "specified_area": 1011.09,
+  "cost_value": 16428454.11,
+  "cost_index": 16248.2609,
+  "ownership_type": "Частная",
+  "land_record_category_type": "Земли населенных пунктов",
+  "land_record_subtype": "Землепользование",
+  "land_record_reg_date": "2009-02-16",
+  "readable_address": "Республика Татарстан, г Казань, Вахитовский район, ул Университетская, дом 12/23",
+  "geometry": "Polygon EPSG:3857 [...]"
+}
 ```
 
-### WAF
+`cost_value` (16,4 млн ₽) — полная кадастровая стоимость, `cost_index` (16 248 ₽/м²) — удельная. Это **ровно тот таргет**, который мы пытались синтезировать через формулы в [`compute_synthetic_target`](../src/kadastra/etl/synthetic_target.py) и [`compute_object_synthetic_target`](../src/kadastra/etl/object_synthetic_target.py). Теперь его можно просто скачать.
 
-Часть эндпоинтов режется WAF на нашем RU IP:
+Для зданий (слой L36049) набор полей ещё богаче: `floors`, `year_built`, `materials`, `purpose` («Жилой дом», «Многоквартирный дом», ...), `quarter_cad_number`, `right_type`. Это **реальные ML-фичи**, которых не было в OSM (там только centroid, building tag и иногда `levels`).
 
-| Эндпоинт | Поведение |
-|----------|-----------|
-| `GET /api/geoportal/v2/search/geoportal?query=...` | **403 Rule: 697093d72eea83106f88c559** |
-| `GET /api/wfs/v2?service=WFS&...` | **403 Forbidden** |
+## Где именно живёт нужный нам слой
 
-Остальные эндпоинты доходят до приложения.
+В НСПД сотни «слоёв» (`layers`), у каждого свой числовой ID и свои уровни доступа. Большинство закрыто: попытка прочитать `/api/geoportal/v1/layers/{id}` для крупных ID типа `870186` возвращает `forbidden код=3` — за этой стеной живёт **формальное соглашение с ППК Роскадастр** (Client ID + Client Secret), которое нам не выдадут без юр.договора. Бандл сайта прямо это говорит цитатой: *«Обратитесь в ППК «Роскадастр» для заключения соглашения об информационном взаимодействии с ФГИС ЕЦП НСПД»*.
 
-## Слои (layers)
+Но **базовые слои ЕГРН открыты** — их видит обычный пользователь, заходящий на nspd.gov.ru/map. Прочесав диапазон ID от 36000 до 36100, нашли:
 
-Layer ID можно получить через `GET /api/geoportal/v1/layers/{id}` (анонимно, без auth для большинства).
+| ID | Название | Тип | Что это |
+|----|----------|-----|---------|
+| **36048** | Росреестр: Земельные участки ЕГРН | wms | то, что нужно для класса LandPlot |
+| **36049** | Росреестр: Здания ЕГРН | wms | реальный таргет для apartment/house/commercial |
+| 36070 | ЕГРН. Кадастровые районы | wms | админ-разбиение (контекст) |
+| 36071 | ЕГРН. Кадастровые кварталы | wms | мельче чем районы (потенциальный фильтр) |
+| 36473 | Земельные участки в межевании (полигональный) | — | в работе у Росреестра |
+| 36050+ | Ортофотопланы регионов | wmts | растровая подложка под карту |
 
-Прочёсано: `36000–36100`. Ключевые слои:
+С этого момента мы говорим только про L36048 и L36049 — это анонимные слои с реальными атрибутами и геометрией.
 
-| ID | Имя | Тип | Категория | Открыт? |
-|----|-----|-----|-----------|---------|
-| **36048** | **Росреестр: Земельные участки ЕГРН** | wms | 36368 | **да** |
-| **36049** | Росреестр: Здания ЕГРН | wms | 36369 | да |
-| 36070 | ЕГРН. Кадастровые районы | wms | 36382 | да |
-| 36071 | ЕГРН. Кадастровые кварталы | wms | 36381 | да |
-| 36050+ | Ортофотопланы регионов | wmts | — | да |
-| 36473 | Участки, образуемые по проекту межевания (полигональный) | — | — | да (упомянут в settings) |
+## Технические подробности доступа
 
-Слои 870186 и подобные в верхнем диапазоне ID — **403/auth-walled**, требуют SSO с Client ID/Secret от ППК Роскадастр (бундл прямо это говорит).
+### TLS — почему `verify=False` это не «костыль»
 
-## Рабочие эндпоинты
+Сертификат `nspd.gov.ru` подписан **«Russian Trusted Sub CA»** (CA Минцифры РФ). Это легитимный российский корневой сертификат, но его **нет в `certifi`-бандле**, который Python подгружает по умолчанию. Поэтому `requests` (или `httpx`) с дефолтной верификацией падает с «self-signed certificate in certificate chain» — это не атака, а просто неизвестный CA.
 
-### 1. WMS GetFeatureInfo (single-point lookup) ⭐
+Варианты для прода:
+1. Скачать `Russian Trusted Root CA` с `gu-st.ru/content/Other/doc/russian_trusted_root_ca.cer`, добавить в собственный CA-bundle, передавать через `REQUESTS_CA_BUNDLE` или `verify="/path/to/bundle.pem"`.
+2. Альтернатива — `truststore` package (использует системный keychain macOS, который часто уже знает Минцифровый CA).
 
-**Ключевой канал для извлечения данных одного объекта по координате.**
+Для разовой выгрузки публичных данных мы используем `verify=False`. Скрипт прода переключим на bundle.
+
+### Сеть — почему VPN не мешает
+
+Я попробовал три IP:
+- **VPN-выход US Datacamp (149.50.212.241)** — TCP timeout. NSPD блокирует не-российские IP уже на сетевом уровне.
+- **Домашний RU IP (89.179.127.188) с дефолтной маршрутизацией VPN** — то же самое (трафик уходил через VPN-выход).
+- **Домашний RU IP с `nspd.gov.ru` в исключениях VPN (split-tunnel)** — работает.
+
+Это видно прямо в ответе WAF: при попытках со split-tunnel сервер возвращает `Client IP: 89.179.127.188` — наш реальный домашний адрес. То есть нужно держать `nspd.gov.ru` в exclude-списке конкретного VPN-клиента.
+
+### WAF — что блокируется и почему это не страшно
+
+Часть эндпоинтов NSPD режется WAF rule'ами **независимо от IP**:
+- `GET /api/geoportal/v2/search/geoportal?query=...` → 403, rule `697093d72eea83106f88c559`
+- `GET /api/wfs/v2?...` → 403 Forbidden
+
+Эти эндпоинты — публичный текстовый поиск и WFS — закрыты от автоматизации, видимо чтобы не давали скрейпить «по подсказкам в строке поиска». **Нам они и не нужны** — у нас есть нормальный фильтрованный канал (см. ниже).
+
+## Каналы данных
+
+### Канал 1: WMS GetFeatureInfo — 1 точка, 1 объект
+
+Это лендингный канал: даёт по координате (lon/lat) ровно 1 объект под этой точкой со всеми атрибутами и геометрией. Полезен для ad-hoc проверок («что лежит на адресе X»), не для bulk.
 
 ```
 GET /api/aeggis/v4/{layerId}/wms?
     SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo&
     LAYERS={layerId}&QUERY_LAYERS={layerId}&STYLES=&CRS=EPSG:3857&
     BBOX={minx},{miny},{maxx},{maxy}&
-    WIDTH={W}&HEIGHT={H}&I={x_pixel}&J={y_pixel}&
-    FORMAT=image/png&INFO_FORMAT=application/json
+    WIDTH=101&HEIGHT=101&I=50&J=50&FORMAT=image/png&INFO_FORMAT=application/json
 ```
 
-`STYLES=` обязателен (пустой). `INFO_FORMAT=application/json` — иначе вернётся XML.
+Особенности:
+- `STYLES=` обязателен (даже пустой), иначе 500.
+- `INFO_FORMAT=application/json` — иначе вернётся XML `ServiceException`.
+- `I=, J=` — пиксельные координаты внутри плитки `WIDTH×HEIGHT` пикселей. На центр кладём `I=W/2, J=H/2`.
+- `BBOX` — в EPSG:3857 (Web Mercator), не в WGS84. Конвертация через стандартную формулу.
+- `FEATURE_COUNT` не помогает — ответ всегда 1 объект (тот, на который попал I/J).
 
-**Пример (центр Казани → участок):**
+Возвращает `FeatureCollection` с одним `Feature`. Геометрия — `Polygon` или `MultiPolygon` в EPSG:3857. Все интересные поля внутри `properties.options`.
 
-```python
-import math, requests
-def lonlat_to_3857(lon, lat):
-    x = lon * 20037508.342789244 / 180
-    y = math.log(math.tan((90+lat) * math.pi / 360)) * 20037508.342789244 / math.pi
-    return x, y
-
-x, y = lonlat_to_3857(49.1221, 55.7887)
-buf = 50
-url = (f"https://nspd.gov.ru/api/aeggis/v4/36048/wms?"
-       f"SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo&"
-       f"LAYERS=36048&QUERY_LAYERS=36048&STYLES=&CRS=EPSG:3857&"
-       f"BBOX={x-buf},{y-buf},{x+buf},{y+buf}&"
-       f"WIDTH=101&HEIGHT=101&I=50&J=50&FORMAT=image/png&INFO_FORMAT=application/json")
-r = requests.get(url, verify=False)
-# 200 OK, GeoJSON FeatureCollection с 1 объектом
-```
-
-**Ответ (для L36048):**
-
-```json
-{
-  "type": "FeatureCollection",
-  "features": [{
-    "id": 38385610,
-    "type": "Feature",
-    "geometry": {
-      "type": "Polygon",
-      "coordinates": [[[5468254.6, 7516527.1], ...]],
-      "crs": {"type": "name", "properties": {"name": "EPSG:3857"}}
-    },
-    "properties": {
-      "cadastralDistrictsCode": 16,
-      "category": 36368,
-      "descr": "16:50:010406:40",
-      "externalKey": "16:50:010406:40",
-      "geom_data_id": 38385610,
-      "label": "16:50:010406:40",
-      "options": {
-        "cad_num": "16:50:010406:40",
-        "status": "Учтенный",
-        "subtype": "Землепользование",
-        "specified_area": 1011.09,
-        "cost_value": 16428454.11,
-        "cost_index": 16248.2609,
-        "ownership_type": "Частная",
-        "registration_date": "2009-02-16",
-        "readable_address": "Республика Татарстан, г Казань, Вахитовский район, ул Университетская, дом 12/23",
-        "land_record_type": "Земельный участок",
-        "previously_posted": "Учтенный"
-      }
-    }
-  }]
-}
-```
-
-**FEATURE_COUNT не помогает** — независимо от значения возвращается 1 объект (та точка, на которую попал I/J).
-
-### 2. Layer Object lookup by internal ID
-
-Расширенная карточка объекта по `geom_data_id` (внутреннему ID NSPD, не кадастровому номеру).
+### Канал 2: Object lookup by internal ID — расширенная карточка
 
 ```
-GET /api/geoportal/v1/layers/{layerId}/object?id={internalId}
+GET /api/geoportal/v1/layers/{layerId}/object?id={geom_data_id}
 ```
 
-Возвращает FeatureCollection с одним объектом. Дополнительные поля по сравнению с WMS GetFeatureInfo:
+Принимает внутренний ID (`geom_data_id` из ответа GetFeatureInfo, не кадастровый номер!). Возвращает то же самое, но с **дополнительными полями**: `cost_application_date`, `cost_determination_date`, `cost_registration_date`, `determination_couse` (sic — это опечатка в API), `interactionId`. Полезно для углублённой выгрузки конкретного объекта; для bulk не подходит — нужно сначала узнать `geom_data_id`.
 
-```json
-"options": {
-  "cost_application_date": "2024-01-01",
-  "cost_determination_date": "2022-01-01",
-  "cost_registration_date": "2023-02-12",
-  "determination_couse": "Акт об утверждении результатов определения кадастровой стоимости...",
-  "land_record_area_verified": 1011.09,
-  "land_record_category_type": "Земли населенных пунктов",
-  "land_record_subtype": "Землепользование",
-  "interactionId": 38356313
-}
-```
-
-Полезно если `geom_data_id` уже известен (например, после первичного prefilter через bbox-сканирование).
-
-### 3. WMS GetMap (raster tiles)
-
-Растровые PNG-тайлы для визуализации:
-
-```
-GET /api/aeggis/v4/{layerId}/wms?
-    SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap&LAYERS={layerId}&STYLES=&
-    CRS=EPSG:3857&BBOX={minx},{miny},{maxx},{maxy}&
-    WIDTH=256&HEIGHT=256&FORMAT=image/png&TRANSPARENT=TRUE
-```
-
-Не даёт вектор/атрибуты, но полезно для тайлового оверлея на нашей карте.
-
-### 4. WMS GetCapabilities
-
-```
-GET /api/aeggis/v4/{layerId}/wms?service=WMS&request=GetCapabilities&version=1.3.0
-```
-
-XML с метаданными слоя. Подтверждает поддержку `GetMap` / `GetFeatureInfo` / `queryable`.
-
-### 5. Layer info
-
-```
-GET /api/geoportal/v1/layers/{layerId}
-```
-
-JSON с метаданными слоя: имя, категория, тип (wms/wmts), bbox, options (cache/format/queryable).
-
-### 6. Attribute search settings
-
-```
-GET /api/geoportal/v3/page-attrib-search-settings?pageCode=geoportal
-```
-
-Возвращает поддерживаемые фильтры для каждого слоя. Для L36048:
-
-| Поле | Тип | Filter | Rules |
-|------|-----|--------|-------|
-| `options.readable_address` | string | textQueryAttrib | — |
-| `options.area` | number | exactNumber, intervalNumber | must, must_not, gt/gte/lt/lte |
-| `options.cost_value` | **number** | **exactNumber, intervalNumber** | **must, must_not, gt/gte/lt/lte** |
-| `options.ownership_type` | string | textQueryAttrib | — |
-| `options.land_record_reg_date` | string | exactDate, intervalDate | gt/gte/lt/lte |
-| `options.permitted_use_established_by_document` | string | textQueryAttrib | — |
-
-Для каждого слоя `count` = max объектов на запрос (обычно 40).
-
-### 7. Bulk attribute search ⭐⭐ (главный канал для сбора)
+### Канал 3: attrib-search v3 — bulk по фильтру (наш основной канал) ⭐
 
 ```
 POST /api/geoportal/v3/geoportal/{layerId}/attrib-search?page={N}&count={M}&withTotalCount=true
+Content-Type: application/json
 ```
 
-**Body** — словарь `{filter_name: [filter_object, ...]}`. Несколько фильтров комбинируются по AND. Структуры filter_object извлечены из минифицированного `index-BGHZh2Td.js` (ключевая ошибка предыдущих попыток — `attribsID` с большой `D`, не `attribsId`):
+Это тот самый bulk-канал, на котором держится вся наша выгрузка. Был не очевиден потому, что:
+- В JS-бандле сайта функция-обёртка называется `Q5` (минификация);
+- Из её сигнатуры `Q5({layerId, attributes, count})` я сначала отправлял body `{attributes: [...]}` — отдавался `code:1010 attribsId or keyName was not set`;
+- В минифицированном коде сборки body есть строка `attribsID:e.attribsId` — то есть API ждёт **`attribsID` с большой `D`**, а не `attribsId`. Это уже совсем не очевидно по сообщению ошибки.
 
-| filter | Структура объекта | Пример |
-|--------|-------------------|--------|
-| `textQueryAttrib` | `{keyName, value}` или `{keyName, attribsID, value}` | `{"keyName": "options.readable_address", "value": "Казань"}` |
-| `exactNumber` | `{keyName, rule: "must"\|"must_not", value}` | `{"keyName": "options.area", "rule": "must", "value": 1011.09}` |
-| `intervalNumber` | `{keyName, gt\|gte\|lt\|lte: value}` | `{"keyName": "options.area", "gt": 1000}` |
-| `exactDate` | `{keyName, rule, value}` | `{"keyName": "options.land_record_reg_date", "rule": "must", "value": "2009-02-16"}` |
-| `intervalDate` | `{keyName, gt\|gte\|lt\|lte: value}` | `{"keyName": "options.land_record_reg_date", "gte": "2020-01-01"}` |
-| `existVal` | `{rule: "must_not", keyName}` (есть значение) | `{"rule": "must_not", "keyName": "options.area"}` |
-| `textAttribValsList` | `{keyName, rule, values: [v]}` | `{"keyName": "options.ownership_type", "rule": "must", "values": ["Частная"]}` |
+После реверса оказалось, что body — это **словарь, ключи которого — имена фильтров**, а значения — массивы конкретных условий. Несколько разных фильтров комбинируются по AND.
 
-**Ответ:**
+#### Поддерживаемые фильтры
+
+Для слоя L36048 (участки), запрос `GET /api/geoportal/v3/page-attrib-search-settings?pageCode=geoportal` возвращает:
+
+| keyName | type | Доступные filter-методы |
+|---|---|---|
+| `options.readable_address` | string | `textQueryAttrib`, `existVal` |
+| `options.area` | number | `exactNumber`, `intervalNumber`, `existVal` |
+| `options.ownership_type` | string | `textQueryAttrib` |
+| `options.cost_value` | number | `exactNumber`, `intervalNumber`, `existVal` |
+| `options.land_record_reg_date` | string (date) | `exactDate`, `intervalDate`, `existVal` |
+| `options.permitted_use_established_by_document` | string | `textQueryAttrib`, `existVal` |
+
+Для L36049 (здания) набор похожий, плюс `build_record_area`, `build_record_registration_date`.
+
+#### Структура body для каждого filter-метода
+
+| filter | Объект-условие |
+|---|---|
+| `textQueryAttrib` | `{"keyName": "...", "value": "..."}` |
+| `exactNumber` | `{"keyName": "...", "rule": "must"\|"must_not", "value": N}` |
+| `intervalNumber` | `{"keyName": "...", "gt"\|"gte"\|"lt"\|"lte": N}` |
+| `exactDate` | `{"keyName": "...", "rule": "must"\|"must_not", "value": "YYYY-MM-DD"}` |
+| `intervalDate` | `{"keyName": "...", "gt"\|"gte"\|"lt"\|"lte": "YYYY-MM-DD"}` |
+| `textAttribValsList` | `{"keyName": "...", "rule": "must"\|"must_not", "values": [v]}` |
+| `existVal` | `{"rule": "must_not", "keyName": "..."}` (= это поле непусто) |
+
+Пример рабочего body — взять все участки с адресом «Казань», у которых площадь больше 1000 м²:
+
+```json
+{
+  "textQueryAttrib": [
+    {"keyName": "options.readable_address", "value": "Казань"}
+  ],
+  "intervalNumber": [
+    {"keyName": "options.area", "gt": 1000}
+  ]
+}
+```
+
+#### Структура ответа
 
 ```json
 {
   "data": {
     "type": "FeatureCollection",
     "features": [
-      {"id": ..., "geometry": {...}, "properties": {..., "options": {"cad_num": ..., "cost_index": ..., ...}}}
+      {
+        "id": 38385610,
+        "geometry": {"type": "Polygon", "coordinates": [...]},
+        "properties": {
+          "cad_num": "...",
+          "category": 36368,
+          "options": {"cad_num": "...", "cost_value": ..., "cost_index": ..., ...}
+        }
+      },
+      ...
     ]
   },
   "meta": [{"totalCount": 199819, "categoryId": 36368}]
 }
 ```
 
-**Реальные параметры (на 2026-04-25):**
+`meta[0].totalCount` — общее число объектов для фильтра, по нему мы и пагинируем.
+
+#### Параметры пагинации
+
+- `page=N` — номер страницы, начиная с 0.
+- `count=M` — сколько объектов на странице. Settings по умолчанию советуют 40, но фактический лимит выше — мы успешно выкачивали по 200 за страницу. Это в 5 раз сокращает число запросов.
+- `withTotalCount=true` — заставляет включать `totalCount` в каждый ответ (иначе вернётся только в первом).
+
+## Реальные масштабы (агломерация Казани)
 
 | Запрос | totalCount |
-|--------|-----------|
-| `textQueryAttrib options.readable_address ⊂ "Казань"` (L36048 — участки) | **199 819** |
-| `+ intervalNumber options.area > 1000` | 7 |
-| count limit per page | **минимум 200** (выше дефолтных 40 из settings) |
+|---|---|
+| L36048, адрес ⊂ «Казань» | **199 819** участков |
+| L36049, адрес ⊂ «Казань» | **91 864** зданий |
+| L36048, «Казань» + площадь > 1000м² | 7 (sanity-check, что AND работает) |
 
-**Bulk-стратегия для агломерации:**
-- 199 819 объектов / 200 на страницу = **1000 запросов**
-- rate-limit 1 req/sec → **~17 минут** на полную выгрузку
-- postfilter по полигону `data/raw/regions/kazan-agglomeration.geojson` (geopandas spatial filter) → отсечь не-агломерационные
+199 819 / 200 на страницу = **1 000 запросов** для всей выгрузки участков. При rate-limit 2 сек/запрос с jitter — **~33–42 минуты**. Для зданий 460 страниц — **~17–20 минут** (по факту вышло 38 минут с одним промежуточным 502, см. ниже).
 
-**Минимальный воркер:**
+Фильтр `адрес ⊂ "Казань"` шире самой агломерации — он захватит и участки в других населённых пунктах Татарстана с похожим адресом. После выгрузки у нас есть `kazan-agglomeration.geojson` (буфер 30 км вокруг центра, [ADR-0007](decisions/0007-kazan-agglomeration-scope.md)), которым можно отфильтровать на этапе ETL.
+
+## Стратегия безопасной выгрузки
+
+NSPD нигде явно не публикует rate-limit, и публичных RPS-гайдлайнов у Минцифры нет. Поэтому действуем по принципу «не быть похожим на бота, который качает в продуктив»:
+
+- **1 TCP-сессия** через `httpx.Client()` (keepalive). Никакого параллелизма с одного IP.
+- **2 секунды + jitter ±0.5 сек** между запросами. Это **в два раза медленнее минимума** (1 RPS), который сам по себе уже консервативен.
+- **Реалистичный User-Agent** (Chrome 131 на macOS) и `Referer: https://nspd.gov.ru/map` — как будто из браузера на самой карте.
+- **Backoff** на 429 (Too Many Requests), 502 (Bad Gateway), 503 (Service Unavailable), 504 (Gateway Timeout): 30 сек → 90 сек → 5 мин, потом фейл.
+- **Hard-stop** на 403: если зацепили WAF rule, продолжать молотить — гарантированно получить более жёсткий бан.
+- **Resume**: каждая страница — отдельный JSON на диске. Если упали посередине, повторный запуск пропустит уже скачанные.
+
+Скрипт-выгрузчик: [scripts/download_nspd_layer.py](../scripts/download_nspd_layer.py).
+
+### Опыт первой полной выгрузки (2026-04-25)
+
+Слой L36049 (здания), 460 страниц:
+- На странице 220 (47%) пришёл `502 Bad Gateway`. Скрипт первой версии знал только про 429/503 и упал.
+- Пофиксил retry-список (`429, 502, 503, 504`), перезапустил — pickup с 220, прошёл до конца за ещё ~13 минут.
+- Итого 38 минут на 91 864 объекта. Размер на диске — **204 МБ** сырого JSON.
+- Никаких 403 / IP-блокировок не было.
+
+Никаких побочных эффектов на нашем IP я тоже не заметил — после выгрузки одиночные пробы продолжали возвращать 200 OK как раньше.
+
+## Минимальный пример своими руками
 
 ```python
-def fetch_page(layer_id: int, body: dict, page: int, count: int = 200):
+import httpx
+import math
+
+def fetch_page(layer_id: int, body: dict, page: int = 0, count: int = 200) -> dict:
     url = f"https://nspd.gov.ru/api/geoportal/v3/geoportal/{layer_id}/attrib-search"
     params = {"page": page, "count": count, "withTotalCount": "true"}
-    r = requests.post(url, json=body, params=params, verify=False, timeout=30)
-    r.raise_for_status()
-    j = r.json()
-    return j["data"]["features"], j["meta"][0]["totalCount"]
+    headers = {
+        "User-Agent": "Mozilla/5.0 (...) Chrome/131.0.0.0 Safari/537.36",
+        "Referer": "https://nspd.gov.ru/map",
+        "Origin": "https://nspd.gov.ru",
+    }
+    with httpx.Client(verify=False, timeout=30.0, headers=headers) as client:
+        r = client.post(url, json=body, params=params)
+        r.raise_for_status()
+        return r.json()
 
 body = {"textQueryAttrib": [{"keyName": "options.readable_address", "value": "Казань"}]}
-features_page0, total = fetch_page(36048, body)
-# total ≈ 199819, features_page0 ≈ 200
-# Pagination: page=0..total//count
+data = fetch_page(36048, body)
+print(data["meta"])           # [{'totalCount': 199819, 'categoryId': 36368}]
+print(len(data["data"]["features"]))  # 200
 ```
 
-### Не вскрытые эндпоинты
+## Что **не** работает (чтобы не тратить время)
 
-### intersects (geometry-based bulk lookup)
+| Эндпоинт | Что вернул | Вывод |
+|---|---|---|
+| `POST /api/geoportal/v1/intersects` | 400 `field:typeIntersect, rule:required;` | Эндпоинт жив, но `typeIntersect` — минифицированная переменная, которую я не нашёл в бандле (`qa`). Reverse-engineering можно продолжить, но смысла нет — атрибутный поиск перекрывает |
+| `POST /api/geoportal/v3/intersects` | 404 | Не существует на этом пути |
+| `POST /api/geoportal/v3/geoportal/{id}/attrib-search` с body `{"keyName": ..., "value": ...}` (плоско) | 400 `attribsId or keyName was not set` | Body должен быть **словарь по типу фильтра**, не плоский. Пока это не понял — никакой keyName API не примет |
+| `GET /api/aeggis/v4/{id}/wms?REQUEST=GetFeatureInfo` без `STYLES=` | 500 `field:styles, rule:required` | Параметр обязателен, даже если пустой |
+| `GET /api/geoportal/v2/search/geoportal?query=...` | 403 WAF | Не пытаться |
 
-В JS-бандле:
+## Открытые направления
 
-```js
-// .../categories/{categoryId}/geom/geojson
-intersect: { path: "api/geoportal/v3/intersects" },
-intersectionFinder: { path: "api/geoportal/v3/intersects" },
-```
-
-Все попытки `POST /api/geoportal/v3/intersects` → **404**. Возможно полный путь `/api/{base}/v3/{prefix}/intersects` использует промежуточный сегмент, который не извлёкся из минификации.
-
-В JS вызов выглядит так:
-
-```js
-this.intersectionViewer.find({
-  excludedGeomId: [g.id],
-  object: { geom: h, categories: m },
-  typeIntersect: qa  // qa — переменная, значение в минификации не нашлось
-})
-```
-
-`typeIntersect` — это значение из enum, не строковый литерал.
-
-### download/intersections/csv
-
-```
-api/geoportal/v3/download/intersections/csv
-```
-
-Упоминается в JS-бандле, не тестировалось — потенциально bulk-download через CSV. Та же зависимость от правильного тела запроса.
-
-## Стратегия bulk-сбора (ранжированы по реалистичности)
-
-**1. Reverse-engineer attrib-search через браузер.** Открыть `nspd.gov.ru/map`, выполнить **атрибутный поиск** на слое «Земельные участки» (фильтр по адресу/площади/стоимости), скопировать **успешный** запрос из DevTools Network как cURL. Из него:
-- точное URL и тело
-- значение `typeIntersect` enum
-- структура `attribsId` / `attributes` массива
-
-После этого можно постранично выкачивать все участки по фильтру bbox/cost_value/area. Лимит 40 на страницу × N страниц.
-
-**2. Сетка точек GetFeatureInfo (медленно, но работает).** Для агломерации Казани (30km × 30km, π·30² ≈ 2 827 км²) при шаге 50м это 600×600 ≈ 360k запросов. При rate-limit 1 req/sec → 100 часов; даже 5 req/sec не безопасно (риск блокировки IP).
-
-Можно ускорить через **OSM-driven seeding**: у нас уже есть 179k OSM-зданий с координатами. Прогон 1 GetFeatureInfo на здание = 179k запросов = 50 часов на 1/sec, 10 часов на 5/sec. Это даёт участки ПОД зданиями, без пустых дворов и улиц. Покроет наш use case.
-
-**3. Cadastral-quarter-driven.** L36071 (Кадастровые кварталы) — границы квартала. Для каждого квартала нашей агломерации сначала fetch квартальной геометрии, потом — равномерная сетка ВНУТРИ квартала с минимальным шагом. Меньше холостых запросов, чем (1).
-
-**4. Подождать формального доступа** через ППК Роскадастр (Client ID/Secret). Реалистично: недели. Открывает все эндпоинты включая bulk и расширенные слои.
-
-## Rate-limit и анти-бан
-
-Параметры разведки (что не вызвало проблем):
-
-- ~50 запросов в течение 30 минут с домашнего RU IP — нормально.
-- WMS GetFeatureInfo, WMS GetCapabilities, layer info — 100% success rate.
-- Single-IP, простой `User-Agent`, без cookies — работает.
-
-**Что НЕ делать:**
-- Sweep слоёв ID 1000+ диапазонами без пауз → быстрый sweep на ~100 layer ID одним скриптом ~3 секунды отработал, но это близко к границе.
-- Конкурентные запросы.
-- Активничать на v2/search (она режется WAF, риск получить расширенный бан).
-
-**Что пробовать в проде:**
-- Глобальный rate-limit ≤ 1 req/sec (полит-секунды).
-- Exponential backoff при 429/503.
-- Респектовать `Retry-After`.
-- Логировать `requestId` для дебаггинга.
-- Делать выгрузку батчами по нескольку часов с перерывами.
-
-## Запросы для повторной проверки
-
-Все пробы лежат во временных скриптах `/tmp/probe_*.py`. Сохраняемая выжимка:
-
-```python
-# Минимальный probe — проверить что канал жив
-import math, urllib3, requests
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-def lonlat_to_3857(lon, lat):
-    x = lon * 20037508.342789244 / 180
-    y = math.log(math.tan((90+lat) * math.pi / 360)) * 20037508.342789244 / math.pi
-    return x, y
-
-def fetch_parcel(lat, lon):
-    x, y = lonlat_to_3857(lon, lat)
-    buf = 50
-    url = (f"https://nspd.gov.ru/api/aeggis/v4/36048/wms?"
-           f"SERVICE=WMS&VERSION=1.3.0&REQUEST=GetFeatureInfo&"
-           f"LAYERS=36048&QUERY_LAYERS=36048&STYLES=&CRS=EPSG:3857&"
-           f"BBOX={x-buf},{y-buf},{x+buf},{y+buf}&"
-           f"WIDTH=101&HEIGHT=101&I=50&J=50&FORMAT=image/png&INFO_FORMAT=application/json")
-    r = requests.get(url, verify=False, timeout=15)
-    return r.json()
-```
+- **`/api/geoportal/v1/download/intersections/csv`** упоминается в JS-бандле, не пробовался. Возможно — дополнительный канал bulk-выгрузки в CSV-формате, что упростит ETL (без парсинга GeoJSON). Стоит попробовать после того как закончится текущая выгрузка.
+- **`intersects` с правильным `typeIntersect`** — даст пространственную фильтрацию (бэкэнд считает пересечения с присланным полигоном). Альтернатива нашему postfilter'у через `kazan-agglomeration.geojson`. Не критично, потому что postfilter работает.
+- **Refresh-стратегия**: ЕГРН обновляется регулярно. Сейчас выгрузка — разовая. Когда дойдём до прода, нужен будет инкремент по `cost_application_date` или `cost_registration_date` (оба поля — вполне фильтруемые `intervalDate`).
