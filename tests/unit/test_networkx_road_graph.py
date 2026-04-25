@@ -117,3 +117,38 @@ def test_empty_query_returns_zero_sized_matrix() -> None:
 
     out = graph.distance_matrix_m(from_coords=[(0.0, 0.0)], to_coords=[])
     assert out.shape == (1, 0)
+
+
+def test_from_parquet_loads_edges_table_and_builds_equivalent_graph(
+    tmp_path,  # type: ignore[no-untyped-def]
+) -> None:
+    """Edges-table parquet is the persistence format Container loads at
+    boot. Schema: (from_lat, from_lon, to_lat, to_lon, length_m) — one
+    row per edge.
+    """
+    import polars as pl
+
+    a = (0.0, 0.0)
+    b = (0.001, 0.0)
+    c = (0.001, 0.001)
+
+    edges = pl.DataFrame(
+        {
+            "from_lat": [a[0], b[0]],
+            "from_lon": [a[1], b[1]],
+            "to_lat": [b[0], c[0]],
+            "to_lon": [b[1], c[1]],
+            "length_m": [
+                haversine_meters(*a, *b),
+                haversine_meters(*b, *c),
+            ],
+        }
+    )
+    path = tmp_path / "edges.parquet"
+    edges.write_parquet(path)
+
+    graph = NetworkxRoadGraph.from_parquet(path)
+
+    out = graph.distance_matrix_m(from_coords=[a], to_coords=[c])
+    expected = haversine_meters(*a, *b) + haversine_meters(*b, *c)
+    assert out[0, 0] == pytest.approx(expected, rel=1e-3)
