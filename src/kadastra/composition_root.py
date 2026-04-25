@@ -10,6 +10,7 @@ from kadastra.adapters.mlflow_model_registry import MLflowModelRegistry
 from kadastra.adapters.parquet_coverage_store import ParquetCoverageStore
 from kadastra.adapters.parquet_feature_store import ParquetFeatureStore
 from kadastra.adapters.parquet_gold_feature_store import ParquetGoldFeatureStore
+from kadastra.adapters.parquet_valuation_object_store import ParquetValuationObjectStore
 from kadastra.adapters.s3_raw_data import S3RawData
 from kadastra.api.routes import make_api_router
 from kadastra.config import Settings
@@ -19,15 +20,21 @@ from kadastra.ports.model_registry import ModelRegistryPort
 from kadastra.usecases.build_buildings_features import BuildBuildingsFeatures
 from kadastra.usecases.build_gold_features import BuildGoldFeatures
 from kadastra.usecases.build_metro_features import BuildMetroFeatures
+from kadastra.usecases.build_object_features import BuildObjectFeatures
+from kadastra.usecases.build_object_synthetic_target import BuildObjectSyntheticTarget
 from kadastra.usecases.build_region_coverage import BuildRegionCoverage
 from kadastra.usecases.build_road_features import BuildRoadFeatures
 from kadastra.usecases.build_synthetic_target import BuildSyntheticTarget
+from kadastra.usecases.build_valuation_objects import BuildValuationObjects
 from kadastra.usecases.get_hex_features import GetHexFeatures
+from kadastra.usecases.infer_object_valuation import InferObjectValuation
 from kadastra.usecases.infer_valuation import InferValuation
+from kadastra.usecases.train_object_valuation_model import TrainObjectValuationModel
 from kadastra.usecases.train_valuation_model import TrainValuationModel
 from kadastra.web.routes import make_web_router
 
 _RUN_NAME_PREFIX = "catboost-baseline-res"
+_OBJECT_RUN_NAME_PREFIX = "catboost-object-"
 
 
 class Container:
@@ -159,6 +166,64 @@ class Container:
             gold_reader=ParquetGoldFeatureStore(s.gold_store_path),
             prediction_store=ParquetGoldFeatureStore(s.predictions_store_path),
             run_name_prefix=_RUN_NAME_PREFIX,
+        )
+
+    def build_valuation_objects(self) -> BuildValuationObjects:
+        s = self._settings
+        return BuildValuationObjects(
+            raw_data=self.build_s3_raw_data(),
+            store=ParquetValuationObjectStore(s.valuation_object_store_path),
+            buildings_key=s.buildings_key,
+        )
+
+    def build_object_features(self) -> BuildObjectFeatures:
+        s = self._settings
+        store = ParquetValuationObjectStore(s.valuation_object_store_path)
+        return BuildObjectFeatures(
+            reader=store,
+            store=store,
+            raw_data=self.build_s3_raw_data(),
+            stations_key=s.metro_stations_key,
+            entrances_key=s.metro_entrances_key,
+            roads_key=s.roads_key,
+            neighbor_radius_m=s.object_neighbor_radius_m,
+            road_radius_m=s.object_road_radius_m,
+        )
+
+    def build_object_synthetic_target(self) -> BuildObjectSyntheticTarget:
+        s = self._settings
+        store = ParquetValuationObjectStore(s.valuation_object_store_path)
+        return BuildObjectSyntheticTarget(
+            reader=store,
+            store=store,
+            seed=s.synthetic_target_seed,
+        )
+
+    def build_train_object_valuation_model(self) -> TrainObjectValuationModel:
+        s = self._settings
+        params = CatBoostParams(
+            iterations=s.catboost_iterations,
+            learning_rate=s.catboost_learning_rate,
+            depth=s.catboost_depth,
+            seed=s.catboost_seed,
+        )
+        return TrainObjectValuationModel(
+            reader=ParquetValuationObjectStore(s.valuation_object_store_path),
+            model_registry=self.build_model_registry(),
+            params=params,
+            n_splits=s.train_n_splits,
+            parent_resolution=s.train_parent_resolution,
+        )
+
+    def build_infer_object_valuation(self) -> InferObjectValuation:
+        s = self._settings
+        return InferObjectValuation(
+            model_loader=self.build_model_loader(),
+            reader=ParquetValuationObjectStore(s.valuation_object_store_path),
+            prediction_store=ParquetValuationObjectStore(
+                s.object_predictions_store_path
+            ),
+            run_name_prefix=_OBJECT_RUN_NAME_PREFIX,
         )
 
 
