@@ -8,3 +8,11 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Secrets and local config
+.env
+.env.local
+
+# Data and ML artifacts
+data/
+mlruns/
