@@ -32,9 +32,14 @@ def _objects(rows: list[dict[str, object]]) -> pl.DataFrame:
 
 
 def _layer(rows: list[dict[str, object]], with_object_id: bool = False) -> pl.DataFrame:
-    schema: dict[str, pl.DataType] = {"lat": pl.Float64, "lon": pl.Float64}
     if with_object_id:
-        schema = {"object_id": pl.Utf8, **schema}
+        schema = {
+            "object_id": pl.Utf8,
+            "lat": pl.Float64,
+            "lon": pl.Float64,
+        }
+    else:
+        schema = {"lat": pl.Float64, "lon": pl.Float64}
     return pl.DataFrame(rows, schema=schema)
 
 
@@ -243,8 +248,9 @@ def test_haversine_threshold_is_strict_lt() -> None:
     assert 290.0 < actual < 310.0
     layer = _layer([{"lat": boundary[0], "lon": boundary[1]}])
 
+    threshold = round(actual) + 5
     out = compute_object_zonal_features(
-        objects, layers={"poi": layer}, radii_m=[int(round(actual)) + 5]
+        objects, layers={"poi": layer}, radii_m=[threshold]
     )
-    col = f"poi_within_{int(round(actual)) + 5}m"
+    col = f"poi_within_{threshold}m"
     assert out[col][0] == 1
