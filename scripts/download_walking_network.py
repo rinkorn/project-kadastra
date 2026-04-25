@@ -77,7 +77,16 @@ def main() -> None:
     print(f"POST {args.endpoint}  bbox={args.bbox}", flush=True)
     print(f"  expecting a few minutes; saving to {args.out}", flush=True)
 
-    with httpx.Client(timeout=httpx.Timeout(900.0)) as client:
+    headers = {
+        # Overpass returns 406 for the default httpx UA; use a contact-
+        # bearing string per the Overpass usage guidelines.
+        "User-Agent": (
+            "kadastra-pilot/0.1 "
+            "(https://github.com/joeblackdev/kadastra; rinkorn.alb@gmail.com)"
+        ),
+        "Accept": "application/json,*/*",
+    }
+    with httpx.Client(timeout=httpx.Timeout(900.0), headers=headers) as client:
         try:
             r = client.post(args.endpoint, data={"data": query})
         except httpx.HTTPError as exc:
