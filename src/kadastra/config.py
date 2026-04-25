@@ -24,3 +24,6 @@ class Settings(BaseSettings):
     metro_entrances_key: str = "Kadatastr/metro/metro_entrances.csv"
     buildings_key: str = "Kadatastr/rosreestr/osm_buildings_kazan.csv"
     roads_key: str = "Kadatastr/tatarstan_major_roads/tatarstan_major_roads.json"
+
+    gold_store_path: Path = Path("data/gold/features")
+    gold_feature_sets: list[str] = ["metro", "buildings", "roads"]

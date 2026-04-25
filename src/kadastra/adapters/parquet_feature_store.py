@@ -16,3 +16,13 @@ class ParquetFeatureStore:
         )
         partition.mkdir(parents=True, exist_ok=True)
         df.write_parquet(partition / "data.parquet")
+
+    def load(self, region_code: str, resolution: int, feature_set: str) -> pl.DataFrame:
+        path = (
+            self._base_path
+            / f"region={region_code}"
+            / f"feature_set={feature_set}"
+            / f"resolution={resolution}"
+            / "data.parquet"
+        )
+        return pl.read_parquet(path)

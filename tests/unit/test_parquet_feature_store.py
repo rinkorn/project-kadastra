@@ -52,6 +52,26 @@ def test_save_overwrites_previous_partition(tmp_path: Path) -> None:
     assert df["h3_index"].to_list() == ["h_b"]
 
 
+def test_load_round_trips_saved_features(tmp_path: Path) -> None:
+    store = ParquetFeatureStore(tmp_path)
+    store.save("RU-TA", 8, "metro", _features_df())
+
+    df = store.load("RU-TA", 8, "metro")
+
+    assert df.columns == ["h3_index", "resolution", "dist_metro_m", "count_stations_1km"]
+    assert df["dist_metro_m"].to_list() == [10.0, 100.0]
+
+
+def test_load_for_missing_feature_set_raises(tmp_path: Path) -> None:
+    import pytest
+
+    store = ParquetFeatureStore(tmp_path)
+    store.save("RU-TA", 8, "metro", _features_df())
+
+    with pytest.raises(FileNotFoundError):
+        store.load("RU-TA", 8, "buildings")
+
+
 def test_save_isolates_feature_sets(tmp_path: Path) -> None:
     store = ParquetFeatureStore(tmp_path)
     metro = pl.DataFrame({"h3_index": ["h_a"], "resolution": [8], "dist_metro_m": [10.0]})
