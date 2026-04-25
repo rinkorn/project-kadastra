@@ -188,3 +188,98 @@ def test_container_builds_infer_valuation(tmp_path: Path) -> None:
     container = Container(settings)
 
     assert isinstance(container.build_infer_valuation(), InferValuation)
+
+
+def test_settings_has_object_pipeline_defaults() -> None:
+    settings = Settings()
+
+    assert settings.valuation_object_store_path.as_posix().endswith(
+        "data/gold/valuation_objects"
+    )
+    assert settings.object_predictions_store_path.as_posix().endswith(
+        "data/gold/object_predictions"
+    )
+    assert settings.object_neighbor_radius_m == 500.0
+    assert settings.object_road_radius_m == 500.0
+
+
+def test_container_builds_build_valuation_objects(tmp_path: Path) -> None:
+    from kadastra.usecases.build_valuation_objects import BuildValuationObjects
+
+    settings = Settings(
+        region_boundary_path=tmp_path / "b.geojson",
+        coverage_store_path=tmp_path / "c",
+        valuation_object_store_path=tmp_path / "objects",
+        s3_endpoint_url="https://example.com",
+        s3_bucket="b",
+        s3_access_key="k",
+        s3_secret_key="s",
+    )
+    container = Container(settings)
+
+    assert isinstance(container.build_valuation_objects(), BuildValuationObjects)
+
+
+def test_container_builds_build_object_features(tmp_path: Path) -> None:
+    from kadastra.usecases.build_object_features import BuildObjectFeatures
+
+    settings = Settings(
+        region_boundary_path=tmp_path / "b.geojson",
+        coverage_store_path=tmp_path / "c",
+        valuation_object_store_path=tmp_path / "objects",
+        s3_endpoint_url="https://example.com",
+        s3_bucket="b",
+        s3_access_key="k",
+        s3_secret_key="s",
+    )
+    container = Container(settings)
+
+    assert isinstance(container.build_object_features(), BuildObjectFeatures)
+
+
+def test_container_builds_build_object_synthetic_target(tmp_path: Path) -> None:
+    from kadastra.usecases.build_object_synthetic_target import BuildObjectSyntheticTarget
+
+    settings = Settings(
+        region_boundary_path=tmp_path / "b.geojson",
+        coverage_store_path=tmp_path / "c",
+        valuation_object_store_path=tmp_path / "objects",
+    )
+    container = Container(settings)
+
+    assert isinstance(
+        container.build_object_synthetic_target(), BuildObjectSyntheticTarget
+    )
+
+
+def test_container_builds_train_object_valuation_model(tmp_path: Path) -> None:
+    from kadastra.usecases.train_object_valuation_model import TrainObjectValuationModel
+
+    settings = Settings(
+        region_boundary_path=tmp_path / "b.geojson",
+        coverage_store_path=tmp_path / "c",
+        valuation_object_store_path=tmp_path / "objects",
+        model_registry_path=tmp_path / "models",
+        mlflow_enabled=False,
+    )
+    container = Container(settings)
+
+    assert isinstance(
+        container.build_train_object_valuation_model(), TrainObjectValuationModel
+    )
+
+
+def test_container_builds_infer_object_valuation(tmp_path: Path) -> None:
+    from kadastra.usecases.infer_object_valuation import InferObjectValuation
+
+    settings = Settings(
+        region_boundary_path=tmp_path / "b.geojson",
+        coverage_store_path=tmp_path / "c",
+        valuation_object_store_path=tmp_path / "objects",
+        object_predictions_store_path=tmp_path / "object_preds",
+        model_registry_path=tmp_path / "models",
+        mlflow_enabled=False,
+    )
+    container = Container(settings)
+
+    assert isinstance(container.build_infer_object_valuation(), InferObjectValuation)
