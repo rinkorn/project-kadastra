@@ -12,6 +12,7 @@ from kadastra.config import Settings
 
 def _settings(tmp_path: Path) -> Settings:
     return Settings(
+        region_code="RU-TA",
         gold_store_path=tmp_path / "gold",
         coverage_store_path=tmp_path / "coverage",
         feature_store_path=tmp_path / "features",

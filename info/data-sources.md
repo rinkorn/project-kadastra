@@ -17,7 +17,8 @@ prefix:   Kadatastr/
 | `gar_xml/16/` | **ГАР Татарстана**: адресные объекты, дома, квартиры, парцеллы, машиноместа, иерархия адм. и муниципальная, история. Снапшот 2026-04-06. | ~10 ГБ. Основной источник реестровых данных. Файлы: `AS_ADDR_OBJ`, `AS_HOUSES`, `AS_APARTMENTS`, `AS_STEADS`, `AS_ADM_HIERARCHY`, `AS_MUN_HIERARCHY`, `AS_*_PARAMS`, `AS_REESTR_OBJECTS`, `AS_CHANGE_HISTORY`. |
 | `gar_xml/01..89/` | ГАР по другим субъектам РФ | Для пилота не нужно. |
 | `osm/volga-fed-district-latest.osm.pbf` | OSM-выгрузка Поволжского ФО | 725 МБ, сырой PBF. Татарстан — внутри; вырезается через `osmium extract`. |
-| `rosreestr/osm_buildings_kazan.csv` | Здания Казани из OSM (CSV) | 4.3 МБ. **Не Росреестр**, имя префикса вводит в заблуждение. |
+| `osm/osm_buildings_kazan_agglomeration.csv` | Здания Казанской агломерации (≈30 км буфер) из OSM | 13.3 МБ, ~179 133 строки. Сделан скриптом [scripts/buildings_geojsonseq_to_csv.py](../scripts/buildings_geojsonseq_to_csv.py) из PBF, обрезанного по [scripts/build_kazan_agglomeration_boundary.py](../scripts/build_kazan_agglomeration_boundary.py). Используется по умолчанию (`buildings_key` в [Settings](../src/kadastra/config.py)). |
+| `rosreestr/osm_buildings_kazan.csv` | Здания Казани из OSM (CSV) | 4.3 МБ. **Не Росреестр**, имя префикса вводит в заблуждение. Заменён на `osm/osm_buildings_kazan_agglomeration.csv` ([ADR-0007](decisions/0007-kazan-agglomeration-scope.md)). |
 | `rosreestr/osm_buildings_kazan_raw.json` | То же в сыром JSON | 16 МБ. |
 | `metro/metro_stations.csv` | Станции метро Казани (11 шт), WGS84 | См. [README в S3](s3://kadastrova/Kadatastr/metro/README.md) — содержит схему CSV и предложенные ML-фичи (`dist_metro_m`, `count_stations_1km`, …). |
 | `metro/metro_entrances.csv` | Входы метро (68 шт) | |
@@ -28,7 +29,8 @@ prefix:   Kadatastr/
 
 | Источник | Что берём | Использование |
 | -------- | --------- | ------------- |
-| **geoBoundaries gbOpen** ([commit 9469f09](https://github.com/wmgeolab/geoBoundaries/raw/9469f09/releaseData/gbOpen/RUS/ADM1/)) | Граница Татарстана (RUS ADM1, поле `shapeISO == "RU-TA"`) | Скачивается через [scripts/download_geoboundaries.py](../scripts/download_geoboundaries.py) в `data/raw/regions/`. Закреплён на конкретном коммите → воспроизводимо. |
+| **geoBoundaries gbOpen** ([commit 9469f09](https://github.com/wmgeolab/geoBoundaries/raw/9469f09/releaseData/gbOpen/RUS/ADM1/)) | Граница Татарстана (RUS ADM1, поле `shapeISO == "RU-TA"`) | Скачивается через [scripts/download_geoboundaries.py](../scripts/download_geoboundaries.py) в `data/raw/regions/`. Закреплён на конкретном коммите → воспроизводимо. С [ADR-0007](decisions/0007-kazan-agglomeration-scope.md) пилот сужен до агломерации, граница Татарстана остаётся как референс. |
+| **Kazan agglomeration buffer** | Граница пилотного региона (`shapeISO == "RU-KAZAN-AGG"`) — 30 км буфер вокруг центра Казани, UTM zone 39N | Генерируется [scripts/build_kazan_agglomeration_boundary.py](../scripts/build_kazan_agglomeration_boundary.py) в `data/raw/regions/kazan-agglomeration.geojson`. Параметры (центр, радиус) фиксированы в скрипте. |
 
 ## Чего не хватает
 

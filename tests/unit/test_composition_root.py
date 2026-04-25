@@ -30,8 +30,8 @@ def test_container_builds_region_coverage_usecase(tmp_path: Path) -> None:
 def test_settings_defaults_match_pilot_region() -> None:
     settings = Settings()
 
-    assert settings.region_code == "RU-TA"
-    assert settings.h3_resolutions == [7, 8]
+    assert settings.region_code == "RU-KAZAN-AGG"
+    assert settings.h3_resolutions == [7, 8, 9, 10, 11]
     assert settings.region_boundary_field == "shapeISO"
 
 

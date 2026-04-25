@@ -139,6 +139,25 @@ def test_execute_passes_fitted_catboost_model_to_registry() -> None:
     assert model.is_fitted()
 
 
+def test_execute_auto_clips_parent_res_above_cell_res() -> None:
+    """parent_resolution=10 with res=8 cells must not crash; should clip to res-1."""
+    features, target = _features_target_pair(60, 8)
+    registry = FakeRegistry()
+    usecase = TrainValuationModel(
+        gold_reader=FakeGoldReader({8: features}),
+        target_reader=FakeGoldReader({8: target}),
+        model_registry=registry,
+        params=_FAST_PARAMS,
+        n_splits=3,
+        parent_resolution=10,
+    )
+
+    usecase.execute("RU-TA", 8)
+
+    # 1 run successfully logged; clip prevented the crash spatial_kfold would raise
+    assert len(registry.calls) == 1
+
+
 def test_execute_drops_rows_with_null_target() -> None:
     cells = [h3.latlng_to_cell(KAZAN_LAT + 0.01 * i, KAZAN_LON, 8) for i in range(60)]
     features = pl.DataFrame(

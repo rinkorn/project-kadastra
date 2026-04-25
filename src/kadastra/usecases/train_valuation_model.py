@@ -43,20 +43,23 @@ class TrainValuationModel:
         y = df[_TARGET_COLUMN].to_numpy().astype(np.float64)
         h3_indices = df["h3_index"].to_list()
 
+        # Spatial CV requires parent_resolution < cell_resolution; clip the
+        # configured ceiling so the same setting works across resolutions.
+        effective_parent_res = min(self._parent_resolution, resolution - 1)
         cv = cross_validate(
             X,
             y,
             h3_indices,
             params=self._params,
             n_splits=self._n_splits,
-            parent_resolution=self._parent_resolution,
+            parent_resolution=effective_parent_res,
         )
         final_model = train_catboost(X, y, self._params)
 
         params_payload = {
             **asdict(self._params),
             "n_splits": self._n_splits,
-            "parent_resolution": self._parent_resolution,
+            "parent_resolution": effective_parent_res,
             "feature_columns": feature_cols,
             "n_samples": len(y),
         }

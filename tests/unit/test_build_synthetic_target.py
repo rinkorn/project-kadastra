@@ -30,8 +30,9 @@ def _gold_row(resolution: int) -> pl.DataFrame:
         {
             "h3_index": [cell],
             "resolution": [resolution],
-            "building_count": [5],
+            "building_count_apartments": [5],
             "count_stations_1km": [1],
+            "road_length_m": [1000.0],
         }
     )
 
@@ -59,7 +60,6 @@ def test_execute_adds_target_columns_to_saved_frame() -> None:
     usecase.execute("RU-TA", resolutions=[8])
 
     _, _, df = target_store.saved[0]
-    assert "kazan_distance_km" in df.columns
     assert "synthetic_target_rub_per_m2" in df.columns
 
 
