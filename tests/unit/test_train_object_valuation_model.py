@@ -187,18 +187,27 @@ def test_excludes_cost_value_rub_as_target_leak() -> None:
     assert "cost_value_rub" not in feature_cols
 
 
-def test_skips_non_numeric_columns() -> None:
-    """NSPD valuation objects carry string fields (e.g. materials = "Кирпичные")
-    that can't be cast to Float64. The training pipeline must skip them rather
-    than crashing — categorical encoding is not yet wired up.
+def test_passes_string_columns_as_categorical_features() -> None:
+    """NSPD valuation objects carry string fields like materials =
+    "Кирпичные"/"Панельные"/"Монолитные" that strongly correlate with
+    price per m². CatBoost handles strings natively when their column
+    indices are passed via cat_features. The training pipeline must
+    wire them in instead of dropping them.
     """
     df = _featured(AssetClass.HOUSE, 60).with_columns(
-        pl.lit("Кирпичные").alias("materials")
+        pl.Series(
+            "materials",
+            ["Кирпичные", "Панельные", "Монолитные"] * 20,
+            dtype=pl.Utf8,
+        )
     )
     reader = _FakeReader({AssetClass.HOUSE: df})
     registry = _FakeRegistry()
 
     _usecase(reader, registry).execute("RU-KAZAN-AGG", AssetClass.HOUSE)
 
-    feature_cols = set(registry.calls[0]["params"]["feature_columns"])
-    assert "materials" not in feature_cols
+    params = registry.calls[0]["params"]
+    feature_cols: list[str] = params["feature_columns"]
+    assert "materials" in feature_cols
+    cat_indices = params["cat_feature_indices"]
+    assert cat_indices == [feature_cols.index("materials")]
