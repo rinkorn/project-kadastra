@@ -18,13 +18,15 @@ DataFrame. The shared helper has to:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import polars as pl
 
 from kadastra.ml.object_feature_columns import select_object_feature_columns
 
 
-def _df(schema: dict[str, pl.DataType]) -> pl.DataFrame:
-    return pl.DataFrame(schema=schema)
+def _df(schema: Mapping[str, pl.DataType | type[pl.DataType]]) -> pl.DataFrame:
+    return pl.DataFrame(schema=dict(schema))
 
 
 def test_excludes_identifier_and_target_columns() -> None:

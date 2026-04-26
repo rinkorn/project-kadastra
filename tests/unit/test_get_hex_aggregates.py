@@ -61,7 +61,7 @@ def test_filters_by_asset_class(tmp_path: Path) -> None:
     out = GetHexAggregates(tmp_path).execute(
         "RU-KAZAN-AGG", 8, asset_class="apartment", feature="count"
     )
-    hexes = sorted(r["hex"] for r in out)
+    hexes = sorted(str(r["hex"]) for r in out)
     assert hexes == ["8a", "8b"]
 
 

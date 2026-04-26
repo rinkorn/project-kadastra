@@ -6,6 +6,8 @@ a (resolution, h3_index, asset_class) wide table for the map UI.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
+
 import h3
 import polars as pl
 
@@ -14,7 +16,7 @@ from kadastra.etl.hex_aggregation import aggregate_objects_to_hex
 KAZAN_LAT, KAZAN_LON = 55.7887, 49.1221
 
 
-def _objects(rows: list[dict[str, object]]) -> pl.DataFrame:
+def _objects(rows: Sequence[Mapping[str, object]]) -> pl.DataFrame:
     schema = {
         "object_id": pl.Utf8,
         "asset_class": pl.Utf8,

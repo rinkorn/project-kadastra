@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import polars as pl
 from shapely.geometry import Polygon
+from shapely.geometry.base import BaseGeometry
 
 from kadastra.etl.object_municipality_features import (
     compute_object_municipality_features,
@@ -379,7 +380,7 @@ def test_intra_raion_via_polygon_takes_precedence_over_address() -> None:
     address text contains a different raion name."""
     sovetsky = Polygon([(49.10, 55.77), (49.20, 55.77), (49.20, 55.82), (49.10, 55.82)])
     vahit = Polygon([(48.95, 55.75), (49.05, 55.75), (49.05, 55.80), (48.95, 55.80)])
-    polygons = [("Советский", sovetsky), ("Вахитовский", vahit)]
+    polygons: list[tuple[str, BaseGeometry]] = [("Советский", sovetsky), ("Вахитовский", vahit)]
 
     objects = _objects(
         [
@@ -423,7 +424,7 @@ def test_intra_raion_polygon_fills_when_address_lacks_raion() -> None:
     """Polygon path resolves intra_city_raion for objects whose address
     omits the raion segment entirely (a known NSPD pattern)."""
     sovetsky = Polygon([(49.10, 55.77), (49.20, 55.77), (49.20, 55.82), (49.10, 55.82)])
-    polygons = [("Советский", sovetsky)]
+    polygons: list[tuple[str, BaseGeometry]] = [("Советский", sovetsky)]
 
     objects = _objects(
         [

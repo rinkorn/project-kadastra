@@ -124,7 +124,7 @@ def test_house_class_average_below_apartment_at_same_features() -> None:
         "synthetic_target_rub_per_m2"
     ].mean()
 
-    assert apt_mean is not None and house_mean is not None
+    assert isinstance(apt_mean, float) and isinstance(house_mean, float)
     assert apt_mean > house_mean
 
 
