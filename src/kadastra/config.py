@@ -94,6 +94,10 @@ class Settings(BaseSettings):
     # map UI's hex-mode in addition to per-object scatter mode.
     hex_aggregates_base_path: Path = Path("data/gold/hex_aggregates")
     hex_aggregates_resolutions: list[int] = [7, 8, 9, 10]
+    # ADR-0010 empirical anchor: ЕМИСС/Росстат silver. /api/market_reference
+    # reads #61781 (apartments by center city, quarterly) for the inspector.
+    emiss_silver_base_path: Path = Path("data/silver/emiss")
+    emiss_market_reference_year: int = 2025
     catboost_iterations: int = 500
     catboost_learning_rate: float = 0.05
     catboost_depth: int = 6

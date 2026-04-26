@@ -38,6 +38,8 @@ def _settings(tmp_path: Path) -> Settings:
         valuation_object_store_path=tmp_path / "valuation_objects",
         hex_aggregates_base_path=tmp_path / "hex_aggregates",
         model_registry_path=tmp_path / "models",
+        emiss_silver_base_path=tmp_path / "emiss",
+        emiss_market_reference_year=2025,
     )
 
 
@@ -142,12 +144,58 @@ def _seed_oof_predictions(settings: Settings) -> None:
     ).write_parquet(run_dir / "oof_predictions.parquet")
 
 
+def _seed_emiss(settings: Settings) -> None:
+    """Two rows for Tatarstan center-city Q1 2025: secondary 156k +
+    primary 240k."""
+    base = settings.emiss_silver_base_path / "61781"
+    base.mkdir(parents=True, exist_ok=True)
+    rows = [
+        {
+            "indicator_id": "61781", "region_okato": "92000000000",
+            "region_name": "Татарстан", "mestdom_code": "2",
+            "mestdom_name": "Центр субъекта РФ", "unit_code": "rub",
+            "unit_name": "руб/м²", "period_code": "q1", "period_name": "Q1",
+            "period_quarter": 1, "rynzhel_code": "3",
+            "rynzhel_name": "Вторичный рынок жилья",
+            "tipkvartir_code": "1", "tipkvartir_name": "Все типы квартир",
+            "year": 2025, "period_label": "2025-Q1",
+            "value_rub_per_m2": 156_000.0,
+        },
+        {
+            "indicator_id": "61781", "region_okato": "92000000000",
+            "region_name": "Татарстан", "mestdom_code": "2",
+            "mestdom_name": "Центр субъекта РФ", "unit_code": "rub",
+            "unit_name": "руб/м²", "period_code": "q1", "period_name": "Q1",
+            "period_quarter": 1, "rynzhel_code": "1",
+            "rynzhel_name": "Первичный рынок жилья",
+            "tipkvartir_code": "1", "tipkvartir_name": "Все типы квартир",
+            "year": 2025, "period_label": "2025-Q1",
+            "value_rub_per_m2": 240_000.0,
+        },
+    ]
+    pl.DataFrame(
+        rows,
+        schema={
+            "indicator_id": pl.Utf8, "region_okato": pl.Utf8,
+            "region_name": pl.Utf8, "mestdom_code": pl.Utf8,
+            "mestdom_name": pl.Utf8, "unit_code": pl.Utf8,
+            "unit_name": pl.Utf8, "period_code": pl.Utf8,
+            "period_name": pl.Utf8, "period_quarter": pl.Int64,
+            "rynzhel_code": pl.Utf8, "rynzhel_name": pl.Utf8,
+            "tipkvartir_code": pl.Utf8, "tipkvartir_name": pl.Utf8,
+            "year": pl.Int64, "period_label": pl.Utf8,
+            "value_rub_per_m2": pl.Float64,
+        },
+    ).write_parquet(base / "data.parquet")
+
+
 @pytest.fixture
 def client(tmp_path: Path) -> Iterator[TestClient]:
     settings = _settings(tmp_path)
     _seed_hex_aggregates(settings)
     _seed_valuation_objects(settings)
     _seed_oof_predictions(settings)
+    _seed_emiss(settings)
     app = create_app(settings)
     with TestClient(app) as c:
         yield c
@@ -385,6 +433,60 @@ def test_feature_options_lists_choices(client: TestClient) -> None:
     assert "dominant_intra_city_raion" in payload["categorical_features"]
     # ADR-0016 quartet — UI uses this list to populate the model picker.
     assert {"catboost", "ebm", "grey_tree", "naive_linear"} <= set(payload["models"])
+
+
+def test_market_reference_returns_emiss_anchor_for_apartment(
+    client: TestClient,
+) -> None:
+    """ADR-0010 anchor: /api/market_reference returns EMISS-61781
+    average ₽/м² for the configured year (2025 in fixture). The UI
+    quartet panel renders this as «EMISS Казань вторичный/первичный»
+    next to the four model OOFs."""
+    response = client.get(
+        "/api/market_reference",
+        params={"asset_class": "apartment"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["region"] == "RU-TA"
+    assert payload["asset_class"] == "apartment"
+    assert payload["year"] == 2025
+    data = payload["data"]
+    assert data is not None
+    assert data["source"] == "EMISS-61781"
+    assert data["secondary_rub_per_m2"] == 156_000.0
+    assert data["primary_rub_per_m2"] == 240_000.0
+
+
+def test_market_reference_returns_null_data_for_non_apartment(
+    client: TestClient,
+) -> None:
+    """EMISS #61781 is apartment-only — house/commercial/landplot
+    requests succeed with status 200 but ``data: null`` so the UI
+    can hide the row gracefully."""
+    response = client.get(
+        "/api/market_reference",
+        params={"asset_class": "house"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["data"] is None
+
+
+def test_market_reference_uses_explicit_year_query_param(
+    client: TestClient,
+) -> None:
+    """Caller-supplied ``year`` overrides the configured default —
+    used by future UI controls that let the human pick the reference
+    year. Out-of-range years return data: null (no EMISS coverage)."""
+    response = client.get(
+        "/api/market_reference",
+        params={"asset_class": "apartment", "year": 2010},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["year"] == 2010
+    assert payload["data"] is None
 
 
 def test_inspection_rejects_unknown_model(client: TestClient) -> None:

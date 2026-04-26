@@ -36,6 +36,7 @@ from kadastra.usecases.get_hex_aggregates import (
     NUMERIC_FEATURES,
     GetHexAggregates,
 )
+from kadastra.usecases.get_market_reference import GetMarketReference
 from kadastra.usecases.load_object_inspection import LoadObjectInspection
 
 # ADR-0016 quartet — model selector accepted by /api/inspection and
@@ -66,6 +67,8 @@ def make_api_router(
     region_code: str,
     get_hex_aggregates: GetHexAggregates,
     load_inspection: LoadObjectInspection,
+    get_market_reference: GetMarketReference,
+    market_reference_year: int,
 ) -> APIRouter:
     router = APIRouter(prefix="/api")
 
@@ -158,6 +161,29 @@ def make_api_router(
             "asset_class": ac.value,
             "model": model,
             "data": detail,
+        }
+
+    @router.get("/market_reference")
+    def market_reference(
+        asset_class: str = Query(...),
+        year: int | None = Query(None),
+    ) -> dict[str, Any]:
+        """ADR-0010 anchor: ЕМИСС/Росстат #61781 average ₽/м² for the
+        region's center city, both primary and secondary apartment markets.
+        Used by the inspector quartet panel as «вот рынок, а вот наша
+        ЕГРН-основанная модель» reference. Apartments only; non-apartment
+        classes return ``data: null`` with status 200 (UI treats as
+        «no reference available» and hides the row)."""
+        ac = _parse_asset_class(asset_class)
+        ref_year = year if year is not None else market_reference_year
+        data = get_market_reference.execute(
+            region_code=region_code, asset_class=ac.value, year=ref_year,
+        )
+        return {
+            "region": region_code,
+            "asset_class": ac.value,
+            "year": ref_year,
+            "data": data,
         }
 
     @router.get("/feature_options")
