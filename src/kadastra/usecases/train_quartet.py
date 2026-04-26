@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 from typing import Any, cast
 
 import h3
@@ -138,9 +139,18 @@ class TrainQuartet:
             for m in ("catboost", "ebm", "naive_linear", "grey_tree")
         }
 
-        # When folds run in parallel, inner thread pools are pinned to 1
-        # so n_splits × default-all-cores doesn't oversubscribe the box.
-        inner_threads = 1 if self._parallel_folds else None
+        # When folds run in parallel, divide the available core budget
+        # evenly across the n_splits fold workers — pinning inner=1
+        # turned out to make EBM run its outer_bags (default 8)
+        # *sequentially* per fold, killing most of the speedup. With
+        # autoscale (cpu_count // n_splits) each fold worker gets a few
+        # outer-bags-parallel slots, so total resident workers ≈ cpu
+        # without oversubscription.
+        if self._parallel_folds:
+            cpu = os.cpu_count() or 8
+            inner_threads = max(1, cpu // self._n_splits)
+        else:
+            inner_threads = None
 
         pass1_args = [
             (
