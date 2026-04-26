@@ -57,6 +57,8 @@ _LAYER_FILTERS: dict[str, list[str]] = {
     "park": [
         "wa/leisure=park",
         "wa/leisure=garden",
+    ],
+    "forest": [
         "wa/landuse=forest",
     ],
     "industrial": [
