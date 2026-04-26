@@ -390,19 +390,58 @@ function renderObjects(payload) {
     const scaler = buildScaler(data.map(d => d[mode]), document.getElementById('scale').value);
     getFillColor = d => rampColor(SEQ_RAMP, scaler.normalize(d[mode]));
   }
-  const layer = new deck.ScatterplotLayer({
-    id: 'objects',
-    data,
-    getPosition: d => [d.lon, d.lat],
-    getFillColor,
-    radiusUnits: 'meters',
-    getRadius: 14,
-    stroked: false,
-    pickable: true,
-    onClick: ({ object }) => object && showObjectInspector(object, payload.asset_class),
-  });
+  // Split rows by geometry availability: objects with a footprint
+  // render as PolygonLayer (fill + bright outline); the rest fall
+  // back to small dots so they're not invisible. Same getFillColor
+  // closure feeds both layers — colour mapping stays consistent.
+  const withPolygon = data.filter(d => d.geometry && d.geometry.coordinates);
+  const withoutPolygon = data.filter(d => !d.geometry || !d.geometry.coordinates);
+  const fillWithAlpha = d => {
+    const [r, g, b] = getFillColor(d);
+    return [r, g, b, 170];           // semi-transparent so outline pops
+  };
+  const lineFromFill = d => {
+    const [r, g, b] = getFillColor(d);
+    // Push toward white by ~35 % so the outline reads brighter than
+    // the fill regardless of where the colour sits on the ramp.
+    const lift = c => Math.min(255, Math.round(c + (255 - c) * 0.35));
+    return [lift(r), lift(g), lift(b), 255];
+  };
+  const layers = [];
+  if (withPolygon.length > 0) {
+    layers.push(new deck.PolygonLayer({
+      id: 'objects-polygons',
+      data: withPolygon,
+      getPolygon: d => d.geometry.coordinates[0],
+      getFillColor: fillWithAlpha,
+      getLineColor: lineFromFill,
+      lineWidthMinPixels: 1.5,
+      stroked: true,
+      filled: true,
+      pickable: true,
+      onClick: ({ object }) => object && showObjectInspector(object, payload.asset_class),
+    }));
+  }
+  if (withoutPolygon.length > 0) {
+    // Small dot as fallback for objects without a polygon footprint
+    // (silver row missing geometry). Smaller than the old 14 m radius
+    // so they read as «no footprint» rather than full circles.
+    layers.push(new deck.ScatterplotLayer({
+      id: 'objects-points',
+      data: withoutPolygon,
+      getPosition: d => [d.lon, d.lat],
+      getFillColor,
+      radiusUnits: 'meters',
+      getRadius: 6,
+      stroked: true,
+      lineWidthMinPixels: 1.5,
+      getLineColor: lineFromFill,
+      pickable: true,
+      onClick: ({ object }) => object && showObjectInspector(object, payload.asset_class),
+    }));
+  }
   deckOverlay.setProps({
-    layers: [layer, ...selectionOverlayLayers()],
+    layers: [...layers, ...selectionOverlayLayers()],
     getTooltip: ({ object }) =>
       object &&
       `${payload.asset_class} ${object.object_id}\n${mode}: ${formatValue(object[mode])}`,
