@@ -269,10 +269,13 @@
     </label>
     <label id="object-mode-wrap" style="display:none">Mode
       <select id="object_mode">
-        <option value="y_true" selected>y_true (ЕГРН)</option>
-        <option value="y_pred_oof">y_pred_oof (CV)</option>
-        <option value="residual">residual (pred − true)</option>
-        <option value="fold_id">fold_id (spatial split)</option>
+        <optgroup label="prediction" id="object-mode-core-group">
+          <option value="y_true" selected>y_true (ЕГРН)</option>
+          <option value="y_pred_oof">y_pred_oof (CV)</option>
+          <option value="residual">residual (pred − true)</option>
+          <option value="fold_id">fold_id (spatial split)</option>
+        </optgroup>
+        <optgroup label="features" id="object-mode-features-group"></optgroup>
       </select>
     </label>
     <label id="model-wrap">Model
@@ -288,6 +291,12 @@
         <option value="p98" selected>linear (p2–p98)</option>
         <option value="log">log (min–max)</option>
         <option value="linear">linear (min–max)</option>
+      </select>
+    </label>
+    <label>Basemap
+      <select id="basemap">
+        <option value="osm" selected>OSM</option>
+        <option value="off">off (transparent)</option>
       </select>
     </label>
     <span class="stat" id="stat"></span>
@@ -653,6 +662,16 @@ async function loadFeatureOptions() {
     opt.value = f; opt.textContent = f;
     if (f === 'median_target_rub_per_m2') opt.selected = true;
     sel.appendChild(opt);
+  }
+  // Object scatter mode dropdown — append per-object features as a
+  // second optgroup. Renderer treats anything that isn't fold_id/
+  // residual as sequential, so feature names just work.
+  const objGroup = document.getElementById('object-mode-features-group');
+  objGroup.innerHTML = '';
+  for (const f of (featureOptions.object_features || [])) {
+    const opt = document.createElement('option');
+    opt.value = f; opt.textContent = f;
+    objGroup.appendChild(opt);
   }
 }
 
@@ -1405,6 +1424,15 @@ function recolor() {
 ['object_mode', 'scale'].forEach(id =>
   document.getElementById(id).addEventListener('change', recolor)
 );
+
+// Basemap toggle: flip the OSM raster layer's visibility. `off` makes
+// the underlying canvas transparent so deck.gl polygons and hexes
+// render against pure black — useful when the OSM tiles are visually
+// noisy (lots of POI labels) and the user wants the data layer alone.
+document.getElementById('basemap').addEventListener('change', (ev) => {
+  const visibility = ev.target.value === 'off' ? 'none' : 'visible';
+  map.setLayoutProperty('osm', 'visibility', visibility);
+});
 
 // Dual thumbs overlaid on the gradient fire 'input' on every drag
 // tick → live clamp. Each thumb maps to its own state var; thumbs

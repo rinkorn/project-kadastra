@@ -120,10 +120,10 @@ def test_list_for_map_joins_predictions() -> None:
     assert item["y_pred_oof"] == 95_000.0
     assert item["residual"] == -5_000.0
     assert item["fold_id"] == 2
-    assert set(item.keys()) == {
+    assert {
         "object_id", "lat", "lon", "y_true", "y_pred_oof", "residual",
         "fold_id", "polygon_wkt_3857",
-    }
+    }.issubset(item.keys())
 
 
 def test_list_for_map_null_predictions_when_oof_missing() -> None:
@@ -196,6 +196,97 @@ def test_list_for_map_passes_polygon_wkt_through() -> None:
     )
     assert rows[0]["polygon_wkt_3857"] == wkt
     assert rows[1]["polygon_wkt_3857"] is None
+
+
+def test_list_for_map_includes_curated_numeric_features() -> None:
+    """The map's object scatter colours objects by feature in addition
+    to y_true / y_pred_oof / residual / fold_id. list_for_map must
+    therefore ship the curated subset of numeric per-object features
+    (areas, distances to water/park/POIs, share-in-buffer, zonal
+    counts, age) in the slim payload — full feature dict is too heavy
+    for ~1k objects."""
+    schema = {
+        "object_id": pl.Utf8, "asset_class": pl.Utf8,
+        "lat": pl.Float64, "lon": pl.Float64,
+        "synthetic_target_rub_per_m2": pl.Float64,
+        "polygon_wkt_3857": pl.Utf8,
+        # Curated numeric features — same naming as the gold parquet.
+        "area_m2": pl.Float64,
+        "levels": pl.Int64, "flats": pl.Int64,
+        "year_built": pl.Int64, "age_years": pl.Float64,
+        "dist_to_water_m": pl.Float64, "dist_to_park_m": pl.Float64,
+        "dist_to_school_m": pl.Float64,
+        "water_share_500m": pl.Float64, "park_share_500m": pl.Float64,
+        "road_length_500m": pl.Float64,
+        "school_within_500m": pl.Float64,
+        "dist_metro_m": pl.Float64,
+    }
+    objects = pl.DataFrame(
+        [
+            {
+                "object_id": "a1", "asset_class": "apartment",
+                "lat": 55.78, "lon": 49.12,
+                "synthetic_target_rub_per_m2": 100_000.0,
+                "polygon_wkt_3857": None,
+                "area_m2": 60.0, "levels": 5, "flats": 100,
+                "year_built": 2010, "age_years": 16.0,
+                "dist_to_water_m": 250.0, "dist_to_park_m": 400.0,
+                "dist_to_school_m": 120.0,
+                "water_share_500m": 0.05, "park_share_500m": 0.10,
+                "road_length_500m": 1500.0,
+                "school_within_500m": 3.0,
+                "dist_metro_m": 800.0,
+            },
+        ],
+        schema=schema,
+    )
+    usecase = LoadObjectInspection(
+        reader=_FakeReader({AssetClass.APARTMENT: objects}),
+        oof_reader=_FakeOofReader({}),
+    )
+    result = usecase.list_for_map("RU-KAZAN-AGG", AssetClass.APARTMENT)
+    item = result[0]
+    # Geo + age fields must round-trip into the slim payload.
+    assert item["dist_to_water_m"] == 250.0
+    assert item["dist_to_park_m"] == 400.0
+    assert item["dist_to_school_m"] == 120.0
+    assert item["water_share_500m"] == 0.05
+    assert item["park_share_500m"] == 0.10
+    assert item["road_length_500m"] == 1500.0
+    assert item["school_within_500m"] == 3.0
+    assert item["age_years"] == 16.0
+    assert item["area_m2"] == 60.0
+    assert item["dist_metro_m"] == 800.0
+
+
+def test_list_for_map_skips_features_absent_from_input() -> None:
+    """If the gold frame is missing some curated columns (older parquet
+    or per-class schema variation — e.g. landplot has no ``flats``),
+    list_for_map must not crash; the missing feature simply isn't in
+    the slim payload."""
+    objects = _objects(
+        [
+            {
+                "object_id": "a1", "asset_class": "apartment",
+                "lat": 55.78, "lon": 49.12,
+                "synthetic_target_rub_per_m2": 100_000.0,
+                "intra_city_raion": "Советский", "levels": 5,
+                "polygon_wkt_3857": None,
+            }
+        ]
+    )
+    usecase = LoadObjectInspection(
+        reader=_FakeReader({AssetClass.APARTMENT: objects}),
+        oof_reader=_FakeOofReader({}),
+    )
+    rows = usecase.list_for_map("RU-KAZAN-AGG", AssetClass.APARTMENT)
+    assert len(rows) == 1
+    item = rows[0]
+    assert "dist_to_water_m" not in item
+    assert "age_years" not in item
+    # Required core fields still present.
+    assert item["object_id"] == "a1"
+    assert item["y_true"] == 100_000.0
 
 
 def test_get_detail_returns_full_feature_dict() -> None:

@@ -34,6 +34,36 @@ _TARGET = "synthetic_target_rub_per_m2"
 # ``get_detail_quartet`` (UI shows them in this order in the
 # comparison panel).
 _QUARTET_MODELS = ("catboost", "ebm", "grey_tree", "naive_linear")
+# Curated per-object numeric features the map UI can colour the
+# object scatter by. Same naming as the gold parquet — the slim
+# payload only includes columns actually present on the input frame
+# (per-class schema variation, e.g. landplot has no ``flats``).
+OBJECT_FEATURE_COLUMNS: tuple[str, ...] = (
+    # Building / land descriptors
+    "area_m2", "levels", "flats", "year_built", "age_years",
+    # ADR-0019 distance to nearest geometry — polygonal / linear / POI
+    "dist_to_water_m", "dist_to_park_m", "dist_to_industrial_m",
+    "dist_to_cemetery_m", "dist_to_landfill_m",
+    "dist_to_powerline_m", "dist_to_railway_m",
+    "dist_to_school_m", "dist_to_kindergarten_m", "dist_to_clinic_m",
+    "dist_to_hospital_m", "dist_to_pharmacy_m", "dist_to_supermarket_m",
+    "dist_to_cafe_m", "dist_to_restaurant_m",
+    "dist_to_bus_stop_m", "dist_to_tram_stop_m", "dist_to_railway_station_m",
+    "dist_metro_m", "dist_entrance_m",
+    # Polygonal share-in-buffer at 500 m
+    "water_share_500m", "park_share_500m",
+    "industrial_share_500m", "cemetery_share_500m",
+    # Road density + zonal counts at 500 m / 1 km
+    "road_length_500m",
+    "count_stations_1km", "count_entrances_500m",
+    "count_apartments_500m", "count_houses_500m", "count_commercial_500m",
+    "school_within_500m", "kindergarten_within_500m",
+    "clinic_within_500m", "hospital_within_500m",
+    "pharmacy_within_500m", "supermarket_within_500m",
+    "cafe_within_500m", "restaurant_within_500m",
+    "bus_stop_within_500m", "tram_stop_within_500m",
+    "railway_station_within_500m",
+)
 
 
 class LoadObjectInspection:
@@ -55,12 +85,17 @@ class LoadObjectInspection:
         joined = self._load_joined(region_code, asset_class, model=model)
         if joined.is_empty():
             return []
-        cols = [
+        core_cols = [
             "object_id", "lat", "lon",
             "y_true", "y_pred_oof", "residual", "fold_id",
             "polygon_wkt_3857",
         ]
-        slim = joined.select(cols)
+        # Curated features are optional: a per-class schema may be
+        # missing some columns (landplot has no ``flats``, an older
+        # parquet may not yet carry POI distances), and the slim
+        # payload simply omits them when absent.
+        feature_cols = [c for c in OBJECT_FEATURE_COLUMNS if c in joined.columns]
+        slim = joined.select(core_cols + feature_cols)
         return slim.to_dicts()
 
     def get_detail(
