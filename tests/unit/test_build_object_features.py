@@ -51,6 +51,7 @@ def _objects_for(ac: AssetClass) -> pl.DataFrame:
                 "lon": KAZAN_LON,
                 "levels": 9,
                 "flats": 72,
+                "year_built": 2015,
                 "polygon_wkt_3857": sq,
             },
             {
@@ -60,6 +61,7 @@ def _objects_for(ac: AssetClass) -> pl.DataFrame:
                 "lon": KAZAN_LON,
                 "levels": 5,
                 "flats": 30,
+                "year_built": 1972,
                 "polygon_wkt_3857": sq,
             },
         ],
@@ -70,6 +72,7 @@ def _objects_for(ac: AssetClass) -> pl.DataFrame:
             "lon": pl.Float64,
             "levels": pl.Int64,
             "flats": pl.Int64,
+            "year_built": pl.Int64,
             "polygon_wkt_3857": pl.Utf8,
         },
     )
@@ -148,6 +151,7 @@ def _usecase(
     zonal_layer_names: list[str] | None = None,
     poly_area_radii_m: list[int] | None = None,
     poly_area_layer_paths: dict[str, str] | None = None,
+    current_year_for_age_features: int = 2026,
 ) -> BuildObjectFeatures:
     return BuildObjectFeatures(
         reader=store,
@@ -183,6 +187,7 @@ def _usecase(
         poly_area_layer_paths=(
             poly_area_layer_paths if poly_area_layer_paths is not None else {}
         ),
+        current_year_for_age_features=current_year_for_age_features,
     )
 
 
@@ -270,6 +275,40 @@ def test_appends_object_geometry_feature_columns() -> None:
     assert row["polygon_n_vertices"] == 4
 
 
+def test_appends_object_age_feature_columns() -> None:
+    """ADR-0020: BuildObjectFeatures must call compute_object_age_features
+    so the 4 derived age/era columns appear in the saved partition with
+    a deterministic current_year (2026)."""
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(store, raw, current_year_for_age_features=2026).execute(
+        "RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT]
+    )
+
+    df = store.calls[0].df
+    age_cols = {
+        "age_years",
+        "age_years_sq",
+        "era_category",
+        "is_new_construction",
+    }
+    assert age_cols.issubset(set(df.columns))
+    # Fixture has year_built ∈ {2015, 1972} → ages 11 and 54 (2026−).
+    rows = sorted(df.iter_rows(named=True), key=lambda r: r["year_built"])
+    assert rows[0]["year_built"] == 1972  # brezhnev (1969–1980)
+    assert rows[0]["age_years"] == 54
+    assert rows[0]["era_category"] == "brezhnev"
+    assert rows[1]["year_built"] == 2015
+    assert rows[1]["age_years"] == 11
+    assert rows[1]["era_category"] == "2010s"
+
+
 def test_neighbor_counts_see_all_classes() -> None:
     # Apartment near a house and a commercial — neighbor counts should reflect that
     sq = "POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0))"
@@ -282,6 +321,7 @@ def test_neighbor_counts_see_all_classes() -> None:
                 "lon": KAZAN_LON,
                 "levels": 9,
                 "flats": 72,
+                "year_built": 2010,
                 "polygon_wkt_3857": sq,
             }
         ],
@@ -292,6 +332,7 @@ def test_neighbor_counts_see_all_classes() -> None:
             "lon": pl.Float64,
             "levels": pl.Int64,
             "flats": pl.Int64,
+            "year_built": pl.Int64,
             "polygon_wkt_3857": pl.Utf8,
         },
     )
@@ -304,6 +345,7 @@ def test_neighbor_counts_see_all_classes() -> None:
                 "lon": KAZAN_LON,
                 "levels": 1,
                 "flats": None,
+                "year_built": 1985,
                 "polygon_wkt_3857": sq,
             }
         ],
@@ -318,6 +360,7 @@ def test_neighbor_counts_see_all_classes() -> None:
                 "lon": KAZAN_LON + 0.0009,
                 "levels": 1,
                 "flats": None,
+                "year_built": 2005,
                 "polygon_wkt_3857": sq,
             }
         ],
@@ -501,6 +544,7 @@ def test_handles_empty_partition_gracefully() -> None:
         "lon": pl.Float64,
         "levels": pl.Int64,
         "flats": pl.Int64,
+        "year_built": pl.Int64,
     }
     store = _FakeStore(
         {

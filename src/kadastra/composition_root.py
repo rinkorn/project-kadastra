@@ -226,6 +226,7 @@ class Container:
             gar_lookup_mun_lookup_path=s.gar_lookup_mun_lookup_path,
             gar_lookup_object_params_path=s.gar_lookup_object_params_path,
             osm_raions_geojson_path=s.osm_raions_geojson_path,
+            current_year_for_age_features=s.current_year_for_age_features,
         )
 
     def build_object_synthetic_target(self) -> BuildObjectSyntheticTarget:
