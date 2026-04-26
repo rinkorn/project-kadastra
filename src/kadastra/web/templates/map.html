@@ -65,6 +65,21 @@
     .legend .swatches { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; }
     .legend .swatches span { display: inline-flex; align-items: center; gap: 4px; }
     .legend .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+    .legend .palette-picker { display: flex; flex-wrap: wrap; gap: 4px;
+      margin-top: 8px; max-width: 240px;
+    }
+    .legend .palette-picker .opt {
+      width: 56px; height: 12px; border-radius: 3px; cursor: pointer;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      transition: transform 0.1s ease, border-color 0.1s ease;
+    }
+    .legend .palette-picker .opt:hover { transform: translateY(-1px);
+      border-color: rgba(255, 255, 255, 0.6);
+    }
+    .legend .palette-picker .opt.active {
+      border-color: #fde047;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+    }
   </style>
 </head>
 <body>
@@ -120,29 +135,6 @@
         <option value="linear">linear (min–max)</option>
       </select>
     </label>
-    <label>Palette
-      <select id="palette">
-        <optgroup label="Sequential">
-          <option value="RdYlBu_r" selected>RdYlBu reversed</option>
-          <option value="viridis">viridis</option>
-          <option value="magma">magma</option>
-          <option value="plasma">plasma</option>
-          <option value="inferno">inferno</option>
-          <option value="cividis">cividis</option>
-          <option value="blues">blues</option>
-          <option value="greens">greens</option>
-          <option value="oranges">oranges</option>
-          <option value="greys">greys</option>
-        </optgroup>
-        <optgroup label="Diverging (residual)">
-          <option value="RdBu">RdBu</option>
-          <option value="BrBG">BrBG</option>
-          <option value="PuOr">PuOr</option>
-          <option value="RdYlGn">RdYlGn</option>
-          <option value="Spectral">Spectral</option>
-        </optgroup>
-      </select>
-    </label>
     <span class="stat" id="stat"></span>
   </div>
 
@@ -158,6 +150,7 @@
     <div class="gradient" id="legend-gradient"></div>
     <div class="ticks"><span id="legend-min"></span><span id="legend-max"></span></div>
     <div class="swatches" id="legend-swatches" style="display:none"></div>
+    <div class="palette-picker" id="legend-palette-picker"></div>
   </div>
 
 <script>
@@ -802,6 +795,7 @@ function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
       const [r, g, b] = categoryColor(String(v));
       return `<span><span class="swatch" style="background: rgb(${r},${g},${b})"></span>${escapeHtml(String(v))}</span>`;
     }).join('');
+    renderPalettePicker(null);
   } else if (isDiverging) {
     gradient.style.display = '';
     gradient.style.background = rampGradientCss(activeDivRamp());
@@ -809,6 +803,7 @@ function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
     const max = Math.max(...values.map(v => Math.abs(v)));
     document.getElementById('legend-min').textContent = formatValue(-max);
     document.getElementById('legend-max').textContent = formatValue(max);
+    renderPalettePicker('div');
   } else {
     gradient.style.display = '';
     gradient.style.background = rampGradientCss(activeSeqRamp());
@@ -820,7 +815,33 @@ function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
     else { lo = sorted[0]; hi = sorted[sorted.length - 1]; }
     document.getElementById('legend-min').textContent = formatValue(lo);
     document.getElementById('legend-max').textContent = formatValue(hi);
+    renderPalettePicker('seq');
   }
+}
+
+// Inline palette picker: a row of clickable mini-gradients in the
+// legend, replacing the old toolbar dropdown. Each opt previews its
+// ramp; click swaps the active palette and re-renders. Hidden for
+// categorical metrics (fold_id) where palettes don't apply.
+function renderPalettePicker(kind) {
+  const container = document.getElementById('legend-palette-picker');
+  if (!kind) { container.innerHTML = ''; return; }
+  const ramps = kind === 'div' ? DIV_RAMPS : SEQ_RAMPS;
+  const activeId = kind === 'div' ? divPaletteId : seqPaletteId;
+  container.innerHTML = Object.entries(ramps).map(([id, stops]) => `
+    <div class="opt${id === activeId ? ' active' : ''}"
+         data-id="${id}" data-kind="${kind}"
+         title="${id}"
+         style="background: ${rampGradientCss(stops)}"></div>
+  `).join('');
+  container.querySelectorAll('.opt').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.id;
+      if (el.dataset.kind === 'div') divPaletteId = id;
+      else seqPaletteId = id;
+      recolor();
+    });
+  });
 }
 
 // ---------- main ----------
@@ -864,16 +885,6 @@ function recolor() {
 ['object_mode', 'scale'].forEach(id =>
   document.getElementById(id).addEventListener('change', recolor)
 );
-// Palette dropdown picks either a sequential or a diverging ramp; the
-// renderer reads the matching state var depending on the current
-// metric (residual = diverging, everything else = sequential), so
-// each kind keeps its own «last picked» palette across mode changes.
-document.getElementById('palette').addEventListener('change', (ev) => {
-  const id = ev.target.value;
-  if (id in SEQ_RAMPS) seqPaletteId = id;
-  else if (id in DIV_RAMPS) divPaletteId = id;
-  recolor();
-});
 
 map.on('load', async () => {
   await loadFeatureOptions();
