@@ -124,6 +124,35 @@
       border-color: #fde047;
       opacity: 1;
     }
+    .legend .opacity-row { display: flex; align-items: center; gap: 6px;
+      margin-top: 4px; max-width: 240px; font-size: 10px; opacity: 0.85;
+    }
+    .legend .opacity-row .label { width: 14px; opacity: 0.7; }
+    .legend .opacity-row input[type="range"] { flex: 1; height: 14px;
+      background: transparent; -webkit-appearance: none; appearance: none;
+      margin: 0; cursor: pointer;
+    }
+    .legend .opacity-row input[type="range"]::-webkit-slider-runnable-track {
+      height: 3px; background: rgba(255, 255, 255, 0.25); border-radius: 2px;
+    }
+    .legend .opacity-row input[type="range"]::-moz-range-track {
+      height: 3px; background: rgba(255, 255, 255, 0.25); border-radius: 2px;
+    }
+    .legend .opacity-row input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #fde047; cursor: pointer; margin-top: -3.5px;
+      border: 1px solid rgba(0, 0, 0, 0.5);
+    }
+    .legend .opacity-row input[type="range"]::-moz-range-thumb {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #fde047; cursor: pointer;
+      border: 1px solid rgba(0, 0, 0, 0.5);
+    }
+    .legend .opacity-row .val {
+      min-width: 36px; text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
     .legend .palette-picker { display: flex; flex-wrap: wrap; gap: 4px;
       margin-top: 4px; max-width: 240px;
     }
@@ -221,6 +250,11 @@
       <span>palette</span>
       <span class="reverse" id="legend-reverse" title="Reverse palette">⇄ reverse</span>
     </div>
+    <div class="opacity-row" id="legend-opacity-row" style="display:none">
+      <span class="label" title="Fill opacity">α</span>
+      <input id="legend-alpha" type="range" min="0" max="255" step="1" value="170" />
+      <span class="val" id="legend-alpha-val">170</span>
+    </div>
     <div class="palette-picker" id="legend-palette-picker"></div>
   </div>
 
@@ -286,6 +320,12 @@ const SEQ_RAMPS = {
 // renderObjects) so a transparent fill still produces a visible
 // border — the polygon reads as a wireframe.
 const PALETTE_FILL_ALPHA = { transparent: 0 };
+
+// User-controlled fill opacity (0..255). The `transparent` palette
+// still wins via PALETTE_FILL_ALPHA, otherwise both hex and object
+// scatter fills honour this. Outline alpha stays at full so a low
+// fill never erases the polygon shape.
+let userFillAlpha = 170;
 
 // Diverging ramps for residuals (signed, centered at 0). 7 stops with
 // neutral mid; ColorBrewer-derived classics so left/right asymmetry
@@ -527,7 +567,7 @@ function renderHex(payload) {
       document.getElementById('scale').value,
       { lo: customLo, hi: customHi },
     );
-    const alpha = PALETTE_FILL_ALPHA[seqPaletteId] ?? 180;
+    const alpha = PALETTE_FILL_ALPHA[seqPaletteId] ?? userFillAlpha;
     getFillColor = d => rampColor(activeSeqRamp(), scaler.normalize(d.value), alpha);
   }
   const layer = new deck.H3HexagonLayer({
@@ -540,7 +580,7 @@ function renderHex(payload) {
     // hex buffer is cached against the (unchanged) data array ref.
     updateTriggers: {
       getFillColor: [seqPaletteId, seqReverse, isCategorical,
-                     customLo, customHi,
+                     customLo, customHi, userFillAlpha,
                      document.getElementById('scale').value],
     },
     stroked: true,
@@ -587,7 +627,7 @@ function renderObjects(payload) {
       data.map(d => d[mode]),
       { lo: customLo, hi: customHi },
     );
-    const alpha = PALETTE_FILL_ALPHA[divPaletteId] ?? 180;
+    const alpha = PALETTE_FILL_ALPHA[divPaletteId] ?? userFillAlpha;
     getFillColor = d => rampColor(activeDivRamp(), scaler.normalize(d[mode]), alpha);
   } else {
     activePaletteId = seqPaletteId;
@@ -596,7 +636,7 @@ function renderObjects(payload) {
       document.getElementById('scale').value,
       { lo: customLo, hi: customHi },
     );
-    const alpha = PALETTE_FILL_ALPHA[seqPaletteId] ?? 180;
+    const alpha = PALETTE_FILL_ALPHA[seqPaletteId] ?? userFillAlpha;
     getFillColor = d => rampColor(activeSeqRamp(), scaler.normalize(d[mode]), alpha);
   }
   // Split rows by geometry availability: objects with a footprint
@@ -608,7 +648,7 @@ function renderObjects(payload) {
   // Fill alpha mirrors the palette default but is forced to 0 for the
   // `transparent` palette so the polygon reads as a wireframe (only
   // outline visible). Outline alpha stays full regardless.
-  const fillAlpha = PALETTE_FILL_ALPHA[activePaletteId] ?? 170;
+  const fillAlpha = PALETTE_FILL_ALPHA[activePaletteId] ?? userFillAlpha;
   const fillWithAlpha = d => {
     const [r, g, b] = getFillColor(d);
     return [r, g, b, fillAlpha];
@@ -625,7 +665,8 @@ function renderObjects(payload) {
   // previously-bound colour buffer because the data array reference
   // is unchanged across recolours.
   const reverseKey = isDiverging ? divReverse : seqReverse;
-  const triggerKey = [activePaletteId, reverseKey, customLo, customHi,
+  const triggerKey = [activePaletteId, reverseKey,
+                      customLo, customHi, userFillAlpha,
                       document.getElementById('scale').value];
   const colorTriggers = { getFillColor: triggerKey, getLineColor: triggerKey };
   const layers = [];
@@ -954,6 +995,7 @@ function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
       return `<span><span class="swatch" style="background: rgb(${r},${g},${b})"></span>${escapeHtml(String(v))}</span>`;
     }).join('');
     document.getElementById('legend-palette-controls').style.display = 'none';
+    document.getElementById('legend-opacity-row').style.display = 'none';
     renderPalettePicker(null);
     return;
   }
@@ -973,6 +1015,13 @@ function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
   const reverseChip = document.getElementById('legend-reverse');
   controls.style.display = '';
   reverseChip.classList.toggle('active', reverseFlag);
+  // Sync the opacity slider to the global state without stomping on
+  // the active drag (focused element guard mirrors the lo/hi sliders).
+  const alphaSlider = document.getElementById('legend-alpha');
+  const alphaVal = document.getElementById('legend-alpha-val');
+  document.getElementById('legend-opacity-row').style.display = '';
+  if (document.activeElement !== alphaSlider) alphaSlider.value = String(userFillAlpha);
+  alphaVal.textContent = String(userFillAlpha);
   renderPalettePicker(kind);
 }
 
@@ -1116,6 +1165,15 @@ function onLegendSliderInput(ev) {
 document.getElementById('legend-reset').addEventListener('click', () => {
   customLo = null;
   customHi = null;
+  recolor();
+});
+
+// Live fill-opacity slider. Updates global state and recolours; the
+// `transparent` palette ignores this and stays at alpha 0 because
+// PALETTE_FILL_ALPHA wins in the renderers.
+document.getElementById('legend-alpha').addEventListener('input', (ev) => {
+  userFillAlpha = Number(ev.target.value);
+  document.getElementById('legend-alpha-val').textContent = String(userFillAlpha);
   recolor();
 });
 
