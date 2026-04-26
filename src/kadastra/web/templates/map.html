@@ -199,7 +199,22 @@ const SEQ_RAMPS = {
   greens: [[247, 252, 245], [199, 233, 192], [116, 196, 118], [35, 139, 69], [0, 68, 27]],
   oranges: [[255, 245, 235], [253, 208, 162], [253, 141, 60], [217, 72, 1], [127, 39, 4]],
   greys: [[255, 255, 255], [217, 217, 217], [150, 150, 150], [82, 82, 82], [0, 0, 0]],
+  // Solid / transparent palettes — useful when the polygon outline is
+  // the primary signal and the fill should either match a wireframe
+  // (transparent), maximise contrast against satellite tiles (white)
+  // or dim the underlying map (black). For `transparent`, only the
+  // alpha override matters; the RGB is mid-grey just so the legend
+  // chip preview reads as «no colour», not pure black.
+  black: [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
+  white: [[255, 255, 255], [255, 255, 255], [255, 255, 255], [255, 255, 255], [255, 255, 255]],
+  transparent: [[148, 163, 184], [148, 163, 184], [148, 163, 184], [148, 163, 184], [148, 163, 184]],
 };
+
+// Palette IDs whose RGB stops should be drawn at non-default fill
+// alpha. Outline alpha is derived separately (always 255 in
+// renderObjects) so a transparent fill still produces a visible
+// border — the polygon reads as a wireframe.
+const PALETTE_FILL_ALPHA = { transparent: 0 };
 
 // Diverging ramps for residuals (signed, centered at 0). 7 stops with
 // neutral mid; ColorBrewer-derived classics so left/right asymmetry
@@ -243,7 +258,7 @@ function rampGradientCss(stops) {
     + ')';
 }
 
-function rampColor(stops, t) {
+function rampColor(stops, t, alpha = 180) {
   const k = Math.min(Math.max(t, 0), 1) * (stops.length - 1);
   const i = Math.floor(k);
   const f = k - i;
@@ -253,7 +268,7 @@ function rampColor(stops, t) {
     Math.round(a[0] + (b[0] - a[0]) * f),
     Math.round(a[1] + (b[1] - a[1]) * f),
     Math.round(a[2] + (b[2] - a[2]) * f),
-    180
+    alpha,
   ];
 }
 
@@ -410,13 +425,18 @@ function renderHex(payload) {
     getFillColor = d => categoryColor(String(d.value));
   } else {
     const scaler = buildScaler(data.map(d => d.value), document.getElementById('scale').value);
-    getFillColor = d => rampColor(activeSeqRamp(), scaler.normalize(d.value));
+    const alpha = PALETTE_FILL_ALPHA[seqPaletteId] ?? 180;
+    getFillColor = d => rampColor(activeSeqRamp(), scaler.normalize(d.value), alpha);
   }
   const layer = new deck.H3HexagonLayer({
     id: 'hex',
     data,
     getHexagon: d => d.hex,
     getFillColor,
+    // updateTriggers force deck.gl to re-evaluate getFillColor when
+    // the palette state changes — without this the hex buffer is
+    // cached against the (unchanged) data array reference.
+    updateTriggers: { getFillColor: [seqPaletteId, isCategorical] },
     stroked: true,
     getLineColor: [0, 0, 0, 60],
     lineWidthMinPixels: 0.5,
@@ -446,16 +466,25 @@ function renderObjects(payload) {
   let getFillColor;
   let isDiverging = false;
   let isCategorical = false;
+  // Active palette ID — drives both the alpha override (transparent
+  // fill) and the deck.gl updateTriggers below so the layer recolours
+  // as soon as the user picks a new palette in the legend.
+  let activePaletteId;
   if (mode === 'fold_id') {
     isCategorical = true;
     getFillColor = d => categoryColor('fold_' + d.fold_id);
+    activePaletteId = 'categorical';
   } else if (mode === 'residual') {
     isDiverging = true;
+    activePaletteId = divPaletteId;
     const scaler = buildDivergingScaler(data.map(d => d[mode]));
-    getFillColor = d => rampColor(activeDivRamp(), scaler.normalize(d[mode]));
+    const alpha = PALETTE_FILL_ALPHA[divPaletteId] ?? 180;
+    getFillColor = d => rampColor(activeDivRamp(), scaler.normalize(d[mode]), alpha);
   } else {
+    activePaletteId = seqPaletteId;
     const scaler = buildScaler(data.map(d => d[mode]), document.getElementById('scale').value);
-    getFillColor = d => rampColor(activeSeqRamp(), scaler.normalize(d[mode]));
+    const alpha = PALETTE_FILL_ALPHA[seqPaletteId] ?? 180;
+    getFillColor = d => rampColor(activeSeqRamp(), scaler.normalize(d[mode]), alpha);
   }
   // Split rows by geometry availability: objects with a footprint
   // render as PolygonLayer (fill + bright outline); the rest fall
@@ -463,9 +492,13 @@ function renderObjects(payload) {
   // closure feeds both layers — colour mapping stays consistent.
   const withPolygon = data.filter(d => d.geometry && d.geometry.coordinates);
   const withoutPolygon = data.filter(d => !d.geometry || !d.geometry.coordinates);
+  // Fill alpha mirrors the palette default but is forced to 0 for the
+  // `transparent` palette so the polygon reads as a wireframe (only
+  // outline visible). Outline alpha stays full regardless.
+  const fillAlpha = PALETTE_FILL_ALPHA[activePaletteId] ?? 170;
   const fillWithAlpha = d => {
     const [r, g, b] = getFillColor(d);
-    return [r, g, b, 170];           // semi-transparent so outline pops
+    return [r, g, b, fillAlpha];
   };
   const lineFromFill = d => {
     const [r, g, b] = getFillColor(d);
@@ -474,6 +507,10 @@ function renderObjects(payload) {
     const lift = c => Math.min(255, Math.round(c + (255 - c) * 0.35));
     return [lift(r), lift(g), lift(b), 255];
   };
+  // updateTriggers: re-evaluate accessors when palette state changes.
+  // Without these, deck.gl reuses the previously-bound colour buffer
+  // because the data array reference is unchanged across recolours.
+  const colorTriggers = { getFillColor: activePaletteId, getLineColor: activePaletteId };
   const layers = [];
   if (withPolygon.length > 0) {
     layers.push(new deck.PolygonLayer({
@@ -482,6 +519,7 @@ function renderObjects(payload) {
       getPolygon: d => d.geometry.coordinates[0],
       getFillColor: fillWithAlpha,
       getLineColor: lineFromFill,
+      updateTriggers: colorTriggers,
       lineWidthMinPixels: 1.5,
       stroked: true,
       filled: true,
@@ -503,6 +541,7 @@ function renderObjects(payload) {
       stroked: true,
       lineWidthMinPixels: 1.5,
       getLineColor: lineFromFill,
+      updateTriggers: colorTriggers,
       pickable: true,
       onClick: ({ object }) => object && showObjectInspector(object, payload.asset_class),
     }));
