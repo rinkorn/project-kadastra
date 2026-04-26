@@ -74,15 +74,17 @@ def make_api_router(
         resolution: int = Query(..., ge=0, le=15),
         asset_class: str = Query(...),
         feature: str = Query(...),
+        model: str = Query("catboost"),
     ) -> dict[str, Any]:
         if asset_class not in ASSET_CLASS_VALUES:
             raise HTTPException(
                 status_code=400,
                 detail=f"unknown asset_class: {asset_class!r}; expected one of {ASSET_CLASS_VALUES}",
             )
+        _validate_model(model)
         try:
             data = get_hex_aggregates.execute(
-                region_code, resolution, asset_class, feature
+                region_code, resolution, asset_class, feature, model=model
             )
         except KeyError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -93,6 +95,7 @@ def make_api_router(
             "resolution": resolution,
             "asset_class": asset_class,
             "feature": feature,
+            "model": model,
             "is_categorical": feature in CATEGORICAL_FEATURES,
             "is_numeric": feature in NUMERIC_FEATURES,
             "data": data,

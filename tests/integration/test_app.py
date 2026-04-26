@@ -46,6 +46,7 @@ def _seed_hex_aggregates(settings: Settings) -> None:
         settings.hex_aggregates_base_path
         / f"region={settings.region_code}"
         / "resolution=8"
+        / "model=catboost"
         / "data.parquet"
     )
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -209,6 +210,43 @@ def test_hex_aggregates_returns_404_for_missing_resolution(
     response = client.get(
         "/api/hex_aggregates",
         params={"resolution": 9, "asset_class": "apartment", "feature": "count"},
+    )
+    assert response.status_code == 404
+
+
+def test_hex_aggregates_default_model_is_catboost(client: TestClient) -> None:
+    """Without ``?model=…`` the endpoint must return the catboost
+    partition (so the existing UI keeps working before it's wired)."""
+    response = client.get(
+        "/api/hex_aggregates",
+        params={"resolution": 8, "asset_class": "apartment", "feature": "count"},
+    )
+    assert response.status_code == 200
+    assert response.json()["model"] == "catboost"
+
+
+def test_hex_aggregates_rejects_unknown_model(client: TestClient) -> None:
+    response = client.get(
+        "/api/hex_aggregates",
+        params={
+            "resolution": 8, "asset_class": "apartment",
+            "feature": "count", "model": "magic",
+        },
+    )
+    assert response.status_code == 400
+
+
+def test_hex_aggregates_returns_404_for_missing_model_partition(
+    client: TestClient,
+) -> None:
+    """Test fixture seeds only catboost partition, so ?model=ebm
+    must surface as 404, not silently fall back."""
+    response = client.get(
+        "/api/hex_aggregates",
+        params={
+            "resolution": 8, "asset_class": "apartment",
+            "feature": "count", "model": "ebm",
+        },
     )
     assert response.status_code == 404
 
