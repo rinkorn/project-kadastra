@@ -1,5 +1,5 @@
 """Extract OSM layers (polygonal, point-POI and linear) from the
-agglomeration-clipped OSM PBF into per-layer GeoJSON-seq files.
+full Volga federal district PBF into per-layer GeoJSON-seq files.
 
 Consumed by:
 - ``compute_object_polygon_features`` (poly-area buffer share — ADR-0014);
@@ -8,19 +8,26 @@ Consumed by:
 - ``compute_object_municipality_features`` (raion spatial join — ADR-0015);
 - ``compute_object_zonal_features`` (POI counts in radii — ADR-0013).
 
-Source: ``data/raw/osm/kazan-agg.osm.pbf`` (generated earlier by the
-buildings pipeline, see ADR-0007).
+Source: ``data/raw/osm/volga-fed-district-latest.osm.pbf`` (~720 MB
+Geofabrik download). We deliberately do NOT use the pre-clipped
+``kazan-agg.osm.pbf`` because that file was made with a non-smart bbox
+clip — multi-region relations (e.g. ``Куйбышевское водохранилище`` whose
+member ways span 5+ regions) lose ways, and ``osmium export`` then
+silently drops the unclosed polygon. Result: huge water bodies just
+disappear from the water layer, and ``dist_to_water_m`` /
+``water_share_500m`` lie about reality.
+
+The fix is to ``osmium extract --strategy=smart`` AFTER ``tags-filter``,
+which preserves complete relations whose envelope merely intersects the
+bbox — Куйбышевское-relation comes through whole, polygon assembles
+correctly.
 
 Outputs (one per layer): ``data/raw/osm/kazan-agg-{layer}.geojsonseq``
-
-Each layer is defined by an ``osmium tags-filter`` expression. We then
-``osmium export -f geojsonseq`` so each line is one GeoJSON Feature with
-geometry + properties — easy to stream-read in Python.
 
 For point POIs that can be mapped as either nodes or polygons (school,
 hospital, supermarket), the filter uses ``nwa/`` so both forms land in
 the same file; downstream code centroids polygon features when a Point
-is needed (zonal counts) and uses geometry as-is for distance.
+is needed (zonal counts) and uses geometries as-is for distance.
 
 The script is idempotent: skips any layer whose output already exists,
 unless ``--force`` is passed.
@@ -110,8 +117,13 @@ _RAIONS_FILTER_PASSES: list[list[str]] = [
     ["r/admin_level=9"],
 ]
 
-_DEFAULT_SRC = Path("data/raw/osm/kazan-agg.osm.pbf")
+_DEFAULT_SRC = Path("data/raw/osm/volga-fed-district-latest.osm.pbf")
 _OUT_DIR = Path("data/raw/osm")
+
+# Bbox of the Kazan agglomeration — same envelope previously baked into
+# ``kazan-agg.osm.pbf`` so downstream features (raion lookup, share-in-
+# buffer, distance) see the same region. Format: minlon,minlat,maxlon,maxlat.
+_DEFAULT_BBOX = "48.4,55.3,50.0,56.1"
 
 
 def _run(cmd: list[str]) -> None:
@@ -130,7 +142,12 @@ def _check_osmium() -> None:
 
 
 def _extract_layer(
-    src: Path, layer: str, filters: list[str], out_dir: Path, force: bool
+    src: Path,
+    layer: str,
+    filters: list[str],
+    out_dir: Path,
+    bbox: str,
+    force: bool,
 ) -> None:
     out_path = out_dir / f"kazan-agg-{layer}.geojsonseq"
     if out_path.exists() and not force:
@@ -138,27 +155,41 @@ def _extract_layer(
         print(f"{out_path} already exists ({size_mb:.1f} MB); --force to rebuild")
         return
 
-    pbf_path = out_dir / f"kazan-agg-{layer}.osm.pbf"
-    _run(["osmium", "tags-filter", "--overwrite", "-o", str(pbf_path), str(src), *filters])
-    _run(
-        [
-            "osmium",
-            "export",
-            "--overwrite",
-            "-f",
-            "geojsonseq",
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        # Stage 1: tag filter on the full PBF — narrows ~720 MB → tens of
+        # MB by keeping only the layer's tagged objects, but at this point
+        # multi-region relations (e.g. Куйбышевское water relation) still
+        # carry all their member ways, even those well outside the bbox.
+        filtered = tmp_path / f"{layer}-tagged.osm.pbf"
+        _run([
+            "osmium", "tags-filter", "--overwrite",
+            "-o", str(filtered), str(src), *filters,
+        ])
+        # Stage 2: smart bbox clip — keeps ways whose nodes are inside the
+        # bbox AND complete relations whose envelope merely touches it.
+        # Without --strategy=smart, the relation's ways outside the bbox
+        # are dropped → broken rings → polygon silently disappears.
+        clipped = tmp_path / f"{layer}-clipped.osm.pbf"
+        _run([
+            "osmium", "extract", "--overwrite",
+            "--strategy=smart", "-b", bbox,
+            "-o", str(clipped), str(filtered),
+        ])
+        # Stage 3: vector export — osmium assembles closed polygons from
+        # complete relations now that no ways are missing.
+        _run([
+            "osmium", "export", "--overwrite",
+            "-f", "geojsonseq",
             "--add-unique-id=type_id",
-            "-o",
-            str(out_path),
-            str(pbf_path),
-        ]
-    )
-    pbf_path.unlink(missing_ok=True)
+            "-o", str(out_path), str(clipped),
+        ])
+
     size_mb = out_path.stat().st_size / 1024 / 1024
     print(f"Wrote {out_path} ({size_mb:.1f} MB)")
 
 
-def _extract_raions(src: Path, out_dir: Path, force: bool) -> None:
+def _extract_raions(src: Path, out_dir: Path, bbox: str, force: bool) -> None:
     out_path = out_dir / "kazan-agg-raions.geojsonseq"
     if out_path.exists() and not force:
         size_mb = out_path.stat().st_size / 1024 / 1024
@@ -172,6 +203,16 @@ def _extract_raions(src: Path, out_dir: Path, force: bool) -> None:
             stage = tmp_path / f"raions-stage{i}.osm.pbf"
             _run(["osmium", "tags-filter", "--overwrite", "-o", str(stage), str(current), *filters])
             current = stage
+        # Smart bbox clip keeps complete admin relations (raion polygons
+        # are made of many way members; truncating any of them produces
+        # null polygons just like the water-layer Куйбышевское bug).
+        clipped = tmp_path / "raions-clipped.osm.pbf"
+        _run([
+            "osmium", "extract", "--overwrite",
+            "--strategy=smart", "-b", bbox,
+            "-o", str(clipped), str(current),
+        ])
+        current = clipped
         raw = tmp_path / "raions-raw.geojsonseq"
         _run(
             [
@@ -207,7 +248,12 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     all_layers = [*list(_LAYER_FILTERS.keys()), "raions"]
     p.add_argument(
-        "--src", type=Path, default=_DEFAULT_SRC, help="Source PBF (clipped to agglomeration)"
+        "--src", type=Path, default=_DEFAULT_SRC,
+        help="Full Volga federal district PBF (extract clips with --strategy=smart)",
+    )
+    p.add_argument(
+        "--bbox", type=str, default=_DEFAULT_BBOX,
+        help="Agglomeration bbox (minlon,minlat,maxlon,maxlat) for the smart clip",
     )
     p.add_argument(
         "--out-dir", type=Path, default=_OUT_DIR, help="Output directory"
@@ -229,9 +275,12 @@ def main() -> None:
 
     for layer in args.layers:
         if layer == "raions":
-            _extract_raions(args.src, args.out_dir, args.force)
+            _extract_raions(args.src, args.out_dir, args.bbox, args.force)
         else:
-            _extract_layer(args.src, layer, _LAYER_FILTERS[layer], args.out_dir, args.force)
+            _extract_layer(
+                args.src, layer, _LAYER_FILTERS[layer],
+                args.out_dir, args.bbox, args.force,
+            )
 
 
 if __name__ == "__main__":
