@@ -9,7 +9,9 @@ Two read shapes:
 
 - ``list_for_map(region, asset_class)`` — lightweight payload for the
   scatter layer: ``{object_id, lat, lon, y_true, y_pred_oof,
-  residual, fold_id}`` per object.
+  residual, fold_id, polygon_wkt_3857}`` per object. Polygon WKT is
+  shipped raw so the API edge can convert to GeoJSON-WGS84 once per
+  request without coupling the usecase to deck.gl/maplibre concerns.
 - ``get_detail(region, asset_class, object_id)`` — full feature dict
   for one object (every gold column + OOF columns).
 
@@ -53,7 +55,11 @@ class LoadObjectInspection:
         joined = self._load_joined(region_code, asset_class, model=model)
         if joined.is_empty():
             return []
-        cols = ["object_id", "lat", "lon", "y_true", "y_pred_oof", "residual", "fold_id"]
+        cols = [
+            "object_id", "lat", "lon",
+            "y_true", "y_pred_oof", "residual", "fold_id",
+            "polygon_wkt_3857",
+        ]
         slim = joined.select(cols)
         return slim.to_dicts()
 

@@ -335,6 +335,33 @@ def test_inspection_list_joins_oof_predictions(client: TestClient) -> None:
     assert way1["fold_id"] == 0
 
 
+def test_inspection_list_emits_geometry_per_row(client: TestClient) -> None:
+    """The scatter list must surface each object's polygon as GeoJSON
+    (WGS84) so the map can render the object as a polygon instead of
+    a point. WKT stays internal — the response carries `geometry`
+    directly and drops `polygon_wkt_3857`. Objects without a polygon
+    surface `geometry: null` so the frontend can fall back to a point."""
+    response = client.get("/api/inspection", params={"asset_class": "apartment"})
+    assert response.status_code == 200
+    rows = sorted(response.json()["data"], key=lambda r: r["object_id"])
+
+    way1 = rows[0]
+    assert "polygon_wkt_3857" not in way1
+    geom = way1["geometry"]
+    assert geom is not None
+    assert geom["type"] == "Polygon"
+    ring = geom["coordinates"][0]
+    # Closed ring of the 100×100 m fixture square: 4 corners + closure.
+    assert len(ring) == 5
+    for lon, lat in ring:
+        assert 48.0 <= lon <= 50.0
+        assert 55.0 <= lat <= 56.0
+
+    way2 = rows[1]
+    assert "polygon_wkt_3857" not in way2
+    assert way2["geometry"] is None
+
+
 def test_inspection_detail_returns_full_dict(client: TestClient) -> None:
     response = client.get(
         "/api/inspection/way/1", params={"asset_class": "apartment"}
@@ -429,17 +456,6 @@ def test_inspection_detail_geometry_null_when_wkt_missing(
     assert response.status_code == 200
     detail = response.json()["data"]
     assert detail["geometry"] is None
-
-
-def test_inspection_list_does_not_carry_geometry(client: TestClient) -> None:
-    """The map scatter list must stay slim — geometry lives only in
-    the per-object detail card. Otherwise the response balloons by
-    ~2KB per row × 200k rows."""
-    response = client.get("/api/inspection", params={"asset_class": "apartment"})
-    assert response.status_code == 200
-    for row in response.json()["data"]:
-        assert "geometry" not in row
-        assert "polygon_wkt_3857" not in row
 
 
 def test_inspection_detail_returns_404_for_unknown_object(

@@ -65,6 +65,10 @@ def _objects(rows: list[dict[str, object]]) -> pl.DataFrame:
             "synthetic_target_rub_per_m2": pl.Float64,
             "intra_city_raion": pl.Utf8,
             "levels": pl.Int64,
+            # ADR-0017 passthrough: polygon WKT in EPSG:3857. Now also
+            # surfaced via list_for_map so the scatter layer can render
+            # objects as polygons (bright outline) instead of dots.
+            "polygon_wkt_3857": pl.Utf8,
         },
     )
 
@@ -117,7 +121,8 @@ def test_list_for_map_joins_predictions() -> None:
     assert item["residual"] == -5_000.0
     assert item["fold_id"] == 2
     assert set(item.keys()) == {
-        "object_id", "lat", "lon", "y_true", "y_pred_oof", "residual", "fold_id"
+        "object_id", "lat", "lon", "y_true", "y_pred_oof", "residual",
+        "fold_id", "polygon_wkt_3857",
     }
 
 
@@ -152,6 +157,45 @@ def test_list_for_map_empty_when_no_objects() -> None:
         oof_reader=_FakeOofReader({}),
     )
     assert usecase.list_for_map("RU-KAZAN-AGG", AssetClass.APARTMENT) == []
+
+
+def test_list_for_map_passes_polygon_wkt_through() -> None:
+    """The scatter layer needs each object's polygon to render as a
+    bright-outlined polygon (not just a dot). list_for_map must keep
+    polygon_wkt_3857 in the slim payload — the API edge converts WKT
+    to GeoJSON-WGS84 before serving, but the usecase ships it raw."""
+    wkt = (
+        "POLYGON ((5470000 7510000, 5470100 7510000, "
+        "5470100 7510100, 5470000 7510100, 5470000 7510000))"
+    )
+    objects = _objects(
+        [
+            {
+                "object_id": "a1", "asset_class": "apartment",
+                "lat": 55.78, "lon": 49.12,
+                "synthetic_target_rub_per_m2": 100_000.0,
+                "intra_city_raion": "Советский", "levels": 5,
+                "polygon_wkt_3857": wkt,
+            },
+            {
+                "object_id": "a2", "asset_class": "apartment",
+                "lat": 55.79, "lon": 49.13,
+                "synthetic_target_rub_per_m2": 110_000.0,
+                "intra_city_raion": "Вахитовский", "levels": 9,
+                "polygon_wkt_3857": None,
+            },
+        ]
+    )
+    usecase = LoadObjectInspection(
+        reader=_FakeReader({AssetClass.APARTMENT: objects}),
+        oof_reader=_FakeOofReader({}),
+    )
+    rows = sorted(
+        usecase.list_for_map("RU-KAZAN-AGG", AssetClass.APARTMENT),
+        key=lambda r: r["object_id"],
+    )
+    assert rows[0]["polygon_wkt_3857"] == wkt
+    assert rows[1]["polygon_wkt_3857"] is None
 
 
 def test_get_detail_returns_full_feature_dict() -> None:

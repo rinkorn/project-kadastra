@@ -58,14 +58,183 @@
       padding: 8px 12px; border-radius: 6px; font-size: 11px; z-index: 12;
       max-width: 320px;
     }
-    .legend .gradient { width: 240px; height: 8px; margin-top: 4px;
+    .legend .gradient-wrap { position: relative; width: 240px; height: 18px;
+      margin-top: 4px;
+    }
+    .legend .gradient { position: absolute; left: 0; right: 0; top: 50%;
+      transform: translateY(-50%);
+      height: 8px; border-radius: 4px;
       background: linear-gradient(to right, #2c7bb6, #abd9e9, #ffffbf, #fdae61, #d7191c);
     }
-    .legend .gradient.diverging { background: linear-gradient(to right, #2166ac, #67a9cf, #d1e5f0, #f7f7f7, #fddbc7, #ef8a62, #b2182b); }
-    .legend .ticks { display: flex; justify-content: space-between; margin-top: 2px; }
+    .legend .gradient-wrap input[type="range"] { position: absolute;
+      left: 0; right: 0; top: 0; width: 100%; height: 100%;
+      background: transparent; -webkit-appearance: none; appearance: none;
+      margin: 0; pointer-events: none;
+    }
+    .legend .gradient-wrap input[type="range"]::-webkit-slider-runnable-track {
+      height: 100%; background: transparent;
+    }
+    .legend .gradient-wrap input[type="range"]::-moz-range-track {
+      height: 100%; background: transparent;
+    }
+    .legend .gradient-wrap input[type="range"]::-webkit-slider-thumb {
+      pointer-events: auto;
+      -webkit-appearance: none; appearance: none;
+      width: 10px; height: 16px; border-radius: 2px;
+      background: #fde047; border: 1px solid rgba(0, 0, 0, 0.55);
+      cursor: ew-resize;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+    }
+    .legend .gradient-wrap input[type="range"]::-moz-range-thumb {
+      pointer-events: auto;
+      width: 10px; height: 16px; border-radius: 2px;
+      background: #fde047; border: 1px solid rgba(0, 0, 0, 0.55);
+      cursor: ew-resize;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+    }
+    .legend .gradient-wrap input[type="range"]:focus { outline: none; }
+    .legend .gradient-wrap.clamp-row { margin-top: 8px; }
+    .legend .gradient-wrap.clamp-row::before {
+      content: ''; position: absolute; left: 0; right: 0; top: 50%;
+      transform: translateY(-50%); height: 4px; border-radius: 2px;
+      background: rgba(255, 255, 255, 0.18);
+    }
+    .legend .ticks { display: flex; align-items: center;
+      justify-content: space-between; margin-top: 2px; gap: 8px;
+      font-variant-numeric: tabular-nums;
+    }
+    .legend .ticks .val { opacity: 0.85; min-width: 0; }
+    .legend .ticks .val.custom { color: #fde047; opacity: 1; }
+    .legend .ticks .val-input {
+      background: rgba(0, 0, 0, 0.55); color: inherit;
+      border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 2px;
+      padding: 1px 4px; font: inherit; font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      width: 84px; text-align: center;
+      -moz-appearance: textfield;
+    }
+    .legend .ticks .val-input::-webkit-outer-spin-button,
+    .legend .ticks .val-input::-webkit-inner-spin-button {
+      -webkit-appearance: none; margin: 0;
+    }
+    .legend .ticks .val-input:focus { outline: none; border-color: #fde047; }
+    .legend .ticks .val-input::placeholder { color: rgba(255, 255, 255, 0.4); }
+    .legend .ticks .val-input.custom {
+      color: #fde047; border-color: rgba(253, 224, 71, 0.5);
+    }
+    .legend .ticks .reset { cursor: pointer; opacity: 0.6;
+      font-size: 10px; padding: 0 4px; user-select: none;
+    }
+    .legend .ticks .reset:hover { opacity: 1; }
+    .legend .ticks .reset.hidden { visibility: hidden; }
     .legend .swatches { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; }
     .legend .swatches span { display: inline-flex; align-items: center; gap: 4px; }
     .legend .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+    .legend .palette-controls { display: flex; align-items: center;
+      justify-content: space-between; margin-top: 8px; max-width: 240px;
+      font-size: 10px; opacity: 0.75;
+    }
+    .legend .palette-controls .reverse {
+      cursor: pointer; padding: 1px 6px; border-radius: 3px;
+      border: 1px solid rgba(255, 255, 255, 0.2); user-select: none;
+      transition: background 0.1s ease, border-color 0.1s ease;
+    }
+    .legend .palette-controls .reverse:hover {
+      border-color: rgba(255, 255, 255, 0.5);
+    }
+    .legend .palette-controls .reverse.active {
+      background: rgba(253, 224, 71, 0.18);
+      border-color: #fde047;
+      opacity: 1;
+    }
+    .legend .opacity-row { display: flex; align-items: center; gap: 6px;
+      margin-top: 4px; max-width: 240px; font-size: 10px; opacity: 0.85;
+    }
+    .legend .opacity-row .label { width: 14px; opacity: 0.7; }
+    .legend .opacity-row input[type="range"] { flex: 1; height: 14px;
+      background: transparent; -webkit-appearance: none; appearance: none;
+      margin: 0; cursor: pointer;
+    }
+    .legend .opacity-row input[type="range"]::-webkit-slider-runnable-track {
+      height: 3px; background: rgba(255, 255, 255, 0.25); border-radius: 2px;
+    }
+    .legend .opacity-row input[type="range"]::-moz-range-track {
+      height: 3px; background: rgba(255, 255, 255, 0.25); border-radius: 2px;
+    }
+    .legend .opacity-row input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #fde047; cursor: pointer; margin-top: -3.5px;
+      border: 1px solid rgba(0, 0, 0, 0.5);
+    }
+    .legend .opacity-row input[type="range"]::-moz-range-thumb {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #fde047; cursor: pointer;
+      border: 1px solid rgba(0, 0, 0, 0.5);
+    }
+    .legend .opacity-row .val {
+      min-width: 36px; text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .legend .palette-picker {
+      position: relative; margin-top: 4px; max-width: 240px;
+      font-size: 10px;
+    }
+    .legend .palette-picker .current {
+      display: flex; align-items: center; gap: 6px;
+      cursor: pointer; padding: 3px 6px; border-radius: 3px;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      user-select: none;
+    }
+    .legend .palette-picker .current:hover {
+      border-color: rgba(255, 255, 255, 0.5);
+    }
+    .legend .palette-picker .current .bar {
+      flex: 0 0 110px; height: 10px; border-radius: 2px;
+    }
+    .legend .palette-picker .current .name {
+      flex: 1; opacity: 0.9;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .legend .palette-picker .current .caret {
+      opacity: 0.6; font-size: 9px;
+    }
+    .legend .palette-picker .menu {
+      display: none; position: absolute; left: 0; right: 0; bottom: 100%;
+      margin-bottom: 4px; max-height: 240px; overflow-y: auto;
+      background: rgba(20, 20, 20, 0.96);
+      border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 3px;
+      padding: 2px; z-index: 30;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    }
+    .legend .palette-picker.open .menu { display: flex; flex-direction: column; gap: 2px; }
+    .legend .palette-picker .menu::-webkit-scrollbar { width: 6px; }
+    .legend .palette-picker .menu::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2); border-radius: 3px;
+    }
+    .legend .palette-picker .opt {
+      display: flex; align-items: center; gap: 6px;
+      cursor: pointer; padding: 2px 4px; border-radius: 2px;
+      border: 1px solid transparent;
+    }
+    .legend .palette-picker .opt:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .legend .palette-picker .opt.active {
+      border-color: #fde047;
+      background: rgba(253, 224, 71, 0.1);
+    }
+    .legend .palette-picker .opt .bar {
+      flex: 0 0 110px; height: 10px; border-radius: 2px;
+    }
+    .legend .palette-picker .opt .name {
+      flex: 1; opacity: 0.85;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .legend .palette-picker .opt.active .name {
+      opacity: 1; color: #fde047;
+    }
   </style>
 </head>
 <body>
@@ -133,9 +302,37 @@
 
   <div class="legend" id="legend" style="display:none">
     <div id="legend-feature"></div>
-    <div class="gradient" id="legend-gradient"></div>
-    <div class="ticks"><span id="legend-min"></span><span id="legend-max"></span></div>
+    <div class="gradient-wrap" id="legend-gradient-wrap">
+      <div class="gradient" id="legend-gradient"></div>
+      <input id="legend-color-from" type="range" min="0" max="100" step="1" value="0" />
+      <input id="legend-color-to" type="range" min="0" max="100" step="1" value="100" />
+    </div>
+    <div class="ticks">
+      <span class="val" id="legend-color-from-val">0%</span>
+      <span class="reset hidden" id="legend-color-reset" title="Reset color range">×</span>
+      <span class="val" id="legend-color-to-val">100%</span>
+    </div>
+    <div class="gradient-wrap clamp-row" id="legend-clamp-wrap" style="display:none">
+      <input id="legend-min" type="range" />
+      <input id="legend-max" type="range" />
+    </div>
+    <div class="ticks clamp-row" id="legend-clamp-ticks" style="display:none">
+      <input class="val-input" id="legend-min-val" type="number" step="any" />
+      <span class="reset hidden" id="legend-reset" title="Reset clamps">×</span>
+      <input class="val-input" id="legend-max-val" type="number" step="any" />
+    </div>
     <div class="swatches" id="legend-swatches" style="display:none"></div>
+    <div class="palette-controls" id="legend-palette-controls" style="display:none">
+      <span class="reverse" id="legend-reverse" title="Reverse palette">⇄ reverse</span>
+      <span class="reverse" id="legend-oor-mode"
+            title="Out-of-range mode: clamp / dim / hide">oor: clamp</span>
+    </div>
+    <div class="opacity-row" id="legend-opacity-row" style="display:none">
+      <span class="label" title="Fill opacity">α</span>
+      <input id="legend-alpha" type="range" min="0" max="255" step="1" value="170" />
+      <span class="val" id="legend-alpha-val">170</span>
+    </div>
+    <div class="palette-picker" id="legend-palette-picker"></div>
   </div>
 
 <script>
@@ -167,16 +364,143 @@ let selectedGeometry = null; // GeoJSON Polygon (WGS84) of the currently inspect
 
 // ---------- color helpers ----------
 
-const SEQ_RAMP = [
-  [44, 123, 182], [171, 217, 233], [255, 255, 191], [253, 174, 97], [215, 25, 28]
-];
-const DIV_RAMP = [
-  [33, 102, 172], [103, 169, 207], [209, 229, 240],
-  [247, 247, 247],
-  [253, 219, 199], [239, 138, 98], [178, 24, 43]
-];
+// Sequential ramps for single-direction metrics (price, prediction).
+// Stored as 5-stop RGB arrays; rampColor() interpolates linearly.
+// matplotlib viridis/magma/plasma/inferno/cividis sampled at 5 equally
+// spaced points. ColorBrewer single-hue ramps (Blues/Greens/Oranges/Greys)
+// give simple light→dark options when the palette must read as «one
+// quantity» rather than a multi-hue spectrum.
+const SEQ_RAMPS = {
+  // matplotlib perceptual
+  viridis: [[68, 1, 84], [59, 82, 139], [33, 144, 141], [93, 201, 99], [253, 231, 37]],
+  magma: [[0, 0, 4], [80, 18, 123], [183, 55, 121], [251, 136, 97], [252, 253, 191]],
+  plasma: [[13, 8, 135], [126, 3, 168], [204, 71, 120], [248, 149, 64], [240, 249, 33]],
+  inferno: [[0, 0, 4], [87, 16, 110], [187, 55, 84], [249, 142, 9], [252, 255, 164]],
+  cividis: [[0, 32, 76], [56, 78, 117], [109, 122, 120], [171, 165, 105], [253, 234, 69]],
+  turbo: [[48, 18, 59], [70, 137, 230], [25, 235, 154], [253, 197, 32], [122, 4, 3]],
+  // seaborn (subset)
+  rocket: [[3, 5, 26], [108, 46, 94], [204, 73, 101], [244, 135, 77], [252, 221, 159]],
+  mako: [[11, 21, 46], [57, 53, 100], [68, 109, 141], [104, 164, 172], [202, 229, 189]],
+  flare: [[225, 144, 127], [214, 84, 107], [175, 40, 124], [104, 28, 124], [39, 12, 86]],
+  crest: [[184, 229, 191], [127, 196, 201], [70, 158, 173], [37, 116, 148], [22, 73, 114]],
+  // ColorBrewer multi-hue
+  RdYlBu_r: [[44, 123, 182], [171, 217, 233], [255, 255, 191], [253, 174, 97], [215, 25, 28]],
+  YlOrRd: [[255, 255, 178], [254, 204, 92], [253, 141, 60], [240, 59, 32], [189, 0, 38]],
+  YlOrBr: [[255, 255, 212], [254, 217, 142], [254, 153, 41], [217, 95, 14], [153, 52, 4]],
+  YlGnBu: [[255, 255, 204], [161, 218, 180], [65, 182, 196], [44, 127, 184], [37, 52, 148]],
+  YlGn: [[255, 255, 204], [194, 230, 153], [120, 198, 121], [49, 163, 84], [0, 104, 55]],
+  GnBu: [[240, 249, 232], [186, 228, 188], [123, 204, 196], [67, 162, 202], [8, 104, 172]],
+  BuGn: [[237, 248, 251], [178, 226, 226], [102, 194, 164], [44, 162, 95], [0, 109, 44]],
+  BuPu: [[237, 248, 251], [179, 205, 227], [140, 150, 198], [136, 86, 167], [129, 15, 124]],
+  PuBu: [[241, 238, 246], [189, 201, 225], [116, 169, 207], [43, 140, 190], [4, 90, 141]],
+  PuBuGn: [[246, 239, 247], [189, 201, 225], [103, 169, 207], [28, 144, 153], [1, 108, 89]],
+  PuRd: [[241, 238, 246], [215, 181, 216], [223, 101, 176], [221, 28, 119], [152, 0, 67]],
+  RdPu: [[254, 235, 226], [251, 180, 185], [247, 104, 161], [197, 27, 138], [122, 1, 119]],
+  OrRd: [[254, 240, 217], [253, 204, 138], [252, 141, 89], [227, 74, 51], [179, 0, 0]],
+  // ColorBrewer single-hue
+  blues: [[247, 251, 255], [198, 219, 239], [107, 174, 214], [33, 113, 181], [8, 48, 107]],
+  greens: [[247, 252, 245], [199, 233, 192], [116, 196, 118], [35, 139, 69], [0, 68, 27]],
+  oranges: [[255, 245, 235], [253, 208, 162], [253, 141, 60], [217, 72, 1], [127, 39, 4]],
+  reds: [[254, 229, 217], [252, 174, 145], [251, 106, 74], [222, 45, 38], [165, 15, 21]],
+  purples: [[242, 240, 247], [203, 201, 226], [158, 154, 200], [117, 107, 177], [84, 39, 143]],
+  greys: [[255, 255, 255], [217, 217, 217], [150, 150, 150], [82, 82, 82], [0, 0, 0]],
+  // Solid / transparent — useful when the polygon outline is the
+  // primary signal and the fill should either match a wireframe
+  // (transparent), maximise contrast against satellite tiles (white)
+  // or dim the underlying map (black). For `transparent`, only the
+  // alpha override matters; the RGB is mid-grey just so the preview
+  // reads as «no colour», not pure black.
+  black: [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]],
+  white: [[255, 255, 255], [255, 255, 255], [255, 255, 255], [255, 255, 255], [255, 255, 255]],
+  transparent: [[148, 163, 184], [148, 163, 184], [148, 163, 184], [148, 163, 184], [148, 163, 184]],
+};
 
-function rampColor(stops, t) {
+// Palette IDs whose RGB stops should be drawn at non-default fill
+// alpha. Outline alpha is derived separately (always 255 in
+// renderObjects) so a transparent fill still produces a visible
+// border — the polygon reads as a wireframe.
+const PALETTE_FILL_ALPHA = { transparent: 0 };
+
+// User-controlled fill opacity (0..255). The `transparent` palette
+// still wins via PALETTE_FILL_ALPHA, otherwise both hex and object
+// scatter fills honour this. Outline alpha stays at full so a low
+// fill never erases the polygon shape.
+let userFillAlpha = 170;
+
+// Diverging ramps for residuals (signed, centered at 0). 7 stops with
+// neutral mid; ColorBrewer-derived classics so left/right asymmetry
+// reads as «under» vs «over» without colour-blindness traps.
+const DIV_RAMPS = {
+  RdBu: [
+    [33, 102, 172], [103, 169, 207], [209, 229, 240],
+    [247, 247, 247],
+    [253, 219, 199], [239, 138, 98], [178, 24, 43],
+  ],
+  BrBG: [
+    [84, 48, 5], [191, 129, 45], [223, 194, 125],
+    [245, 245, 245],
+    [128, 205, 193], [53, 151, 143], [0, 60, 48],
+  ],
+  PuOr: [
+    [127, 59, 8], [224, 130, 20], [253, 184, 99],
+    [247, 247, 247],
+    [178, 171, 210], [128, 115, 172], [45, 0, 75],
+  ],
+  RdYlGn: [
+    [165, 0, 38], [244, 109, 67], [253, 174, 97],
+    [255, 255, 191],
+    [166, 217, 106], [102, 189, 99], [0, 104, 55],
+  ],
+  RdYlBu: [
+    [165, 0, 38], [244, 109, 67], [253, 174, 97],
+    [255, 255, 191],
+    [171, 217, 233], [116, 173, 209], [49, 54, 149],
+  ],
+  Spectral: [
+    [158, 1, 66], [213, 62, 79], [253, 174, 97],
+    [255, 255, 191],
+    [171, 221, 164], [102, 194, 165], [50, 136, 189],
+  ],
+  PiYG: [
+    [142, 1, 82], [197, 27, 125], [222, 119, 174],
+    [247, 247, 247],
+    [184, 225, 134], [127, 188, 65], [39, 100, 25],
+  ],
+  PRGn: [
+    [64, 0, 75], [118, 42, 131], [175, 141, 195],
+    [247, 247, 247],
+    [127, 191, 123], [27, 120, 55], [0, 68, 27],
+  ],
+  RdGy: [
+    [103, 0, 31], [178, 24, 43], [239, 138, 98],
+    [255, 255, 255],
+    [186, 186, 186], [135, 135, 135], [26, 26, 26],
+  ],
+  coolwarm: [
+    [59, 76, 192], [115, 142, 232], [180, 199, 251],
+    [221, 221, 221],
+    [246, 178, 153], [228, 110, 87], [180, 4, 38],
+  ],
+};
+
+let seqPaletteId = 'RdYlBu_r';
+let divPaletteId = 'RdBu';
+// Per-kind reverse flag: flips the stop order when active. Kept
+// separate so toggling it for sequential metrics doesn't affect the
+// diverging residual layer and vice versa.
+let seqReverse = false;
+let divReverse = false;
+// Per-kind colour-range subselection: which slice of the palette
+// is actually used. (from, to) ∈ [0, 1]; (0, 1) = full palette
+// (default), (0.2, 0.8) = use only the middle 60 %, etc. Lets the
+// user fine-tune saturation and avoid washed-out near-white stops
+// without adding new palettes to the registry.
+let seqColorFrom = 0;
+let seqColorTo = 1;
+let divColorFrom = 0;
+let divColorTo = 1;
+const maybeReverse = (stops, on) => on ? [...stops].reverse() : stops;
+function lerpStops(stops, t) {
   const k = Math.min(Math.max(t, 0), 1) * (stops.length - 1);
   const i = Math.floor(k);
   const f = k - i;
@@ -186,7 +510,48 @@ function rampColor(stops, t) {
     Math.round(a[0] + (b[0] - a[0]) * f),
     Math.round(a[1] + (b[1] - a[1]) * f),
     Math.round(a[2] + (b[2] - a[2]) * f),
-    180
+  ];
+}
+function subsampleStops(stops, fromT, toT, n = 7) {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const t = fromT + (i / (n - 1)) * (toT - fromT);
+    out.push(lerpStops(stops, t));
+  }
+  return out;
+}
+const activeSeqRamp = () => subsampleStops(
+  maybeReverse(SEQ_RAMPS[seqPaletteId] || SEQ_RAMPS.RdYlBu_r, seqReverse),
+  seqColorFrom, seqColorTo,
+);
+const activeDivRamp = () => subsampleStops(
+  maybeReverse(DIV_RAMPS[divPaletteId] || DIV_RAMPS.RdBu, divReverse),
+  divColorFrom, divColorTo,
+);
+// Untrimmed (0..1) ramp — used for the «source palette» preview bar
+// where the colour-range thumbs slide across the full palette.
+const fullSeqRamp = () =>
+  maybeReverse(SEQ_RAMPS[seqPaletteId] || SEQ_RAMPS.RdYlBu_r, seqReverse);
+const fullDivRamp = () =>
+  maybeReverse(DIV_RAMPS[divPaletteId] || DIV_RAMPS.RdBu, divReverse);
+
+function rampGradientCss(stops) {
+  return 'linear-gradient(to right, '
+    + stops.map(([r, g, b]) => `rgb(${r},${g},${b})`).join(', ')
+    + ')';
+}
+
+function rampColor(stops, t, alpha = 180) {
+  const k = Math.min(Math.max(t, 0), 1) * (stops.length - 1);
+  const i = Math.floor(k);
+  const f = k - i;
+  const a = stops[i];
+  const b = stops[Math.min(i + 1, stops.length - 1)];
+  return [
+    Math.round(a[0] + (b[0] - a[0]) * f),
+    Math.round(a[1] + (b[1] - a[1]) * f),
+    Math.round(a[2] + (b[2] - a[2]) * f),
+    alpha,
   ];
 }
 
@@ -201,7 +566,14 @@ function quantile(sortedValues, q) {
   return sortedValues[base];
 }
 
-function buildScaler(values, mode) {
+// User-provided clamp bounds for the legend gradient. null = auto
+// (computed from data per Scale-mode rules below). Persisted across
+// recolours so a tweak survives mode/asset switches; the user clears
+// them via the × reset chip in the legend.
+let customLo = null;
+let customHi = null;
+
+function buildScaler(values, mode, override = {}) {
   const sorted = [...values].filter(v => Number.isFinite(v)).sort((a, b) => a - b);
   if (sorted.length === 0) return { lo: 0, hi: 1, normalize: () => 0.5 };
   let lo, hi, transform;
@@ -215,14 +587,28 @@ function buildScaler(values, mode) {
     transform = v => v;
     lo = sorted[0]; hi = sorted[sorted.length - 1];
   }
+  // Custom clamps win over auto-computed bounds. For log mode, the
+  // user's input is treated as a raw value and run through the log
+  // transform so the slider stays intuitive (₽/m², not its log).
+  if (override.lo != null) lo = mode === 'log' ? transform(override.lo) : override.lo;
+  if (override.hi != null) hi = mode === 'log' ? transform(override.hi) : override.hi;
   const range = hi - lo || 1;
   return { lo, hi, normalize: v => Math.min(Math.max((transform(v) - lo) / range, 0), 1) };
 }
 
-function buildDivergingScaler(values) {
+function buildDivergingScaler(values, override = {}) {
   // For signed metrics (residuals, fold) — center at 0, symmetric range.
   const sorted = [...values].filter(v => Number.isFinite(v)).sort((a, b) => Math.abs(a) - Math.abs(b));
-  const max = sorted.length ? Math.abs(sorted[sorted.length - 1]) : 1;
+  let max = sorted.length ? Math.abs(sorted[sorted.length - 1]) : 1;
+  // Diverging clamps stay symmetric: any user-provided endpoint sets
+  // |max|. If both lo and hi are typed in, take the larger magnitude
+  // so neither extreme gets clipped silently.
+  if (override.lo != null || override.hi != null) {
+    const candidates = [override.lo, override.hi]
+      .filter(v => v != null)
+      .map(v => Math.abs(v));
+    if (candidates.length > 0) max = Math.max(...candidates);
+  }
   return {
     lo: -max, hi: max,
     normalize: v => Math.min(Math.max((v / (2 * max)) + 0.5, 0), 1),
@@ -329,9 +715,8 @@ async function fetchMarketReference(assetClass) {
 // ---------- rendering ----------
 
 function renderHex(payload) {
-  const data = payload.data;
   const stat = document.getElementById('stat');
-  if (data.length === 0) {
+  if (payload.data.length === 0) {
     stat.textContent = '0 hexes';
     deckOverlay.setProps({ layers: [] });
     setLegend(null);
@@ -339,17 +724,42 @@ function renderHex(payload) {
   }
   const isCategorical = payload.is_categorical;
   let getFillColor;
+  let oorFlag = () => false;
+  let data = payload.data;
   if (isCategorical) {
     getFillColor = d => categoryColor(String(d.value));
   } else {
-    const scaler = buildScaler(data.map(d => d.value), document.getElementById('scale').value);
-    getFillColor = d => rampColor(SEQ_RAMP, scaler.normalize(d.value));
+    const scaler = buildScaler(
+      data.map(d => d.value),
+      document.getElementById('scale').value,
+      { lo: customLo, hi: customHi },
+    );
+    // Out-of-range = data value strictly outside user clamps. Auto
+    // (un-clamped) extents never count as out-of-range.
+    oorFlag = d => (customLo != null && d.value < customLo)
+                || (customHi != null && d.value > customHi);
+    if (oorMode === 'hide') data = data.filter(d => !oorFlag(d));
+    const alpha = PALETTE_FILL_ALPHA[seqPaletteId] ?? userFillAlpha;
+    getFillColor = d => {
+      const c = rampColor(activeSeqRamp(), scaler.normalize(d.value), alpha);
+      if (oorMode === 'dim' && oorFlag(d)) c[3] = Math.round(c[3] * 0.25);
+      return c;
+    };
   }
   const layer = new deck.H3HexagonLayer({
     id: 'hex',
     data,
     getHexagon: d => d.hex,
     getFillColor,
+    // updateTriggers force deck.gl to re-evaluate getFillColor when
+    // palette state OR custom-clamp bounds change — without this the
+    // hex buffer is cached against the (unchanged) data array ref.
+    updateTriggers: {
+      getFillColor: [seqPaletteId, seqReverse, isCategorical,
+                     customLo, customHi, userFillAlpha,
+                     seqColorFrom, seqColorTo, oorMode,
+                     document.getElementById('scale').value],
+    },
     stroked: true,
     getLineColor: [0, 0, 0, 60],
     lineWidthMinPixels: 0.5,
@@ -362,14 +772,14 @@ function renderHex(payload) {
     getTooltip: ({ object }) => object && `${payload.feature}: ${formatValue(object.value)}`,
   });
   stat.textContent = `${data.length.toLocaleString()} hexes (${payload.feature}, ${payload.asset_class})`;
-  setLegend({ payload, isCategorical, values: data.map(d => d.value) });
+  setLegend({ payload, isCategorical, values: payload.data.map(d => d.value) });
 }
 
 function renderObjects(payload) {
   const stat = document.getElementById('stat');
   const rawData = payload.data;
   const mode = document.getElementById('object_mode').value;
-  const data = rawData.filter(d => d[mode] !== null && d[mode] !== undefined);
+  let data = rawData.filter(d => d[mode] !== null && d[mode] !== undefined);
   if (data.length === 0) {
     stat.textContent = `0 objects (${mode} all-null — train OOF artifact may be missing for ${payload.asset_class})`;
     deckOverlay.setProps({ layers: [] });
@@ -379,30 +789,125 @@ function renderObjects(payload) {
   let getFillColor;
   let isDiverging = false;
   let isCategorical = false;
+  // Out-of-range predicate: data with the active mode value strictly
+  // outside the user clamps. Auto (un-clamped) extents never count.
+  // Diverging mode: |v| > |clampMax| where clampMax is the symmetric
+  // bound derived from whichever endpoint the user typed in.
+  let oorFlag = () => false;
+  // Active palette ID — drives both the alpha override (transparent
+  // fill) and the deck.gl updateTriggers below so the layer recolours
+  // as soon as the user picks a new palette in the legend.
+  let activePaletteId;
   if (mode === 'fold_id') {
     isCategorical = true;
     getFillColor = d => categoryColor('fold_' + d.fold_id);
+    activePaletteId = 'categorical';
   } else if (mode === 'residual') {
     isDiverging = true;
-    const scaler = buildDivergingScaler(data.map(d => d[mode]));
-    getFillColor = d => rampColor(DIV_RAMP, scaler.normalize(d[mode]));
+    activePaletteId = divPaletteId;
+    const scaler = buildDivergingScaler(
+      data.map(d => d[mode]),
+      { lo: customLo, hi: customHi },
+    );
+    const candidates = [customLo, customHi]
+      .filter(v => v != null).map(v => Math.abs(v));
+    if (candidates.length > 0) {
+      const clampMax = Math.max(...candidates);
+      oorFlag = d => Math.abs(d[mode]) > clampMax;
+    }
+    const alpha = PALETTE_FILL_ALPHA[divPaletteId] ?? userFillAlpha;
+    getFillColor = d => rampColor(activeDivRamp(), scaler.normalize(d[mode]), alpha);
   } else {
-    const scaler = buildScaler(data.map(d => d[mode]), document.getElementById('scale').value);
-    getFillColor = d => rampColor(SEQ_RAMP, scaler.normalize(d[mode]));
+    activePaletteId = seqPaletteId;
+    const scaler = buildScaler(
+      data.map(d => d[mode]),
+      document.getElementById('scale').value,
+      { lo: customLo, hi: customHi },
+    );
+    oorFlag = d => (customLo != null && d[mode] < customLo)
+                || (customHi != null && d[mode] > customHi);
+    const alpha = PALETTE_FILL_ALPHA[seqPaletteId] ?? userFillAlpha;
+    getFillColor = d => rampColor(activeSeqRamp(), scaler.normalize(d[mode]), alpha);
   }
-  const layer = new deck.ScatterplotLayer({
-    id: 'objects',
-    data,
-    getPosition: d => [d.lon, d.lat],
-    getFillColor,
-    radiusUnits: 'meters',
-    getRadius: 14,
-    stroked: false,
-    pickable: true,
-    onClick: ({ object }) => object && showObjectInspector(object, payload.asset_class),
-  });
+  if (!isCategorical && oorMode === 'hide') {
+    data = data.filter(d => !oorFlag(d));
+  }
+  // Split rows by geometry availability: objects with a footprint
+  // render as PolygonLayer (fill + bright outline); the rest fall
+  // back to small dots so they're not invisible. Same getFillColor
+  // closure feeds both layers — colour mapping stays consistent.
+  const withPolygon = data.filter(d => d.geometry && d.geometry.coordinates);
+  const withoutPolygon = data.filter(d => !d.geometry || !d.geometry.coordinates);
+  // Fill alpha mirrors the palette default but is forced to 0 for the
+  // `transparent` palette so the polygon reads as a wireframe (only
+  // outline visible). Outline alpha stays full regardless.
+  const fillAlpha = PALETTE_FILL_ALPHA[activePaletteId] ?? userFillAlpha;
+  // Dim multiplier for out-of-range data when oorMode === 'dim'. Both
+  // fill and outline get knocked down so the dimmed object reads as a
+  // ghost shape, not a wireframe-on-fill.
+  const oorAlpha = a => oorMode === 'dim' ? Math.round(a * 0.25) : a;
+  const fillWithAlpha = d => {
+    const [r, g, b] = getFillColor(d);
+    const a = !isCategorical && oorFlag(d) ? oorAlpha(fillAlpha) : fillAlpha;
+    return [r, g, b, a];
+  };
+  const lineFromFill = d => {
+    const [r, g, b] = getFillColor(d);
+    // Push toward white by ~35 % so the outline reads brighter than
+    // the fill regardless of where the colour sits on the ramp.
+    const lift = c => Math.min(255, Math.round(c + (255 - c) * 0.35));
+    const a = !isCategorical && oorFlag(d) ? oorAlpha(255) : 255;
+    return [lift(r), lift(g), lift(b), a];
+  };
+  // updateTriggers: re-evaluate accessors when palette state, custom
+  // clamps OR scale mode changes. Without these, deck.gl reuses the
+  // previously-bound colour buffer because the data array reference
+  // is unchanged across recolours.
+  const reverseKey = isDiverging ? divReverse : seqReverse;
+  const colorFrom = isDiverging ? divColorFrom : seqColorFrom;
+  const colorTo = isDiverging ? divColorTo : seqColorTo;
+  const triggerKey = [activePaletteId, reverseKey,
+                      customLo, customHi, userFillAlpha,
+                      colorFrom, colorTo, oorMode,
+                      document.getElementById('scale').value];
+  const colorTriggers = { getFillColor: triggerKey, getLineColor: triggerKey };
+  const layers = [];
+  if (withPolygon.length > 0) {
+    layers.push(new deck.PolygonLayer({
+      id: 'objects-polygons',
+      data: withPolygon,
+      getPolygon: d => d.geometry.coordinates[0],
+      getFillColor: fillWithAlpha,
+      getLineColor: lineFromFill,
+      updateTriggers: colorTriggers,
+      lineWidthMinPixels: 1.5,
+      stroked: true,
+      filled: true,
+      pickable: true,
+      onClick: ({ object }) => object && showObjectInspector(object, payload.asset_class),
+    }));
+  }
+  if (withoutPolygon.length > 0) {
+    // Small dot as fallback for objects without a polygon footprint
+    // (silver row missing geometry). Smaller than the old 14 m radius
+    // so they read as «no footprint» rather than full circles.
+    layers.push(new deck.ScatterplotLayer({
+      id: 'objects-points',
+      data: withoutPolygon,
+      getPosition: d => [d.lon, d.lat],
+      getFillColor: fillWithAlpha,
+      radiusUnits: 'meters',
+      getRadius: 6,
+      stroked: true,
+      lineWidthMinPixels: 1.5,
+      getLineColor: lineFromFill,
+      updateTriggers: colorTriggers,
+      pickable: true,
+      onClick: ({ object }) => object && showObjectInspector(object, payload.asset_class),
+    }));
+  }
   deckOverlay.setProps({
-    layers: [layer, ...selectionOverlayLayers()],
+    layers: [...layers, ...selectionOverlayLayers()],
     getTooltip: ({ object }) =>
       object &&
       `${payload.asset_class} ${object.object_id}\n${mode}: ${formatValue(object[mode])}`,
@@ -425,17 +930,35 @@ function renderObjects(payload) {
 // object is clicked.
 function selectionOverlayLayers() {
   if (!selectedGeometry) return [];
-  return [new deck.PolygonLayer({
-    id: 'selection-polygon',
-    data: [{ ring: selectedGeometry.coordinates[0] }],
-    getPolygon: d => d.ring,
-    getFillColor: [253, 224, 71, 70],   // amber-300 @ 27%
-    getLineColor: [253, 224, 71, 230],
-    lineWidthMinPixels: 2,
-    stroked: true,
-    filled: true,
-    pickable: false,
-  })];
+  // Two stacked polygons: a thick dark halo so the selection stands
+  // out against any base-layer fill (now that scatter renders objects
+  // as polygons too, a single amber outline blends in), and a brighter
+  // amber outline + fill on top. Halo is rendered first → sits below.
+  const ring = selectedGeometry.coordinates[0];
+  return [
+    new deck.PolygonLayer({
+      id: 'selection-halo',
+      data: [{ ring }],
+      getPolygon: d => d.ring,
+      getFillColor: [0, 0, 0, 0],      // halo carries no fill
+      getLineColor: [15, 23, 42, 220], // slate-900 @ 86%
+      lineWidthMinPixels: 6,
+      stroked: true,
+      filled: false,
+      pickable: false,
+    }),
+    new deck.PolygonLayer({
+      id: 'selection-polygon',
+      data: [{ ring }],
+      getPolygon: d => d.ring,
+      getFillColor: [253, 224, 71, 130],   // amber-300 @ 51 %
+      getLineColor: [253, 224, 71, 255],   // amber-300 full
+      lineWidthMinPixels: 3,
+      stroked: true,
+      filled: true,
+      pickable: false,
+    }),
+  ];
 }
 
 function redrawWithSelection() {
@@ -660,37 +1183,186 @@ function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
   document.getElementById('legend-feature').textContent =
     `${payload.feature} (${payload.asset_class})`;
   const gradient = document.getElementById('legend-gradient');
+  const gradientWrap = document.getElementById('legend-gradient-wrap');
   const swatches = document.getElementById('legend-swatches');
+  const colorTicks = legend.querySelector('.ticks:not(.clamp-row)');
+  const clampWrap = document.getElementById('legend-clamp-wrap');
+  const clampTicks = document.getElementById('legend-clamp-ticks');
   if (isCategorical) {
-    gradient.style.display = 'none';
-    document.getElementById('legend-min').textContent = '';
-    document.getElementById('legend-max').textContent = '';
+    gradientWrap.style.display = 'none';
+    colorTicks.style.display = 'none';
+    clampWrap.style.display = 'none';
+    clampTicks.style.display = 'none';
     swatches.style.display = 'flex';
     const uniq = [...new Set(values)].sort();
     swatches.innerHTML = uniq.map(v => {
       const [r, g, b] = categoryColor(String(v));
       return `<span><span class="swatch" style="background: rgb(${r},${g},${b})"></span>${escapeHtml(String(v))}</span>`;
     }).join('');
-  } else if (isDiverging) {
-    gradient.style.display = '';
-    gradient.classList.add('diverging');
-    swatches.style.display = 'none';
-    const max = Math.max(...values.map(v => Math.abs(v)));
-    document.getElementById('legend-min').textContent = formatValue(-max);
-    document.getElementById('legend-max').textContent = formatValue(max);
-  } else {
-    gradient.style.display = '';
-    gradient.classList.remove('diverging');
-    swatches.style.display = 'none';
-    const sorted = [...values].sort((a, b) => a - b);
-    const mode = document.getElementById('scale').value;
-    let lo, hi;
-    if (mode === 'p98') { lo = quantile(sorted, 0.02); hi = quantile(sorted, 0.98); }
-    else { lo = sorted[0]; hi = sorted[sorted.length - 1]; }
-    document.getElementById('legend-min').textContent = formatValue(lo);
-    document.getElementById('legend-max').textContent = formatValue(hi);
+    document.getElementById('legend-palette-controls').style.display = 'none';
+    document.getElementById('legend-opacity-row').style.display = 'none';
+    renderPalettePicker(null);
+    return;
   }
+  swatches.style.display = 'none';
+  // Top gradient: ALWAYS the full palette. The from/to thumbs cut a
+  // sub-range out of it. The displayed gradient never changes when
+  // the user clamps data lo/hi (those live below).
+  const fullStops = isDiverging ? fullDivRamp() : fullSeqRamp();
+  gradient.style.background = rampGradientCss(fullStops);
+  gradientWrap.style.display = '';
+  colorTicks.style.display = 'flex';
+  const kind = isDiverging ? 'div' : 'seq';
+  setColorRangeSliders(kind);
+  // Bottom row: numeric data clamps, no gradient.
+  clampWrap.style.display = '';
+  clampTicks.style.display = 'flex';
+  setLegendSliders(values, isDiverging);
+  const reverseFlag = isDiverging ? divReverse : seqReverse;
+  const controls = document.getElementById('legend-palette-controls');
+  const reverseChip = document.getElementById('legend-reverse');
+  controls.style.display = '';
+  reverseChip.classList.toggle('active', reverseFlag);
+  // Sync the opacity slider to the global state without stomping on
+  // the active drag (focused element guard mirrors the lo/hi sliders).
+  const alphaSlider = document.getElementById('legend-alpha');
+  const alphaVal = document.getElementById('legend-alpha-val');
+  document.getElementById('legend-opacity-row').style.display = '';
+  if (document.activeElement !== alphaSlider) alphaSlider.value = String(userFillAlpha);
+  alphaVal.textContent = String(userFillAlpha);
+  renderPalettePicker(kind);
 }
+
+function setColorRangeSliders(kind) {
+  const fromSlider = document.getElementById('legend-color-from');
+  const toSlider = document.getElementById('legend-color-to');
+  const fromVal = document.getElementById('legend-color-from-val');
+  const toVal = document.getElementById('legend-color-to-val');
+  const reset = document.getElementById('legend-color-reset');
+  const fromT = kind === 'div' ? divColorFrom : seqColorFrom;
+  const toT = kind === 'div' ? divColorTo : seqColorTo;
+  if (document.activeElement !== fromSlider) fromSlider.value = String(Math.round(fromT * 100));
+  if (document.activeElement !== toSlider) toSlider.value = String(Math.round(toT * 100));
+  fromVal.textContent = `${Math.round(fromT * 100)}%`;
+  toVal.textContent = `${Math.round(toT * 100)}%`;
+  fromVal.classList.toggle('custom', fromT !== 0);
+  toVal.classList.toggle('custom', toT !== 1);
+  reset.classList.toggle('hidden', fromT === 0 && toT === 1);
+}
+
+// Configure the lo / hi range sliders based on the current layer's
+// data extents. For diverging mode the slider track spans
+// [-|maxAbs|, +|maxAbs|] so both thumbs share one symmetric scale;
+// for sequential it spans [dataMin, dataMax]. Active thumb is left
+// alone so a live drag doesn't snap on every recolour.
+function setLegendSliders(values, isDiverging) {
+  const minSlider = document.getElementById('legend-min');
+  const maxSlider = document.getElementById('legend-max');
+  const minVal = document.getElementById('legend-min-val');
+  const maxVal = document.getElementById('legend-max-val');
+  const finite = (values || []).filter(v => Number.isFinite(v));
+  if (finite.length === 0) {
+    minVal.value = ''; maxVal.value = '';
+    minVal.placeholder = 'auto'; maxVal.placeholder = 'auto';
+    return;
+  }
+  let trackMin, trackMax;
+  if (isDiverging) {
+    const m = Math.max(...finite.map(v => Math.abs(v))) || 1;
+    trackMin = -m; trackMax = m;
+  } else {
+    trackMin = Math.min(...finite); trackMax = Math.max(...finite);
+    if (trackMin === trackMax) trackMax = trackMin + 1;
+  }
+  const span = trackMax - trackMin;
+  const step = span / 1000;
+  for (const s of [minSlider, maxSlider]) {
+    s.min = String(trackMin); s.max = String(trackMax); s.step = String(step);
+  }
+  // Default thumb positions are the track extremes, so an unclamped
+  // gradient shows both thumbs at the ends. Custom values override.
+  const loVal = customLo != null ? customLo : trackMin;
+  const hiVal = customHi != null ? customHi : trackMax;
+  if (document.activeElement !== minSlider) minSlider.value = String(loVal);
+  if (document.activeElement !== maxSlider) maxSlider.value = String(hiVal);
+  // Number inputs share state with the sliders — don't stomp on the
+  // user typing into them either. Empty + «auto» placeholder when the
+  // user hasn't set a custom clamp, so clicking unrelated controls
+  // (e.g. the oor chip) doesn't make the auto bounds look committed.
+  minVal.placeholder = 'auto'; maxVal.placeholder = 'auto';
+  if (document.activeElement !== minVal) {
+    minVal.value = customLo != null ? numberForInput(customLo) : '';
+  }
+  if (document.activeElement !== maxVal) {
+    maxVal.value = customHi != null ? numberForInput(customHi) : '';
+  }
+  minVal.classList.toggle('custom', customLo != null);
+  maxVal.classList.toggle('custom', customHi != null);
+  document.getElementById('legend-reset')
+    .classList.toggle('hidden', customLo == null && customHi == null);
+}
+
+// Compact numeric formatting for `<input type=number>` — no commas
+// (would invalidate the input), trims floating-point noise so the
+// round-trip slider→input→slider doesn't drift.
+function numberForInput(v) {
+  if (!Number.isFinite(v)) return '';
+  return Number(v.toPrecision(6)).toString();
+}
+
+// Palette picker: a custom dropdown. Collapsed state shows the
+// currently-selected palette as a mini-gradient + name + caret. Click
+// expands a popup menu listing all palettes (each = mini-gradient +
+// name); click an option to select and close. Visually-driven pick.
+// The menu previews the *effective* gradient — when reverse is on,
+// the user sees mirrored mini-gradients so a new pick applies the
+// same flip immediately. Hidden for categorical metrics.
+function renderPalettePicker(kind) {
+  const container = document.getElementById('legend-palette-picker');
+  if (!kind) { container.innerHTML = ''; container.classList.remove('open'); return; }
+  const ramps = kind === 'div' ? DIV_RAMPS : SEQ_RAMPS;
+  const activeId = kind === 'div' ? divPaletteId : seqPaletteId;
+  const reversed = kind === 'div' ? divReverse : seqReverse;
+  const activeStops = maybeReverse(ramps[activeId] || Object.values(ramps)[0], reversed);
+  const menuHtml = Object.entries(ramps).map(([id, stops]) => `
+    <div class="opt${id === activeId ? ' active' : ''}"
+         data-id="${id}" data-kind="${kind}"
+         title="${id}${reversed ? ' (reversed)' : ''}">
+      <div class="bar" style="background: ${rampGradientCss(maybeReverse(stops, reversed))}"></div>
+      <div class="name">${id}</div>
+    </div>
+  `).join('');
+  container.innerHTML = `
+    <div class="current" data-kind="${kind}" title="${activeId}${reversed ? ' (reversed)' : ''}">
+      <div class="bar" style="background: ${rampGradientCss(activeStops)}"></div>
+      <div class="name">${activeId}</div>
+      <div class="caret">▾</div>
+    </div>
+    <div class="menu">${menuHtml}</div>
+  `;
+  container.querySelector('.current').addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    container.classList.toggle('open');
+  });
+  container.querySelectorAll('.opt').forEach(el => {
+    el.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const id = el.dataset.id;
+      if (el.dataset.kind === 'div') divPaletteId = id;
+      else seqPaletteId = id;
+      container.classList.remove('open');
+      recolor();
+    });
+  });
+}
+
+// Close the palette dropdown when clicking outside it.
+document.addEventListener('click', (ev) => {
+  const picker = document.getElementById('legend-palette-picker');
+  if (picker && !picker.contains(ev.target)) {
+    picker.classList.remove('open');
+  }
+});
 
 // ---------- main ----------
 
@@ -733,6 +1405,145 @@ function recolor() {
 ['object_mode', 'scale'].forEach(id =>
   document.getElementById(id).addEventListener('change', recolor)
 );
+
+// Dual thumbs overlaid on the gradient fire 'input' on every drag
+// tick → live clamp. Each thumb maps to its own state var; thumbs
+// are constrained so lo ≤ hi (dragging one past the other pushes
+// the other along by one step). × reset chip clears both.
+function onLegendSliderInput(ev) {
+  const minSlider = document.getElementById('legend-min');
+  const maxSlider = document.getElementById('legend-max');
+  const v = Number(ev.target.value);
+  if (ev.target.id === 'legend-min') {
+    customLo = v;
+    if (customHi != null && customLo > customHi) customHi = customLo;
+    else if (customHi == null && Number(maxSlider.value) < customLo) {
+      customHi = customLo;
+    }
+  } else {
+    customHi = v;
+    if (customLo != null && customHi < customLo) customLo = customHi;
+    else if (customLo == null && Number(minSlider.value) > customHi) {
+      customLo = customHi;
+    }
+  }
+  recolor();
+}
+['legend-min', 'legend-max'].forEach(id =>
+  document.getElementById(id).addEventListener('input', onLegendSliderInput)
+);
+document.getElementById('legend-reset').addEventListener('click', () => {
+  customLo = null;
+  customHi = null;
+  recolor();
+});
+
+// Number-input variant of lo/hi clamps. Typing a value (or pressing
+// up/down) commits on `change` (blur or Enter); fed through the same
+// state vars so sliders + inputs stay in sync via setLegendSliders.
+function onLegendInputChange(ev) {
+  const raw = ev.target.value;
+  if (raw === '' || raw == null) {
+    if (ev.target.id === 'legend-min-val') customLo = null;
+    else customHi = null;
+    recolor(); return;
+  }
+  const v = Number(raw);
+  if (!Number.isFinite(v)) return;
+  if (ev.target.id === 'legend-min-val') {
+    customLo = v;
+    if (customHi != null && customLo > customHi) customHi = customLo;
+  } else {
+    customHi = v;
+    if (customLo != null && customHi < customLo) customLo = customHi;
+  }
+  recolor();
+}
+['legend-min-val', 'legend-max-val'].forEach(id =>
+  document.getElementById(id).addEventListener('change', onLegendInputChange)
+);
+
+// Out-of-range mode: how data values outside [customLo, customHi]
+// (or the data extents when unclamped) render. clamp = boundary
+// colour (default), dim = alpha *= 0.25, hide = excluded entirely
+// from the layer. Cycles on click. Stored globally; applied in both
+// renderHex and renderObjects.
+let oorMode = 'clamp';
+const OOR_MODES = ['clamp', 'dim', 'hide'];
+const oorChip = document.getElementById('legend-oor-mode');
+oorChip.addEventListener('click', () => {
+  oorMode = OOR_MODES[(OOR_MODES.indexOf(oorMode) + 1) % OOR_MODES.length];
+  oorChip.textContent = `oor: ${oorMode}`;
+  oorChip.classList.toggle('active', oorMode !== 'clamp');
+  recolor();
+});
+
+// Live fill-opacity slider. Updates global state and recolours; the
+// `transparent` palette ignores this and stays at alpha 0 because
+// PALETTE_FILL_ALPHA wins in the renderers.
+document.getElementById('legend-alpha').addEventListener('input', (ev) => {
+  userFillAlpha = Number(ev.target.value);
+  document.getElementById('legend-alpha-val').textContent = String(userFillAlpha);
+  recolor();
+});
+
+// Reverse chip flips the palette in-place. Operates on whichever kind
+// is active right now, so toggling under residual mode flips diverging
+// only and a later switch back to a sequential metric still sees its
+// own (un-reversed) state.
+document.getElementById('legend-reverse').addEventListener('click', () => {
+  if (!lastDataset) return;
+  const mode = document.getElementById('object_mode').value;
+  const isObj = lastDataset.kind === 'object';
+  const isResidual = isObj && mode === 'residual';
+  if (isResidual) divReverse = !divReverse;
+  else seqReverse = !seqReverse;
+  recolor();
+});
+
+// Active legend kind drives which palette/range state gets mutated by
+// the legend controls below. Mirrors the inline check used by the
+// reverse chip so the two stay in sync.
+function activeLegendKind() {
+  if (!lastDataset) return 'seq';
+  if (lastDataset.kind === 'object'
+      && document.getElementById('object_mode').value === 'residual') {
+    return 'div';
+  }
+  return 'seq';
+}
+
+// Dual thumbs overlaid on the secondary gradient — pick the colour
+// sub-range used to render. Constrained so from ≤ to (a thumb pushed
+// past the other drags the other along). × reset chip clears both
+// back to (0, 1).
+function onColorRangeInput(ev) {
+  const fromSlider = document.getElementById('legend-color-from');
+  const toSlider = document.getElementById('legend-color-to');
+  const v = Number(ev.target.value) / 100;
+  const kind = activeLegendKind();
+  let fromT = kind === 'div' ? divColorFrom : seqColorFrom;
+  let toT = kind === 'div' ? divColorTo : seqColorTo;
+  if (ev.target.id === 'legend-color-from') {
+    fromT = v;
+    if (fromT > toT) toT = fromT;
+  } else {
+    toT = v;
+    if (toT < fromT) fromT = toT;
+  }
+  if (kind === 'div') { divColorFrom = fromT; divColorTo = toT; }
+  else { seqColorFrom = fromT; seqColorTo = toT; }
+  recolor();
+}
+['legend-color-from', 'legend-color-to'].forEach(id =>
+  document.getElementById(id).addEventListener('input', onColorRangeInput)
+);
+document.getElementById('legend-color-reset').addEventListener('click', () => {
+  const kind = activeLegendKind();
+  if (kind === 'div') { divColorFrom = 0; divColorTo = 1; }
+  else { seqColorFrom = 0; seqColorTo = 1; }
+  recolor();
+});
 
 map.on('load', async () => {
   await loadFeatureOptions();
