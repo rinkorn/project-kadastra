@@ -151,6 +151,7 @@ def _usecase(
     zonal_layer_names: list[str] | None = None,
     poly_area_radii_m: list[int] | None = None,
     poly_area_layer_paths: dict[str, str] | None = None,
+    poly_distance_layer_paths: dict[str, str] | None = None,
     current_year_for_age_features: int = 2026,
 ) -> BuildObjectFeatures:
     return BuildObjectFeatures(
@@ -186,6 +187,11 @@ def _usecase(
         ),
         poly_area_layer_paths=(
             poly_area_layer_paths if poly_area_layer_paths is not None else {}
+        ),
+        poly_distance_layer_paths=(
+            poly_distance_layer_paths
+            if poly_distance_layer_paths is not None
+            else {}
         ),
         current_year_for_age_features=current_year_for_age_features,
     )
@@ -508,6 +514,65 @@ def test_appends_poly_area_share_columns_for_each_layer_path(tmp_path) -> None: 
     # KAZAN_LAT/KAZAN_LON is inside the polygon; share should be 1.0 at both radii.
     assert df["water_share_100m"][0] > 0.99
     assert df["water_share_800m"][0] > 0.99
+
+
+def test_appends_poly_distance_columns_for_each_layer_path(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """ADR-0019: BuildObjectFeatures must read each poly-distance layer
+    GeoJSON-seq and surface `dist_to_<layer>_m` columns in each saved
+    partition. Distance is independent of share — both blocks coexist."""
+    # Polygon enveloping KAZAN_LAT/KAZAN_LON (55.7887, 49.1221) so the
+    # first object lands inside it and reports distance 0.
+    geojson_path = tmp_path / "park.geojsonseq"
+    geojson_path.write_text(
+        '{"type":"Feature","properties":{},"geometry":{"type":"Polygon",'
+        '"coordinates":[[[49.121,55.788],[49.123,55.788],'
+        '[49.123,55.789],[49.121,55.789],[49.121,55.788]]]}}\n'
+    )
+
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        poly_distance_layer_paths={"park": str(geojson_path)},
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "dist_to_park_m" in df.columns
+    # Object at (55.7887, 49.1221) is inside the polygon → distance 0.
+    d = float(df["dist_to_park_m"][0])
+    assert d == 0.0
+
+
+def test_missing_poly_distance_layer_path_yields_null_column(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """If a configured poly-distance layer's file does not exist, the
+    pipeline must not crash — it emits null distance column. Keeps
+    Settings.poly_distance_layer_paths configurable as a superset."""
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        poly_distance_layer_paths={
+            "landfill": str(tmp_path / "missing.geojsonseq")
+        },
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "dist_to_landfill_m" in df.columns
+    assert df["dist_to_landfill_m"][0] is None
 
 
 def test_missing_poly_area_layer_path_is_skipped_gracefully(tmp_path) -> None:  # type: ignore[no-untyped-def]
