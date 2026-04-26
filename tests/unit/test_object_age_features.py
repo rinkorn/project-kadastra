@@ -6,13 +6,15 @@ output, no system-clock dependency)."""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import polars as pl
 import pytest
 
 from kadastra.etl.object_age_features import compute_object_age_features
 
 
-def _objects(years: list[int | None]) -> pl.DataFrame:
+def _objects(years: Sequence[int | None]) -> pl.DataFrame:
     return pl.DataFrame(
         {
             "object_id": [f"way/{i}" for i in range(len(years))],
@@ -31,11 +33,12 @@ def test_age_features_basic_2020_object() -> None:
 
 
 def test_new_construction_flag_is_true_for_age_le_5() -> None:
+    """current_year=2026: age cutoff at 5 means year_built ≥ 2021."""
     df = compute_object_age_features(
         _objects([2024, 2021, 2020, 2019]), current_year=2026
     )
     flags = df["is_new_construction"].to_list()
-    assert flags == [True, True, True, False]
+    assert flags == [True, True, False, False]
 
 
 def test_new_construction_flag_is_true_for_current_year_build() -> None:
