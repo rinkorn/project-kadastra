@@ -263,6 +263,37 @@ def test_dedupes_by_object_id() -> None:
     assert df["object_id"].n_unique() == 2
 
 
+def test_polygon_wkt_3857_passthrough_buildings_and_landplots() -> None:
+    """Geometry from silver must propagate to gold for both
+    buildings and landplots — the web UI needs object polygons,
+    and BuildObjectFeatures runs without selecting columns so the
+    only place the geometry can be dropped is here in assemble."""
+    silver = _FakeSilverStore(
+        buildings=_silver_buildings(), landplots=_silver_landplots()
+    )
+    store = _FakeValuationObjectStore()
+    AssembleNspdValuationObjects(
+        silver_store=silver, valuation_object_store=store
+    ).execute(
+        "RU-KAZAN-AGG",
+        asset_classes=[AssetClass.HOUSE, AssetClass.LANDPLOT],
+    )
+
+    by_class = {c: df for _, c, df in store.calls}
+    house_df = by_class[AssetClass.HOUSE]
+    landplot_df = by_class[AssetClass.LANDPLOT]
+    assert "polygon_wkt_3857" in house_df.columns
+    assert "polygon_wkt_3857" in landplot_df.columns
+    assert all(
+        wkt is not None and wkt.startswith("POLYGON")
+        for wkt in house_df["polygon_wkt_3857"].to_list()
+    )
+    assert all(
+        wkt is not None and wkt.startswith("POLYGON")
+        for wkt in landplot_df["polygon_wkt_3857"].to_list()
+    )
+
+
 def test_landplots_partition_skipped_when_landplot_not_requested() -> None:
     silver = _FakeSilverStore(
         buildings=_silver_buildings(), landplots=_silver_landplots()
