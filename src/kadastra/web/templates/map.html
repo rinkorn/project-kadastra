@@ -464,17 +464,35 @@ function renderObjects(payload) {
 // object is clicked.
 function selectionOverlayLayers() {
   if (!selectedGeometry) return [];
-  return [new deck.PolygonLayer({
-    id: 'selection-polygon',
-    data: [{ ring: selectedGeometry.coordinates[0] }],
-    getPolygon: d => d.ring,
-    getFillColor: [253, 224, 71, 70],   // amber-300 @ 27%
-    getLineColor: [253, 224, 71, 230],
-    lineWidthMinPixels: 2,
-    stroked: true,
-    filled: true,
-    pickable: false,
-  })];
+  // Two stacked polygons: a thick dark halo so the selection stands
+  // out against any base-layer fill (now that scatter renders objects
+  // as polygons too, a single amber outline blends in), and a brighter
+  // amber outline + fill on top. Halo is rendered first → sits below.
+  const ring = selectedGeometry.coordinates[0];
+  return [
+    new deck.PolygonLayer({
+      id: 'selection-halo',
+      data: [{ ring }],
+      getPolygon: d => d.ring,
+      getFillColor: [0, 0, 0, 0],      // halo carries no fill
+      getLineColor: [15, 23, 42, 220], // slate-900 @ 86%
+      lineWidthMinPixels: 6,
+      stroked: true,
+      filled: false,
+      pickable: false,
+    }),
+    new deck.PolygonLayer({
+      id: 'selection-polygon',
+      data: [{ ring }],
+      getPolygon: d => d.ring,
+      getFillColor: [253, 224, 71, 130],   // amber-300 @ 51 %
+      getLineColor: [253, 224, 71, 255],   // amber-300 full
+      lineWidthMinPixels: 3,
+      stroked: true,
+      filled: true,
+      pickable: false,
+    }),
+  ];
 }
 
 function redrawWithSelection() {
