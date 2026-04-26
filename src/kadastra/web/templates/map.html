@@ -145,6 +145,7 @@ map.addControl(deckOverlay);
 let featureOptions = null; // populated from /api/feature_options
 let lastDataset = null;    // last fetched payload (for re-color on scale change)
 let categoricalPalette = {};
+let selectedGeometry = null; // GeoJSON Polygon (WGS84) of the currently inspected object
 
 // ---------- color helpers ----------
 
@@ -306,7 +307,7 @@ function renderHex(payload) {
     onClick: ({ object }) => object && showHexInspector(object, payload),
   });
   deckOverlay.setProps({
-    layers: [layer],
+    layers: [layer, ...selectionOverlayLayers()],
     getTooltip: ({ object }) => object && `${payload.feature}: ${formatValue(object.value)}`,
   });
   stat.textContent = `${data.length.toLocaleString()} hexes (${payload.feature}, ${payload.asset_class})`;
@@ -350,7 +351,7 @@ function renderObjects(payload) {
     onClick: ({ object }) => object && showObjectInspector(object, payload.asset_class),
   });
   deckOverlay.setProps({
-    layers: [layer],
+    layers: [layer, ...selectionOverlayLayers()],
     getTooltip: ({ object }) =>
       object &&
       `${payload.asset_class} ${object.object_id}\n${mode}: ${formatValue(object[mode])}`,
@@ -361,6 +362,35 @@ function renderObjects(payload) {
     isCategorical, isDiverging,
     values: data.map(d => d[mode]),
   });
+}
+
+// ---------- selection overlay ----------
+
+// Returns extra deck.gl layers that highlight the currently-selected
+// object on top of whatever base layer (hex / scatter) is rendered.
+// Right now: a stroked + lightly-filled PolygonLayer for the object's
+// gold polygon (re-projected to WGS84 by /api/inspection/{id}). The
+// polygon stays visible across mode/scale changes until another
+// object is clicked.
+function selectionOverlayLayers() {
+  if (!selectedGeometry) return [];
+  return [new deck.PolygonLayer({
+    id: 'selection-polygon',
+    data: [{ ring: selectedGeometry.coordinates[0] }],
+    getPolygon: d => d.ring,
+    getFillColor: [253, 224, 71, 70],   // amber-300 @ 27%
+    getLineColor: [253, 224, 71, 230],
+    lineWidthMinPixels: 2,
+    stroked: true,
+    filled: true,
+    pickable: false,
+  })];
+}
+
+function redrawWithSelection() {
+  if (!lastDataset) return;
+  if (lastDataset.kind === 'hex') renderHex(lastDataset.payload);
+  else renderObjects(lastDataset.payload);
 }
 
 // ---------- inspector panel ----------
@@ -388,6 +418,14 @@ async function showObjectInspector(obj, assetClass) {
     panel.innerHTML = `<h2>Inspector</h2><p class="empty">Could not load detail for ${escapeHtml(obj.object_id)}.</p>`;
     return;
   }
+  // Pull geometry off the dict before rendering rows: it's a structured
+  // GeoJSON object, not a scalar — listing its raw JSON in the side
+  // panel adds nothing for the human reader.
+  const geometry = detail.geometry || null;
+  delete detail.geometry;
+  selectedGeometry = geometry && geometry.type === 'Polygon' ? geometry : null;
+  redrawWithSelection();
+
   const sections = [];
   sections.push(`<h2>Object inspector</h2>`);
   // Summary first.
@@ -397,6 +435,14 @@ async function showObjectInspector(obj, assetClass) {
   const summaryRows = summary
     .filter(k => detail[k] !== undefined)
     .map(k => [k, formatValue(detail[k])]);
+  // Surface a one-line geometry status so the user knows whether the
+  // map highlight comes from a real polygon or just a fallback dot.
+  summaryRows.push([
+    'geometry',
+    selectedGeometry
+      ? `Polygon (${selectedGeometry.coordinates[0].length - 1} vertices)`
+      : '— (no silver polygon)',
+  ]);
   sections.push(rowsSection('summary', summaryRows));
   // Everything else — sorted alphabetically.
   const rest = Object.keys(detail)
