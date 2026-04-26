@@ -100,6 +100,14 @@ def _seed_valuation_objects(settings: Settings) -> None:
                 "synthetic_target_rub_per_m2": 100_000.0,
                 "intra_city_raion": "Советский",
                 "polygon_wkt_3857": wkt_way1,
+                # ADR-0018 geometry features (square 100×100 m).
+                "polygon_area_m2": 10_000.0,
+                "polygon_perimeter_m": 400.0,
+                "polygon_compactness": 0.7854,
+                "polygon_convexity": 1.0,
+                "bbox_aspect_ratio": 1.0,
+                "polygon_orientation_deg": 0.0,
+                "polygon_n_vertices": 4,
             },
             {
                 "object_id": "way/2", "asset_class": "apartment",
@@ -107,6 +115,13 @@ def _seed_valuation_objects(settings: Settings) -> None:
                 "synthetic_target_rub_per_m2": 110_000.0,
                 "intra_city_raion": "Вахитовский",
                 "polygon_wkt_3857": None,
+                "polygon_area_m2": None,
+                "polygon_perimeter_m": None,
+                "polygon_compactness": None,
+                "polygon_convexity": None,
+                "bbox_aspect_ratio": None,
+                "polygon_orientation_deg": None,
+                "polygon_n_vertices": None,
             },
         ],
         schema={
@@ -115,6 +130,13 @@ def _seed_valuation_objects(settings: Settings) -> None:
             "synthetic_target_rub_per_m2": pl.Float64,
             "intra_city_raion": pl.Utf8,
             "polygon_wkt_3857": pl.Utf8,
+            "polygon_area_m2": pl.Float64,
+            "polygon_perimeter_m": pl.Float64,
+            "polygon_compactness": pl.Float64,
+            "polygon_convexity": pl.Float64,
+            "bbox_aspect_ratio": pl.Float64,
+            "polygon_orientation_deg": pl.Float64,
+            "polygon_n_vertices": pl.Int64,
         },
     )
     store.save("RU-TA", AssetClass.APARTMENT, df)
@@ -349,6 +371,50 @@ def test_inspection_detail_emits_geometry_as_geojson_wgs84(
         assert 48.0 <= lon <= 50.0, f"lon out of Kazan range: {lon}"
         assert 55.0 <= lat <= 56.0, f"lat out of Kazan range: {lat}"
     assert "polygon_wkt_3857" not in detail
+
+
+def test_inspection_detail_carries_geometry_features(
+    client: TestClient,
+) -> None:
+    """ADR-0018: the 7 derived geometry features (polygon_area_m2,
+    perimeter, compactness, convexity, bbox_aspect_ratio, orientation,
+    n_vertices) must reach the inspector — they are gold columns and
+    surface in the side panel as a dedicated section."""
+    response = client.get(
+        "/api/inspection/way/1", params={"asset_class": "apartment"}
+    )
+    assert response.status_code == 200
+    detail = response.json()["data"]
+    assert detail["polygon_area_m2"] == 10_000.0
+    assert detail["polygon_perimeter_m"] == 400.0
+    assert detail["polygon_compactness"] == 0.7854
+    assert detail["polygon_convexity"] == 1.0
+    assert detail["bbox_aspect_ratio"] == 1.0
+    assert detail["polygon_orientation_deg"] == 0.0
+    assert detail["polygon_n_vertices"] == 4
+
+
+def test_inspection_detail_geometry_features_null_when_no_polygon(
+    client: TestClient,
+) -> None:
+    """When the underlying object has no polygon (way/2 in fixture has
+    polygon_wkt_3857=None), the 7 geometry features must surface as
+    null — the UI shows '—' but doesn't crash."""
+    response = client.get(
+        "/api/inspection/way/2", params={"asset_class": "apartment"}
+    )
+    assert response.status_code == 200
+    detail = response.json()["data"]
+    for field in (
+        "polygon_area_m2",
+        "polygon_perimeter_m",
+        "polygon_compactness",
+        "polygon_convexity",
+        "bbox_aspect_ratio",
+        "polygon_orientation_deg",
+        "polygon_n_vertices",
+    ):
+        assert detail[field] is None, f"expected null for {field}"
 
 
 def test_inspection_detail_geometry_null_when_wkt_missing(

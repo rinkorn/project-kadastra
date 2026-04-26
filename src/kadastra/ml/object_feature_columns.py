@@ -23,6 +23,11 @@ _NON_FEATURE_COLUMNS = frozenset(
         "cad_num",
         "readable_address",
         "mun_source",
+        # ADR-0017: passthrough geometry for the inspector. ADR-0018
+        # derives 7 numeric features from it (polygon_area_m2 etc.);
+        # the raw WKT itself is per-row unique and would poison cat
+        # encoding if leaked into the model.
+        "polygon_wkt_3857",
     }
 )
 _NON_FEATURE_PREFIXES = ("parent_h3_p",)

@@ -102,6 +102,29 @@ def test_keeps_relative_derivative_columns() -> None:
         assert col in numeric
 
 
+def test_excludes_polygon_wkt_3857_passthrough_column() -> None:
+    """ADR-0017 prokids ``polygon_wkt_3857`` through gold for the
+    inspector — it is identity/provenance, not a feature. With ~290k
+    unique WKT strings it would otherwise become a high-cardinality
+    categorical that collapses CatBoost cat-handling on val folds and
+    breaks EBM bin-encoding outright."""
+    df = _df(
+        {
+            "object_id": pl.Utf8,
+            "polygon_wkt_3857": pl.Utf8,
+            "levels": pl.Int64,
+            "materials": pl.Utf8,
+        }
+    )
+    numeric, categorical = select_object_feature_columns(df)
+    assert "polygon_wkt_3857" not in categorical
+    assert "polygon_wkt_3857" not in numeric
+    # Other Utf8 columns still flow into categorical normally.
+    assert "materials" in categorical
+    # Other numeric columns still flow into numeric normally.
+    assert "levels" in numeric
+
+
 def test_preserves_column_order_within_groups() -> None:
     df = _df(
         {
