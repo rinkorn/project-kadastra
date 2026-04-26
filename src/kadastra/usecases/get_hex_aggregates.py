@@ -48,7 +48,13 @@ class GetHexAggregates:
         resolution: int,
         asset_class: str,
         feature: str,
+        *,
+        model: str = "catboost",
     ) -> list[dict[str, object]]:
+        # ADR-0016 quartet: stub will be replaced in the next commit so
+        # that ``model`` actually selects the partition. For now this
+        # signature exists only to keep tests compiling.
+        del model
         path = (
             self._base_path
             / f"region={region_code}"
