@@ -41,6 +41,11 @@ _OUTPUT_SCHEMA: dict[str, type[pl.DataType] | pl.DataType] = {
     # fallbacks downstream in BuildObjectFeatures.
     "cad_num": pl.Utf8,
     "readable_address": pl.Utf8,
+    # WKT polygon in EPSG:3857 (web mercator metres). Carried through
+    # so the web UI can render object footprints in deck.gl and so
+    # downstream feature builders can use the geometry without
+    # re-loading silver. WGS84 conversion happens at the API edge.
+    "polygon_wkt_3857": pl.Utf8,
 }
 
 
