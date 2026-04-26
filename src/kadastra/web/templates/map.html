@@ -58,47 +58,52 @@
       padding: 8px 12px; border-radius: 6px; font-size: 11px; z-index: 12;
       max-width: 320px;
     }
-    .legend .gradient { width: 240px; height: 8px; margin-top: 4px;
+    .legend .gradient-wrap { position: relative; width: 240px; height: 18px;
+      margin-top: 4px;
+    }
+    .legend .gradient { position: absolute; left: 0; right: 0; top: 50%;
+      transform: translateY(-50%);
+      height: 8px; border-radius: 4px;
       background: linear-gradient(to right, #2c7bb6, #abd9e9, #ffffbf, #fdae61, #d7191c);
     }
-    .legend .ticks { display: flex; flex-direction: column; gap: 3px;
-      margin-top: 4px; align-items: stretch;
-    }
-    .legend .range-row { display: flex; align-items: center; gap: 6px; }
-    .legend .range-row .label { font-size: 10px; opacity: 0.7;
-      width: 18px; text-align: center;
-    }
-    .legend .range-row input[type="range"] { flex: 1; height: 14px;
+    .legend .gradient-wrap input[type="range"] { position: absolute;
+      left: 0; right: 0; top: 0; width: 100%; height: 100%;
       background: transparent; -webkit-appearance: none; appearance: none;
-      margin: 0; cursor: pointer;
+      margin: 0; pointer-events: none;
     }
-    .legend .range-row input[type="range"]::-webkit-slider-runnable-track {
-      height: 3px; background: rgba(255, 255, 255, 0.25); border-radius: 2px;
+    .legend .gradient-wrap input[type="range"]::-webkit-slider-runnable-track {
+      height: 100%; background: transparent;
     }
-    .legend .range-row input[type="range"]::-moz-range-track {
-      height: 3px; background: rgba(255, 255, 255, 0.25); border-radius: 2px;
+    .legend .gradient-wrap input[type="range"]::-moz-range-track {
+      height: 100%; background: transparent;
     }
-    .legend .range-row input[type="range"]::-webkit-slider-thumb {
+    .legend .gradient-wrap input[type="range"]::-webkit-slider-thumb {
+      pointer-events: auto;
       -webkit-appearance: none; appearance: none;
-      width: 11px; height: 11px; border-radius: 50%;
-      background: #fde047; cursor: pointer; margin-top: -4px;
-      border: 1px solid rgba(0, 0, 0, 0.5);
+      width: 10px; height: 16px; border-radius: 2px;
+      background: #fde047; border: 1px solid rgba(0, 0, 0, 0.55);
+      cursor: ew-resize;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
     }
-    .legend .range-row input[type="range"]::-moz-range-thumb {
-      width: 11px; height: 11px; border-radius: 50%;
-      background: #fde047; cursor: pointer;
-      border: 1px solid rgba(0, 0, 0, 0.5);
+    .legend .gradient-wrap input[type="range"]::-moz-range-thumb {
+      pointer-events: auto;
+      width: 10px; height: 16px; border-radius: 2px;
+      background: #fde047; border: 1px solid rgba(0, 0, 0, 0.55);
+      cursor: ew-resize;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
     }
-    .legend .range-row .val { font-size: 10px; opacity: 0.85;
-      min-width: 64px; text-align: right;
+    .legend .gradient-wrap input[type="range"]:focus { outline: none; }
+    .legend .ticks { display: flex; align-items: center;
+      justify-content: space-between; margin-top: 2px; gap: 8px;
       font-variant-numeric: tabular-nums;
     }
-    .legend .range-row .val.custom { color: #fde047; opacity: 1; }
-    .legend .ticks .reset { cursor: pointer; opacity: 0.6; align-self: flex-end;
+    .legend .ticks .val { opacity: 0.85; min-width: 0; }
+    .legend .ticks .val.custom { color: #fde047; opacity: 1; }
+    .legend .ticks .reset { cursor: pointer; opacity: 0.6;
       font-size: 10px; padding: 0 4px; user-select: none;
     }
     .legend .ticks .reset:hover { opacity: 1; }
-    .legend .ticks .reset.hidden { display: none; }
+    .legend .ticks .reset.hidden { visibility: hidden; }
     .legend .swatches { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; }
     .legend .swatches span { display: inline-flex; align-items: center; gap: 4px; }
     .legend .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
@@ -201,19 +206,15 @@
 
   <div class="legend" id="legend" style="display:none">
     <div id="legend-feature"></div>
-    <div class="gradient" id="legend-gradient"></div>
+    <div class="gradient-wrap" id="legend-gradient-wrap">
+      <div class="gradient" id="legend-gradient"></div>
+      <input id="legend-min" type="range" />
+      <input id="legend-max" type="range" />
+    </div>
     <div class="ticks">
-      <div class="range-row">
-        <span class="label">lo</span>
-        <input id="legend-min" type="range" />
-        <span class="val" id="legend-min-val">auto</span>
-      </div>
-      <div class="range-row">
-        <span class="label">hi</span>
-        <input id="legend-max" type="range" />
-        <span class="val" id="legend-max-val">auto</span>
-      </div>
-      <span class="reset hidden" id="legend-reset" title="Reset to auto">× reset</span>
+      <span class="val" id="legend-min-val">auto</span>
+      <span class="reset hidden" id="legend-reset" title="Reset clamps">×</span>
+      <span class="val" id="legend-max-val">auto</span>
     </div>
     <div class="swatches" id="legend-swatches" style="display:none"></div>
     <div class="palette-controls" id="legend-palette-controls" style="display:none">
@@ -939,11 +940,12 @@ function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
   document.getElementById('legend-feature').textContent =
     `${payload.feature} (${payload.asset_class})`;
   const gradient = document.getElementById('legend-gradient');
+  const gradientWrap = document.getElementById('legend-gradient-wrap');
   const swatches = document.getElementById('legend-swatches');
   const ticks = legend.querySelector('.ticks');
   const reset = document.getElementById('legend-reset');
   if (isCategorical) {
-    gradient.style.display = 'none';
+    gradientWrap.style.display = 'none';
     ticks.style.display = 'none';
     swatches.style.display = 'flex';
     const uniq = [...new Set(values)].sort();
@@ -962,7 +964,7 @@ function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
   } else {
     gradient.style.background = rampGradientCss(activeSeqRamp());
   }
-  gradient.style.display = '';
+  gradientWrap.style.display = '';
   setLegendSliders(values, isDiverging);
   reset.classList.toggle('hidden', customLo == null && customHi == null);
   const kind = isDiverging ? 'div' : 'seq';
@@ -1085,13 +1087,27 @@ function recolor() {
   document.getElementById(id).addEventListener('change', recolor)
 );
 
-// Range sliders fire 'input' on every drag tick → live clamp. Each
-// thumb maps to its own state var; × reset chip clears both.
+// Dual thumbs overlaid on the gradient fire 'input' on every drag
+// tick → live clamp. Each thumb maps to its own state var; thumbs
+// are constrained so lo ≤ hi (dragging one past the other pushes
+// the other along by one step). × reset chip clears both.
 function onLegendSliderInput(ev) {
-  const id = ev.target.id;
+  const minSlider = document.getElementById('legend-min');
+  const maxSlider = document.getElementById('legend-max');
   const v = Number(ev.target.value);
-  if (id === 'legend-min') customLo = v;
-  else customHi = v;
+  if (ev.target.id === 'legend-min') {
+    customLo = v;
+    if (customHi != null && customLo > customHi) customHi = customLo;
+    else if (customHi == null && Number(maxSlider.value) < customLo) {
+      customHi = customLo;
+    }
+  } else {
+    customHi = v;
+    if (customLo != null && customHi < customLo) customLo = customHi;
+    else if (customLo == null && Number(minSlider.value) > customHi) {
+      customLo = customHi;
+    }
+  }
   recolor();
 }
 ['legend-min', 'legend-max'].forEach(id =>
