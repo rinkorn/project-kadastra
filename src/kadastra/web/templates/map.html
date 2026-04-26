@@ -290,6 +290,12 @@
         <option value="linear">linear (min–max)</option>
       </select>
     </label>
+    <label>Basemap
+      <select id="basemap">
+        <option value="osm" selected>OSM</option>
+        <option value="off">off (transparent)</option>
+      </select>
+    </label>
     <span class="stat" id="stat"></span>
   </div>
 
@@ -1405,6 +1411,15 @@ function recolor() {
 ['object_mode', 'scale'].forEach(id =>
   document.getElementById(id).addEventListener('change', recolor)
 );
+
+// Basemap toggle: flip the OSM raster layer's visibility. `off` makes
+// the underlying canvas transparent so deck.gl polygons and hexes
+// render against pure black — useful when the OSM tiles are visually
+// noisy (lots of POI labels) and the user wants the data layer alone.
+document.getElementById('basemap').addEventListener('change', (ev) => {
+  const visibility = ev.target.value === 'off' ? 'none' : 'visible';
+  map.setLayoutProperty('osm', 'visibility', visibility);
+});
 
 // Dual thumbs overlaid on the gradient fire 'input' on every drag
 // tick → live clamp. Each thumb maps to its own state var; thumbs
