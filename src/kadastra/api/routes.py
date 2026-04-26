@@ -37,7 +37,10 @@ from kadastra.usecases.get_hex_aggregates import (
     GetHexAggregates,
 )
 from kadastra.usecases.get_market_reference import GetMarketReference
-from kadastra.usecases.load_object_inspection import LoadObjectInspection
+from kadastra.usecases.load_object_inspection import (
+    OBJECT_FEATURE_COLUMNS,
+    LoadObjectInspection,
+)
 
 # ADR-0016 quartet — model selector accepted by /api/inspection and
 # (later) /api/hex_aggregates. ``catboost`` is the default to keep the
@@ -199,6 +202,7 @@ def make_api_router(
             "asset_classes": list(ASSET_CLASS_VALUES),
             "numeric_features": list(NUMERIC_FEATURES),
             "categorical_features": list(CATEGORICAL_FEATURES),
+            "object_features": list(OBJECT_FEATURE_COLUMNS),
             "models": list(QUARTET_MODELS),
         }
 

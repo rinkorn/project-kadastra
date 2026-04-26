@@ -269,10 +269,13 @@
     </label>
     <label id="object-mode-wrap" style="display:none">Mode
       <select id="object_mode">
-        <option value="y_true" selected>y_true (ЕГРН)</option>
-        <option value="y_pred_oof">y_pred_oof (CV)</option>
-        <option value="residual">residual (pred − true)</option>
-        <option value="fold_id">fold_id (spatial split)</option>
+        <optgroup label="prediction" id="object-mode-core-group">
+          <option value="y_true" selected>y_true (ЕГРН)</option>
+          <option value="y_pred_oof">y_pred_oof (CV)</option>
+          <option value="residual">residual (pred − true)</option>
+          <option value="fold_id">fold_id (spatial split)</option>
+        </optgroup>
+        <optgroup label="features" id="object-mode-features-group"></optgroup>
       </select>
     </label>
     <label id="model-wrap">Model
@@ -659,6 +662,16 @@ async function loadFeatureOptions() {
     opt.value = f; opt.textContent = f;
     if (f === 'median_target_rub_per_m2') opt.selected = true;
     sel.appendChild(opt);
+  }
+  // Object scatter mode dropdown — append per-object features as a
+  // second optgroup. Renderer treats anything that isn't fold_id/
+  // residual as sequential, so feature names just work.
+  const objGroup = document.getElementById('object-mode-features-group');
+  objGroup.innerHTML = '';
+  for (const f of (featureOptions.object_features || [])) {
+    const opt = document.createElement('option');
+    opt.value = f; opt.textContent = f;
+    objGroup.appendChild(opt);
   }
 }
 

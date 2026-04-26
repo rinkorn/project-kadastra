@@ -38,7 +38,7 @@ _QUARTET_MODELS = ("catboost", "ebm", "grey_tree", "naive_linear")
 # object scatter by. Same naming as the gold parquet — the slim
 # payload only includes columns actually present on the input frame
 # (per-class schema variation, e.g. landplot has no ``flats``).
-_OBJECT_FEATURE_COLUMNS: tuple[str, ...] = (
+OBJECT_FEATURE_COLUMNS: tuple[str, ...] = (
     # Building / land descriptors
     "area_m2", "levels", "flats", "year_built", "age_years",
     # ADR-0019 distance to nearest geometry — polygonal / linear / POI
@@ -94,7 +94,7 @@ class LoadObjectInspection:
         # missing some columns (landplot has no ``flats``, an older
         # parquet may not yet carry POI distances), and the slim
         # payload simply omits them when absent.
-        feature_cols = [c for c in _OBJECT_FEATURE_COLUMNS if c in joined.columns]
+        feature_cols = [c for c in OBJECT_FEATURE_COLUMNS if c in joined.columns]
         slim = joined.select(core_cols + feature_cols)
         return slim.to_dicts()
 
