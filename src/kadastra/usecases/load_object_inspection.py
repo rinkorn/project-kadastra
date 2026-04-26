@@ -28,6 +28,10 @@ from kadastra.ports.oof_predictions_reader import OofPredictionsReaderPort
 from kadastra.ports.valuation_object_reader import ValuationObjectReaderPort
 
 _TARGET = "synthetic_target_rub_per_m2"
+# ADR-0016 quartet — order matters only for stable iteration in
+# ``get_detail_quartet`` (UI shows them in this order in the
+# comparison panel).
+_QUARTET_MODELS = ("catboost", "ebm", "grey_tree", "naive_linear")
 
 
 class LoadObjectInspection:
@@ -75,7 +79,36 @@ class LoadObjectInspection:
         asset_class: AssetClass,
         object_id: str,
     ) -> dict[str, Any] | None:
-        raise NotImplementedError
+        objects = self._reader.load(region_code, asset_class)
+        if objects.is_empty():
+            return None
+        match = objects.filter(pl.col("object_id") == object_id)
+        if match.is_empty():
+            return None
+        gold_row = match.rename({_TARGET: "y_true"}).row(0, named=True)
+        y_true = gold_row.get("y_true")
+
+        models_payload: dict[str, dict[str, Any]] = {}
+        for model in _QUARTET_MODELS:
+            entry: dict[str, Any] = {
+                "y_pred_oof": None,
+                "residual": None,
+                "fold_id": None,
+            }
+            oof = self._oof_reader.load_latest(asset_class, model=model)
+            if not oof.is_empty() and "object_id" in oof.columns:
+                sub = oof.filter(pl.col("object_id") == object_id)
+                if not sub.is_empty():
+                    row = sub.row(0, named=True)
+                    y_pred = row.get("y_pred_oof")
+                    entry["y_pred_oof"] = y_pred
+                    entry["fold_id"] = row.get("fold_id")
+                    if y_pred is not None and y_true is not None:
+                        entry["residual"] = y_pred - y_true
+            models_payload[model] = entry
+
+        gold_row["models"] = models_payload
+        return gold_row
 
     def _load_joined(
         self, region_code: str, asset_class: AssetClass, *, model: str
