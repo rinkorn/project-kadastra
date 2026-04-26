@@ -83,8 +83,25 @@
     .legend .swatches { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; }
     .legend .swatches span { display: inline-flex; align-items: center; gap: 4px; }
     .legend .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+    .legend .palette-controls { display: flex; align-items: center;
+      justify-content: space-between; margin-top: 8px; max-width: 240px;
+      font-size: 10px; opacity: 0.75;
+    }
+    .legend .palette-controls .reverse {
+      cursor: pointer; padding: 1px 6px; border-radius: 3px;
+      border: 1px solid rgba(255, 255, 255, 0.2); user-select: none;
+      transition: background 0.1s ease, border-color 0.1s ease;
+    }
+    .legend .palette-controls .reverse:hover {
+      border-color: rgba(255, 255, 255, 0.5);
+    }
+    .legend .palette-controls .reverse.active {
+      background: rgba(253, 224, 71, 0.18);
+      border-color: #fde047;
+      opacity: 1;
+    }
     .legend .palette-picker { display: flex; flex-wrap: wrap; gap: 4px;
-      margin-top: 8px; max-width: 240px;
+      margin-top: 4px; max-width: 240px;
     }
     .legend .palette-picker .opt {
       width: 56px; height: 12px; border-radius: 3px; cursor: pointer;
@@ -172,6 +189,10 @@
       <input id="legend-max" type="number" step="any" placeholder="auto" />
     </div>
     <div class="swatches" id="legend-swatches" style="display:none"></div>
+    <div class="palette-controls" id="legend-palette-controls" style="display:none">
+      <span>palette</span>
+      <span class="reverse" id="legend-reverse" title="Reverse palette">⇄ reverse</span>
+    </div>
     <div class="palette-picker" id="legend-palette-picker"></div>
   </div>
 
@@ -271,8 +292,14 @@ const DIV_RAMPS = {
 
 let seqPaletteId = 'RdYlBu_r';
 let divPaletteId = 'RdBu';
-const activeSeqRamp = () => SEQ_RAMPS[seqPaletteId] || SEQ_RAMPS.RdYlBu_r;
-const activeDivRamp = () => DIV_RAMPS[divPaletteId] || DIV_RAMPS.RdBu;
+// Per-kind reverse flag: flips the stop order when active. Kept
+// separate so toggling it for sequential metrics doesn't affect the
+// diverging residual layer and vice versa.
+let seqReverse = false;
+let divReverse = false;
+const maybeReverse = (stops, on) => on ? [...stops].reverse() : stops;
+const activeSeqRamp = () => maybeReverse(SEQ_RAMPS[seqPaletteId] || SEQ_RAMPS.RdYlBu_r, seqReverse);
+const activeDivRamp = () => maybeReverse(DIV_RAMPS[divPaletteId] || DIV_RAMPS.RdBu, divReverse);
 
 function rampGradientCss(stops) {
   return 'linear-gradient(to right, '
@@ -484,7 +511,8 @@ function renderHex(payload) {
     // palette state OR custom-clamp bounds change — without this the
     // hex buffer is cached against the (unchanged) data array ref.
     updateTriggers: {
-      getFillColor: [seqPaletteId, isCategorical, customLo, customHi,
+      getFillColor: [seqPaletteId, seqReverse, isCategorical,
+                     customLo, customHi,
                      document.getElementById('scale').value],
     },
     stroked: true,
@@ -568,7 +596,8 @@ function renderObjects(payload) {
   // clamps OR scale mode changes. Without these, deck.gl reuses the
   // previously-bound colour buffer because the data array reference
   // is unchanged across recolours.
-  const triggerKey = [activePaletteId, customLo, customHi,
+  const reverseKey = isDiverging ? divReverse : seqReverse;
+  const triggerKey = [activePaletteId, reverseKey, customLo, customHi,
                       document.getElementById('scale').value];
   const colorTriggers = { getFillColor: triggerKey, getLineColor: triggerKey };
   const layers = [];
@@ -899,6 +928,7 @@ function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
       const [r, g, b] = categoryColor(String(v));
       return `<span><span class="swatch" style="background: rgb(${r},${g},${b})"></span>${escapeHtml(String(v))}</span>`;
     }).join('');
+    document.getElementById('legend-palette-controls').style.display = 'none';
     renderPalettePicker(null);
     return;
   }
@@ -926,7 +956,13 @@ function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
   gradient.style.display = '';
   setLegendBounds(lo, hi);
   reset.classList.toggle('hidden', customLo == null && customHi == null);
-  renderPalettePicker(isDiverging ? 'div' : 'seq');
+  const kind = isDiverging ? 'div' : 'seq';
+  const reverseFlag = isDiverging ? divReverse : seqReverse;
+  const controls = document.getElementById('legend-palette-controls');
+  const reverseChip = document.getElementById('legend-reverse');
+  controls.style.display = '';
+  reverseChip.classList.toggle('active', reverseFlag);
+  renderPalettePicker(kind);
 }
 
 // Write the active gradient bounds into the editable inputs without
@@ -966,11 +1002,15 @@ function renderPalettePicker(kind) {
   if (!kind) { container.innerHTML = ''; return; }
   const ramps = kind === 'div' ? DIV_RAMPS : SEQ_RAMPS;
   const activeId = kind === 'div' ? divPaletteId : seqPaletteId;
+  const reversed = kind === 'div' ? divReverse : seqReverse;
+  // Chips preview the *effective* gradient, so when reverse is on the
+  // user sees mirrored mini-gradients — picking a new palette applies
+  // the same flip immediately, no surprise.
   container.innerHTML = Object.entries(ramps).map(([id, stops]) => `
     <div class="opt${id === activeId ? ' active' : ''}"
          data-id="${id}" data-kind="${kind}"
-         title="${id}"
-         style="background: ${rampGradientCss(stops)}"></div>
+         title="${id}${reversed ? ' (reversed)' : ''}"
+         style="background: ${rampGradientCss(maybeReverse(stops, reversed))}"></div>
   `).join('');
   container.querySelectorAll('.opt').forEach(el => {
     el.addEventListener('click', () => {
@@ -1044,6 +1084,20 @@ document.getElementById('legend-reset').addEventListener('click', () => {
   customHi = null;
   document.getElementById('legend-min').value = '';
   document.getElementById('legend-max').value = '';
+  recolor();
+});
+
+// Reverse chip flips the palette in-place. Operates on whichever kind
+// is active right now, so toggling under residual mode flips diverging
+// only and a later switch back to a sequential metric still sees its
+// own (un-reversed) state.
+document.getElementById('legend-reverse').addEventListener('click', () => {
+  if (!lastDataset) return;
+  const mode = document.getElementById('object_mode').value;
+  const isObj = lastDataset.kind === 'object';
+  const isResidual = isObj && mode === 'residual';
+  if (isResidual) divReverse = !divReverse;
+  else seqReverse = !seqReverse;
   recolor();
 });
 
