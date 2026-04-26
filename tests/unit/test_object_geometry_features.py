@@ -109,16 +109,17 @@ def test_long_thin_rectangle_collapses_compactness() -> None:
 
 
 def test_l_shape_has_convexity_below_one() -> None:
-    """L-shape carved out of a 10×10 square (remove 5×5 corner).
-    Resulting polygon has area = 75, convex hull is the original 10×10
-    square (area 100), so convexity = 0.75."""
+    """L-shape carved out of a 10×10 square (remove 5×5 top-right corner).
+    Outer outline area = 75. Convex hull cuts the missing corner with a
+    diagonal (10,5)→(5,10), giving a pentagon of area 87.5. Convexity
+    = 75 / 87.5 = 6/7 ≈ 0.857."""
     l_wkt = "POLYGON ((0 0, 10 0, 10 5, 5 5, 5 10, 0 10, 0 0))"
     df = _objects([{"object_id": "l1", "polygon_wkt_3857": l_wkt}])
     out = compute_object_geometry_features(df)
     row = out.row(0, named=True)
 
     assert row["polygon_area_m2"] == pytest.approx(75.0)
-    assert row["polygon_convexity"] == pytest.approx(0.75, rel=1e-6)
+    assert row["polygon_convexity"] == pytest.approx(6.0 / 7.0, rel=1e-6)
     assert row["polygon_n_vertices"] == 6
 
 
