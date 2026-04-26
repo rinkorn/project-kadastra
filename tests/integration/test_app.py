@@ -307,6 +307,24 @@ def test_feature_options_lists_choices(client: TestClient) -> None:
     assert "apartment" in payload["asset_classes"]
     assert "median_target_rub_per_m2" in payload["numeric_features"]
     assert "dominant_intra_city_raion" in payload["categorical_features"]
+    # ADR-0016 quartet — UI uses this list to populate the model picker.
+    assert {"catboost", "ebm", "grey_tree", "naive_linear"} <= set(payload["models"])
+
+
+def test_inspection_rejects_unknown_model(client: TestClient) -> None:
+    response = client.get(
+        "/api/inspection",
+        params={"asset_class": "apartment", "model": "magic"},
+    )
+    assert response.status_code == 400
+
+
+def test_inspection_default_model_is_catboost(client: TestClient) -> None:
+    """Without ``?model=…`` the endpoint must keep returning the
+    CatBoost OOF (so the existing UI doesn't break)."""
+    response = client.get("/api/inspection", params={"asset_class": "apartment"})
+    assert response.status_code == 200
+    assert response.json()["model"] == "catboost"
 
 
 def test_index_serves_html_shell(client: TestClient) -> None:

@@ -40,6 +40,7 @@ from kadastra.usecases.infer_valuation import InferValuation
 from kadastra.usecases.load_nspd_raw_objects import LoadNspdRawObjects
 from kadastra.usecases.load_object_inspection import LoadObjectInspection
 from kadastra.usecases.train_object_valuation_model import TrainObjectValuationModel
+from kadastra.usecases.train_quartet import TrainQuartet
 from kadastra.usecases.train_valuation_model import TrainValuationModel
 from kadastra.web.routes import make_web_router
 
@@ -247,6 +248,25 @@ class Container:
             reader=ParquetValuationObjectStore(s.valuation_object_store_path),
             model_registry=self.build_model_registry(),
             params=params,
+            n_splits=s.train_n_splits,
+            parent_resolution=s.train_parent_resolution,
+        )
+
+    def build_train_quartet(self) -> TrainQuartet:
+        s = self._settings
+        params = CatBoostParams(
+            iterations=s.catboost_iterations,
+            learning_rate=s.catboost_learning_rate,
+            depth=s.catboost_depth,
+            seed=s.catboost_seed,
+        )
+        return TrainQuartet(
+            reader=ParquetValuationObjectStore(s.valuation_object_store_path),
+            model_registry=self.build_model_registry(),
+            catboost_params=params,
+            ebm_max_bins=s.ebm_max_bins,
+            ebm_interactions=s.ebm_interactions,
+            grey_tree_max_depth=s.grey_tree_max_depth,
             n_splits=s.train_n_splits,
             parent_resolution=s.train_parent_resolution,
         )

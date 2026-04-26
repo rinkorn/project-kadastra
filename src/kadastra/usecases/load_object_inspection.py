@@ -40,9 +40,13 @@ class LoadObjectInspection:
         self._oof_reader = oof_reader
 
     def list_for_map(
-        self, region_code: str, asset_class: AssetClass
+        self,
+        region_code: str,
+        asset_class: AssetClass,
+        *,
+        model: str = "catboost",
     ) -> list[dict[str, Any]]:
-        joined = self._load_joined(region_code, asset_class)
+        joined = self._load_joined(region_code, asset_class, model=model)
         if joined.is_empty():
             return []
         cols = ["object_id", "lat", "lon", "y_true", "y_pred_oof", "residual", "fold_id"]
@@ -54,8 +58,10 @@ class LoadObjectInspection:
         region_code: str,
         asset_class: AssetClass,
         object_id: str,
+        *,
+        model: str = "catboost",
     ) -> dict[str, Any] | None:
-        joined = self._load_joined(region_code, asset_class)
+        joined = self._load_joined(region_code, asset_class, model=model)
         if joined.is_empty():
             return None
         match = joined.filter(pl.col("object_id") == object_id)
@@ -64,13 +70,13 @@ class LoadObjectInspection:
         return match.row(0, named=True)
 
     def _load_joined(
-        self, region_code: str, asset_class: AssetClass
+        self, region_code: str, asset_class: AssetClass, *, model: str
     ) -> pl.DataFrame:
         objects = self._reader.load(region_code, asset_class)
         if objects.is_empty():
             return objects
 
-        oof = self._oof_reader.load_latest(asset_class)
+        oof = self._oof_reader.load_latest(asset_class, model=model)
         renamed_target = objects.rename({_TARGET: "y_true"})
 
         if oof.is_empty() or "object_id" not in oof.columns:
