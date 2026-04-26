@@ -82,6 +82,13 @@ def _seed_hex_aggregates(settings: Settings) -> None:
 
 def _seed_valuation_objects(settings: Settings) -> None:
     store = ParquetValuationObjectStore(settings.valuation_object_store_path)
+    # WKT below is a tiny square in EPSG:3857 around lon≈49.12, lat≈55.78
+    # (Kazan). After reprojection to WGS84 it must land in lon[48..50]
+    # lat[55..56].
+    wkt_way1 = (
+        "POLYGON ((5468000 7530000, 5468100 7530000, "
+        "5468100 7530100, 5468000 7530100, 5468000 7530000))"
+    )
     df = pl.DataFrame(
         [
             {
@@ -89,12 +96,14 @@ def _seed_valuation_objects(settings: Settings) -> None:
                 "lat": 55.78, "lon": 49.12,
                 "synthetic_target_rub_per_m2": 100_000.0,
                 "intra_city_raion": "Советский",
+                "polygon_wkt_3857": wkt_way1,
             },
             {
                 "object_id": "way/2", "asset_class": "apartment",
                 "lat": 55.79, "lon": 49.13,
                 "synthetic_target_rub_per_m2": 110_000.0,
                 "intra_city_raion": "Вахитовский",
+                "polygon_wkt_3857": None,
             },
         ],
         schema={
@@ -102,6 +111,7 @@ def _seed_valuation_objects(settings: Settings) -> None:
             "lat": pl.Float64, "lon": pl.Float64,
             "synthetic_target_rub_per_m2": pl.Float64,
             "intra_city_raion": pl.Utf8,
+            "polygon_wkt_3857": pl.Utf8,
         },
     )
     store.save("RU-TA", AssetClass.APARTMENT, df)
@@ -227,6 +237,57 @@ def test_inspection_detail_returns_full_dict(client: TestClient) -> None:
     assert detail["object_id"] == "way/1"
     assert detail["intra_city_raion"] == "Советский"
     assert detail["y_pred_oof"] == 95_000.0
+
+
+def test_inspection_detail_emits_geometry_as_geojson_wgs84(
+    client: TestClient,
+) -> None:
+    """The detail card must convert ``polygon_wkt_3857`` (WKT in
+    web-mercator metres) into a GeoJSON polygon in WGS84 — the UI
+    feeds this directly to deck.gl PolygonLayer which expects
+    [lon, lat] in degrees. The raw WKT is stripped (no need to
+    ship to the browser)."""
+    response = client.get(
+        "/api/inspection/way/1", params={"asset_class": "apartment"}
+    )
+    assert response.status_code == 200
+    detail = response.json()["data"]
+    geometry = detail["geometry"]
+    assert geometry["type"] == "Polygon"
+    rings = geometry["coordinates"]
+    assert len(rings) == 1
+    ring = rings[0]
+    # Closed ring: 5 vertices (4 corners + closure).
+    assert len(ring) == 5
+    for lon, lat in ring:
+        assert 48.0 <= lon <= 50.0, f"lon out of Kazan range: {lon}"
+        assert 55.0 <= lat <= 56.0, f"lat out of Kazan range: {lat}"
+    assert "polygon_wkt_3857" not in detail
+
+
+def test_inspection_detail_geometry_null_when_wkt_missing(
+    client: TestClient,
+) -> None:
+    """When ``polygon_wkt_3857`` is null in gold (e.g. silver row had
+    no geometry), the API still returns the detail card with
+    ``geometry: null`` — UI must tolerate this."""
+    response = client.get(
+        "/api/inspection/way/2", params={"asset_class": "apartment"}
+    )
+    assert response.status_code == 200
+    detail = response.json()["data"]
+    assert detail["geometry"] is None
+
+
+def test_inspection_list_does_not_carry_geometry(client: TestClient) -> None:
+    """The map scatter list must stay slim — geometry lives only in
+    the per-object detail card. Otherwise the response balloons by
+    ~2KB per row × 200k rows."""
+    response = client.get("/api/inspection", params={"asset_class": "apartment"})
+    assert response.status_code == 200
+    for row in response.json()["data"]:
+        assert "geometry" not in row
+        assert "polygon_wkt_3857" not in row
 
 
 def test_inspection_detail_returns_404_for_unknown_object(
