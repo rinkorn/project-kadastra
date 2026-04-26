@@ -43,12 +43,13 @@ class Settings(BaseSettings):
         "industrial": "data/raw/osm/kazan-agg-industrial.geojsonseq",
         "cemetery": "data/raw/osm/kazan-agg-cemetery.geojsonseq",
     }
-    # ADR-0019: distance to nearest polygon of each layer. Separate
-    # from poly_area_layer_paths because the layer set may diverge
-    # over time (e.g., landfill is meaningful as distance, less so as
-    # share). Defaults reuse the four extracted layers; extend with
-    # landfill/powerline/railway when those OSM extracts ship.
-    poly_distance_layer_paths: dict[str, str] = {
+    # ADR-0019: distance to nearest geometry of each layer. The helper
+    # is type-agnostic (Polygon / LineString / Point), so this dict can
+    # mix polygonal layers, linear ones and point POIs over time — each
+    # entry is just an OSM-extracted GeoJSON-seq file. Separate from
+    # poly_area_layer_paths because the layer set may diverge over time
+    # (e.g., landfill is meaningful as distance, less so as share).
+    geom_distance_layer_paths: dict[str, str] = {
         "water": "data/raw/osm/kazan-agg-water.geojsonseq",
         "park": "data/raw/osm/kazan-agg-park.geojsonseq",
         "industrial": "data/raw/osm/kazan-agg-industrial.geojsonseq",

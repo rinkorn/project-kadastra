@@ -46,7 +46,7 @@ class BuildObjectFeatures:
         zonal_layer_names: list[str],
         poly_area_radii_m: list[int],
         poly_area_layer_paths: dict[str, str],
-        poly_distance_layer_paths: dict[str, str] | None = None,
+        geom_distance_layer_paths: dict[str, str] | None = None,
         gar_lookup_cadnum_index_path: Path | None = None,
         gar_lookup_mun_lookup_path: Path | None = None,
         gar_lookup_object_params_path: Path | None = None,
@@ -68,7 +68,7 @@ class BuildObjectFeatures:
         self._zonal_layer_names = zonal_layer_names
         self._poly_area_radii_m = poly_area_radii_m
         self._poly_area_layer_paths = poly_area_layer_paths
-        self._poly_distance_layer_paths = poly_distance_layer_paths or {}
+        self._geom_distance_layer_paths = geom_distance_layer_paths or {}
         self._gar_lookup_cadnum_index_path = gar_lookup_cadnum_index_path
         self._gar_lookup_mun_lookup_path = gar_lookup_mun_lookup_path
         self._gar_lookup_object_params_path = gar_lookup_object_params_path
@@ -123,14 +123,14 @@ class BuildObjectFeatures:
             polygons_by_layer=poly_layers,
             radii_m=self._poly_area_radii_m,
         )
-        # Poly-distance features (ADR-0019). Loads polygon layers once
-        # via the same helper used for share. Missing files → empty
-        # layer → null dist column. The two feature blocks (share +
-        # distance) carry orthogonal signals; the model learns to
-        # weight them independently.
-        if self._poly_distance_layer_paths:
-            distance_layers = self._load_layer_polygons(
-                self._poly_distance_layer_paths
+        # Geom-distance features (ADR-0019). Each entry is a path to an
+        # OSM-extracted GeoJSON-seq with arbitrary geometries (Polygon /
+        # LineString / Point); the helper handles all three. Missing
+        # files → empty layer → null dist column. Share + distance
+        # blocks carry orthogonal signals; the model weights them.
+        if self._geom_distance_layer_paths:
+            distance_layers = self._load_layer_geometries(
+                self._geom_distance_layer_paths
             )
             enriched = compute_object_geom_distance_features(
                 enriched, geometries_by_layer=distance_layers
@@ -245,12 +245,18 @@ class BuildObjectFeatures:
         return named
 
     def _load_poly_area_layers(self) -> dict[str, list[BaseGeometry]]:
-        return self._load_layer_polygons(self._poly_area_layer_paths)
+        return self._load_layer_geometries(self._poly_area_layer_paths)
 
-    def _load_layer_polygons(
+    def _load_layer_geometries(
         self, paths: dict[str, str]
     ) -> dict[str, list[BaseGeometry]]:
-        """Load each ``{name: path}`` GeoJSON-seq into a polygons list.
+        """Load each ``{name: path}`` GeoJSON-seq into a geometries list.
+
+        Geometry-agnostic: returns whatever ``shape()`` produces from each
+        feature (Point / LineString / Polygon and Multi* variants). The
+        share helper still expects polygons only and is fed via
+        ``poly_area_layer_paths``, while the distance helper accepts any
+        type and is fed via ``geom_distance_layer_paths``.
 
         Missing files yield empty layers — downstream produces
         zero/null columns rather than failing, so the pipeline stays
@@ -262,7 +268,7 @@ class BuildObjectFeatures:
             if not path.is_file():
                 layers[name] = []
                 continue
-            polys: list[BaseGeometry] = []
+            geoms: list[BaseGeometry] = []
             with path.open("r", encoding="utf-8") as f:
                 for raw_line in f:
                     line = raw_line.strip()
@@ -274,8 +280,8 @@ class BuildObjectFeatures:
                     geom = feature.get("geometry")
                     if geom is None:
                         continue
-                    polys.append(shape(geom))
-            layers[name] = polys
+                    geoms.append(shape(geom))
+            layers[name] = geoms
         return layers
 
     def _build_zonal_layers(
