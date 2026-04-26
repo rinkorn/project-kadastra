@@ -1,10 +1,12 @@
-"""Extract polygon layers (water/park/industrial/cemetery/raions) from
-the agglomeration-clipped OSM PBF into per-layer GeoJSON-seq files.
+"""Extract OSM layers (polygonal, point-POI and linear) from the
+agglomeration-clipped OSM PBF into per-layer GeoJSON-seq files.
 
-The output is consumed by ``compute_object_polygon_features`` as input
-for poly-area buffer features (see ADR-0014) and by
-``compute_object_municipality_features`` as input for the
-intra_city_raion spatial join (see ADR-0015).
+Consumed by:
+- ``compute_object_polygon_features`` (poly-area buffer share — ADR-0014);
+- ``compute_object_geom_distance_features`` (distance to nearest
+  geometry of any type — ADR-0019);
+- ``compute_object_municipality_features`` (raion spatial join — ADR-0015);
+- ``compute_object_zonal_features`` (POI counts in radii — ADR-0013).
 
 Source: ``data/raw/osm/kazan-agg.osm.pbf`` (generated earlier by the
 buildings pipeline, see ADR-0007).
@@ -14,6 +16,11 @@ Outputs (one per layer): ``data/raw/osm/kazan-agg-{layer}.geojsonseq``
 Each layer is defined by an ``osmium tags-filter`` expression. We then
 ``osmium export -f geojsonseq`` so each line is one GeoJSON Feature with
 geometry + properties — easy to stream-read in Python.
+
+For point POIs that can be mapped as either nodes or polygons (school,
+hospital, supermarket), the filter uses ``nwa/`` so both forms land in
+the same file; downstream code centroids polygon features when a Point
+is needed (zonal counts) and uses geometry as-is for distance.
 
 The script is idempotent: skips any layer whose output already exists,
 unless ``--force`` is passed.
@@ -31,7 +38,10 @@ from pathlib import Path
 
 # OSM tag filter expressions, one per layer.
 # Format follows osmium-tool's `tags-filter` rules: `<object-types>/<key=value>`.
+# Object-type prefixes: `n` nodes, `w` ways, `r` relations, `a` areas
+# (closed way OR multipolygon relation). `nwa` = node + way + area.
 _LAYER_FILTERS: dict[str, list[str]] = {
+    # — Polygonal: poly-area share (ADR-0014) + distance (ADR-0019). —
     "water": [
         "wa/natural=water",
         "wa/waterway=riverbank",
@@ -50,6 +60,43 @@ _LAYER_FILTERS: dict[str, list[str]] = {
         "wa/landuse=cemetery",
         "wa/amenity=grave_yard",
     ],
+    "landfill": [
+        "wa/landuse=landfill",
+    ],
+    # — Linear: distance to nearest line (ADR-0019). —
+    # `w/` only: power lines and rails are linear ways, not areas.
+    "powerline": [
+        "w/power=line",
+        "w/power=minor_line",
+    ],
+    "railway": [
+        "w/railway=rail",
+    ],
+    # — Point-POI: distance + zonal counts (ADR-0019). —
+    # Use `nwa/` for amenities that can be mapped as either a node or
+    # a polygon (large schools/hospitals are usually areas; small
+    # clinics/cafes are usually nodes). Downstream centroids polygons
+    # for zonal counts and uses geometries as-is for distance.
+    "school": ["nwa/amenity=school"],
+    "kindergarten": ["nwa/amenity=kindergarten"],
+    "clinic": [
+        "nwa/amenity=clinic",
+        "nwa/amenity=doctors",
+    ],
+    "hospital": ["nwa/amenity=hospital"],
+    "pharmacy": ["nwa/amenity=pharmacy"],
+    "supermarket": [
+        "nwa/shop=supermarket",
+        "nwa/shop=mall",
+    ],
+    "cafe": ["nwa/amenity=cafe"],
+    "restaurant": ["nwa/amenity=restaurant"],
+    # bus stops are conventionally nodes (`highway=bus_stop`); rail
+    # stops/stations can be either node (the platform anchor) or way
+    # (the platform polyline) — use `nwa/` defensively.
+    "bus_stop": ["n/highway=bus_stop"],
+    "tram_stop": ["nwa/railway=tram_stop"],
+    "railway_station": ["nwa/railway=station"],
 }
 
 # Raions are chained-filter: only relations with both
