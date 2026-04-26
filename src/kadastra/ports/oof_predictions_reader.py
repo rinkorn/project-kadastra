@@ -18,11 +18,18 @@ from kadastra.domain.asset_class import AssetClass
 
 
 class OofPredictionsReaderPort(Protocol):
-    def load_latest(self, asset_class: AssetClass) -> pl.DataFrame:
+    def load_latest(
+        self, asset_class: AssetClass, *, model: str = "catboost"
+    ) -> pl.DataFrame:
         """Return the most recent OOF parquet for the asset class.
 
-        Schema: ``(object_id: Utf8, lat: Float64, lon: Float64,
-        fold_id: Int64, y_true: Float64, y_pred_oof: Float64)``.
+        ``model`` selects which adapter-recognized model produced the
+        OOF: ``"catboost"`` (default; falls back to legacy
+        ``catboost-object-{class}`` runs when no quartet run exists),
+        ``"ebm"``, ``"grey_tree"``, ``"naive_linear"`` (all sourced from
+        ``quartet-object-{class}`` runs). Schema: ``(object_id: Utf8,
+        lat: Float64, lon: Float64, fold_id: Int64, y_true: Float64,
+        y_pred_oof: Float64)``.
 
         Returns an empty (typed) DataFrame if no run / no artifact is
         found — callers should treat that as «predictions unavailable»
