@@ -503,6 +503,14 @@ async function showObjectInspector(obj, assetClass) {
       : '— (no silver polygon)',
   ]);
   sections.push(rowsSection('summary', summaryRows));
+  // Geometry-derived ZOFs (ADR-0018) — promote to a dedicated section
+  // so the human can read «компактность 0.78, ориентация 75°» without
+  // hunting through the alphabetical "All features" dump.
+  const geometrySection = renderGeometrySection(detail);
+  if (geometrySection) {
+    sections.push(`<h2>Geometry (ADR-0018)</h2>`);
+    sections.push(geometrySection);
+  }
   // 4-model side-by-side (ADR-0016). One row per model: y_pred_oof,
   // residual, |residual|/y_true as MAPE-style ratio. fold_id same
   // across models (single spatial split per ADR-0016) — surface once
@@ -511,9 +519,11 @@ async function showObjectInspector(obj, assetClass) {
     sections.push(`<h2>Quartet comparison (ADR-0016)</h2>`);
     sections.push(quartetSection(quartet, marketRef));
   }
-  // Everything else — sorted alphabetically.
+  // Everything else — sorted alphabetically. Geometry-derived columns
+  // are promoted to their own section above; exclude them here so they
+  // don't show twice.
   const rest = Object.keys(detail)
-    .filter(k => !summary.includes(k))
+    .filter(k => !summary.includes(k) && !GEOMETRY_FIELDS.includes(k))
     .sort()
     .map(k => [k, formatValue(detail[k])]);
   if (rest.length) {
@@ -521,6 +531,36 @@ async function showObjectInspector(obj, assetClass) {
     sections.push(rowsSection('all', rest));
   }
   panel.innerHTML = sections.join('');
+}
+
+const GEOMETRY_FIELDS = [
+  'polygon_area_m2',
+  'polygon_perimeter_m',
+  'polygon_compactness',
+  'polygon_convexity',
+  'bbox_aspect_ratio',
+  'polygon_orientation_deg',
+  'polygon_n_vertices',
+];
+
+function renderGeometrySection(detail) {
+  const present = GEOMETRY_FIELDS.filter(k => k in detail);
+  if (!present.length) return '';
+  const rows = present.map(k => [k, formatGeometryValue(k, detail[k])]);
+  return rowsSection('geometry', rows);
+}
+
+function formatGeometryValue(key, v) {
+  if (v === null || v === undefined) return '—';
+  if (key === 'polygon_n_vertices') return Math.round(v).toString();
+  if (key === 'polygon_area_m2') return `${formatValue(v)} м²`;
+  if (key === 'polygon_perimeter_m') return `${formatValue(v)} м`;
+  if (key === 'polygon_orientation_deg') return `${v.toFixed(1)}°`;
+  if (key === 'polygon_compactness' || key === 'polygon_convexity') {
+    return v.toFixed(3);
+  }
+  if (key === 'bbox_aspect_ratio') return v.toFixed(2);
+  return formatValue(v);
 }
 
 function rowsSection(cls, rows) {
