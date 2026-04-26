@@ -61,7 +61,6 @@
     .legend .gradient { width: 240px; height: 8px; margin-top: 4px;
       background: linear-gradient(to right, #2c7bb6, #abd9e9, #ffffbf, #fdae61, #d7191c);
     }
-    .legend .gradient.diverging { background: linear-gradient(to right, #2166ac, #67a9cf, #d1e5f0, #f7f7f7, #fddbc7, #ef8a62, #b2182b); }
     .legend .ticks { display: flex; justify-content: space-between; margin-top: 2px; }
     .legend .swatches { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; }
     .legend .swatches span { display: inline-flex; align-items: center; gap: 4px; }
@@ -121,6 +120,29 @@
         <option value="linear">linear (min–max)</option>
       </select>
     </label>
+    <label>Palette
+      <select id="palette">
+        <optgroup label="Sequential">
+          <option value="RdYlBu_r" selected>RdYlBu reversed</option>
+          <option value="viridis">viridis</option>
+          <option value="magma">magma</option>
+          <option value="plasma">plasma</option>
+          <option value="inferno">inferno</option>
+          <option value="cividis">cividis</option>
+          <option value="blues">blues</option>
+          <option value="greens">greens</option>
+          <option value="oranges">oranges</option>
+          <option value="greys">greys</option>
+        </optgroup>
+        <optgroup label="Diverging (residual)">
+          <option value="RdBu">RdBu</option>
+          <option value="BrBG">BrBG</option>
+          <option value="PuOr">PuOr</option>
+          <option value="RdYlGn">RdYlGn</option>
+          <option value="Spectral">Spectral</option>
+        </optgroup>
+      </select>
+    </label>
     <span class="stat" id="stat"></span>
   </div>
 
@@ -167,14 +189,66 @@ let selectedGeometry = null; // GeoJSON Polygon (WGS84) of the currently inspect
 
 // ---------- color helpers ----------
 
-const SEQ_RAMP = [
-  [44, 123, 182], [171, 217, 233], [255, 255, 191], [253, 174, 97], [215, 25, 28]
-];
-const DIV_RAMP = [
-  [33, 102, 172], [103, 169, 207], [209, 229, 240],
-  [247, 247, 247],
-  [253, 219, 199], [239, 138, 98], [178, 24, 43]
-];
+// Sequential ramps for single-direction metrics (price, prediction).
+// Stored as 5-stop RGB arrays; rampColor() interpolates linearly.
+// matplotlib viridis/magma/plasma/inferno/cividis sampled at 5 equally
+// spaced points. ColorBrewer single-hue ramps (Blues/Greens/Oranges/Greys)
+// give simple light→dark options when the palette must read as «one
+// quantity» rather than a multi-hue spectrum.
+const SEQ_RAMPS = {
+  RdYlBu_r: [[44, 123, 182], [171, 217, 233], [255, 255, 191], [253, 174, 97], [215, 25, 28]],
+  viridis: [[68, 1, 84], [59, 82, 139], [33, 144, 141], [93, 201, 99], [253, 231, 37]],
+  magma: [[0, 0, 4], [80, 18, 123], [183, 55, 121], [251, 136, 97], [252, 253, 191]],
+  plasma: [[13, 8, 135], [126, 3, 168], [204, 71, 120], [248, 149, 64], [240, 249, 33]],
+  inferno: [[0, 0, 4], [87, 16, 110], [187, 55, 84], [249, 142, 9], [252, 255, 164]],
+  cividis: [[0, 32, 76], [56, 78, 117], [109, 122, 120], [171, 165, 105], [253, 234, 69]],
+  blues: [[247, 251, 255], [198, 219, 239], [107, 174, 214], [33, 113, 181], [8, 48, 107]],
+  greens: [[247, 252, 245], [199, 233, 192], [116, 196, 118], [35, 139, 69], [0, 68, 27]],
+  oranges: [[255, 245, 235], [253, 208, 162], [253, 141, 60], [217, 72, 1], [127, 39, 4]],
+  greys: [[255, 255, 255], [217, 217, 217], [150, 150, 150], [82, 82, 82], [0, 0, 0]],
+};
+
+// Diverging ramps for residuals (signed, centered at 0). 7 stops with
+// neutral mid; ColorBrewer-derived classics so left/right asymmetry
+// reads as «under» vs «over» without colour-blindness traps.
+const DIV_RAMPS = {
+  RdBu: [
+    [33, 102, 172], [103, 169, 207], [209, 229, 240],
+    [247, 247, 247],
+    [253, 219, 199], [239, 138, 98], [178, 24, 43],
+  ],
+  BrBG: [
+    [84, 48, 5], [191, 129, 45], [223, 194, 125],
+    [245, 245, 245],
+    [128, 205, 193], [53, 151, 143], [0, 60, 48],
+  ],
+  PuOr: [
+    [127, 59, 8], [224, 130, 20], [253, 184, 99],
+    [247, 247, 247],
+    [178, 171, 210], [128, 115, 172], [45, 0, 75],
+  ],
+  RdYlGn: [
+    [165, 0, 38], [244, 109, 67], [253, 174, 97],
+    [255, 255, 191],
+    [166, 217, 106], [102, 189, 99], [0, 104, 55],
+  ],
+  Spectral: [
+    [158, 1, 66], [213, 62, 79], [253, 174, 97],
+    [255, 255, 191],
+    [171, 221, 164], [102, 194, 165], [50, 136, 189],
+  ],
+};
+
+let seqPaletteId = 'RdYlBu_r';
+let divPaletteId = 'RdBu';
+const activeSeqRamp = () => SEQ_RAMPS[seqPaletteId] || SEQ_RAMPS.RdYlBu_r;
+const activeDivRamp = () => DIV_RAMPS[divPaletteId] || DIV_RAMPS.RdBu;
+
+function rampGradientCss(stops) {
+  return 'linear-gradient(to right, '
+    + stops.map(([r, g, b]) => `rgb(${r},${g},${b})`).join(', ')
+    + ')';
+}
 
 function rampColor(stops, t) {
   const k = Math.min(Math.max(t, 0), 1) * (stops.length - 1);
@@ -343,7 +417,7 @@ function renderHex(payload) {
     getFillColor = d => categoryColor(String(d.value));
   } else {
     const scaler = buildScaler(data.map(d => d.value), document.getElementById('scale').value);
-    getFillColor = d => rampColor(SEQ_RAMP, scaler.normalize(d.value));
+    getFillColor = d => rampColor(activeSeqRamp(), scaler.normalize(d.value));
   }
   const layer = new deck.H3HexagonLayer({
     id: 'hex',
@@ -385,10 +459,10 @@ function renderObjects(payload) {
   } else if (mode === 'residual') {
     isDiverging = true;
     const scaler = buildDivergingScaler(data.map(d => d[mode]));
-    getFillColor = d => rampColor(DIV_RAMP, scaler.normalize(d[mode]));
+    getFillColor = d => rampColor(activeDivRamp(), scaler.normalize(d[mode]));
   } else {
     const scaler = buildScaler(data.map(d => d[mode]), document.getElementById('scale').value);
-    getFillColor = d => rampColor(SEQ_RAMP, scaler.normalize(d[mode]));
+    getFillColor = d => rampColor(activeSeqRamp(), scaler.normalize(d[mode]));
   }
   // Split rows by geometry availability: objects with a footprint
   // render as PolygonLayer (fill + bright outline); the rest fall
@@ -730,14 +804,14 @@ function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
     }).join('');
   } else if (isDiverging) {
     gradient.style.display = '';
-    gradient.classList.add('diverging');
+    gradient.style.background = rampGradientCss(activeDivRamp());
     swatches.style.display = 'none';
     const max = Math.max(...values.map(v => Math.abs(v)));
     document.getElementById('legend-min').textContent = formatValue(-max);
     document.getElementById('legend-max').textContent = formatValue(max);
   } else {
     gradient.style.display = '';
-    gradient.classList.remove('diverging');
+    gradient.style.background = rampGradientCss(activeSeqRamp());
     swatches.style.display = 'none';
     const sorted = [...values].sort((a, b) => a - b);
     const mode = document.getElementById('scale').value;
@@ -790,6 +864,16 @@ function recolor() {
 ['object_mode', 'scale'].forEach(id =>
   document.getElementById(id).addEventListener('change', recolor)
 );
+// Palette dropdown picks either a sequential or a diverging ramp; the
+// renderer reads the matching state var depending on the current
+// metric (residual = diverging, everything else = sequential), so
+// each kind keeps its own «last picked» palette across mode changes.
+document.getElementById('palette').addEventListener('change', (ev) => {
+  const id = ev.target.value;
+  if (id in SEQ_RAMPS) seqPaletteId = id;
+  else if (id in DIV_RAMPS) divPaletteId = id;
+  recolor();
+});
 
 map.on('load', async () => {
   await loadFeatureOptions();
