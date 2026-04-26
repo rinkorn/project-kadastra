@@ -151,7 +151,7 @@ def _usecase(
     zonal_layer_names: list[str] | None = None,
     poly_area_radii_m: list[int] | None = None,
     poly_area_layer_paths: dict[str, str] | None = None,
-    poly_distance_layer_paths: dict[str, str] | None = None,
+    geom_distance_layer_paths: dict[str, str] | None = None,
     current_year_for_age_features: int = 2026,
 ) -> BuildObjectFeatures:
     return BuildObjectFeatures(
@@ -188,9 +188,9 @@ def _usecase(
         poly_area_layer_paths=(
             poly_area_layer_paths if poly_area_layer_paths is not None else {}
         ),
-        poly_distance_layer_paths=(
-            poly_distance_layer_paths
-            if poly_distance_layer_paths is not None
+        geom_distance_layer_paths=(
+            geom_distance_layer_paths
+            if geom_distance_layer_paths is not None
             else {}
         ),
         current_year_for_age_features=current_year_for_age_features,
@@ -516,8 +516,8 @@ def test_appends_poly_area_share_columns_for_each_layer_path(tmp_path) -> None: 
     assert df["water_share_800m"][0] > 0.99
 
 
-def test_appends_poly_distance_columns_for_each_layer_path(tmp_path) -> None:  # type: ignore[no-untyped-def]
-    """ADR-0019: BuildObjectFeatures must read each poly-distance layer
+def test_appends_geom_distance_columns_for_each_layer_path(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """ADR-0019: BuildObjectFeatures must read each geom-distance layer
     GeoJSON-seq and surface `dist_to_<layer>_m` columns in each saved
     partition. Distance is independent of share — both blocks coexist."""
     # Polygon enveloping KAZAN_LAT/KAZAN_LON (55.7887, 49.1221) so the
@@ -540,7 +540,7 @@ def test_appends_poly_distance_columns_for_each_layer_path(tmp_path) -> None:  #
     _usecase(
         store,
         raw,
-        poly_distance_layer_paths={"park": str(geojson_path)},
+        geom_distance_layer_paths={"park": str(geojson_path)},
     ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
 
     df = store.calls[0].df
@@ -550,10 +550,10 @@ def test_appends_poly_distance_columns_for_each_layer_path(tmp_path) -> None:  #
     assert d == 0.0
 
 
-def test_missing_poly_distance_layer_path_yields_null_column(tmp_path) -> None:  # type: ignore[no-untyped-def]
-    """If a configured poly-distance layer's file does not exist, the
+def test_missing_geom_distance_layer_path_yields_null_column(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """If a configured geom-distance layer's file does not exist, the
     pipeline must not crash — it emits null distance column. Keeps
-    Settings.poly_distance_layer_paths configurable as a superset."""
+    Settings.geom_distance_layer_paths configurable as a superset."""
     initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
     store = _FakeStore(initial)
     raw = _FakeRawData(
@@ -565,7 +565,7 @@ def test_missing_poly_distance_layer_path_yields_null_column(tmp_path) -> None: 
     _usecase(
         store,
         raw,
-        poly_distance_layer_paths={
+        geom_distance_layer_paths={
             "landfill": str(tmp_path / "missing.geojsonseq")
         },
     ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
@@ -573,6 +573,72 @@ def test_missing_poly_distance_layer_path_yields_null_column(tmp_path) -> None: 
     df = store.calls[0].df
     assert "dist_to_landfill_m" in df.columns
     assert df["dist_to_landfill_m"][0] is None
+
+
+def test_zonal_poi_layer_loaded_from_disk(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """ADR-0019 part 4: zonal counts for OSM-extracted point POIs.
+
+    When a layer name is in zonal_layer_names but is not stations /
+    entrances / a self-class slice, the pipeline should look it up in
+    geom_distance_layer_paths and load the GeoJSON-seq as a point layer
+    (Point features as-is, polygon features centroided) for the count
+    helper. Verifies that `school_within_500m` materialises with at
+    least one count when a school point is placed near the test object.
+    """
+    geojson_path = tmp_path / "school.geojsonseq"
+    # Place a Point right on KAZAN_LAT/LON — should fall within every
+    # radius (100/300/500/800 m) for the test object at the same location.
+    geojson_path.write_text(
+        '{"type":"Feature","properties":{"name":"Школа №1"},'
+        f'"geometry":{{"type":"Point","coordinates":[{KAZAN_LON},{KAZAN_LAT}]}}}}\n'
+    )
+
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        zonal_layer_names=["school"],
+        zonal_radii_m=[500],
+        geom_distance_layer_paths={"school": str(geojson_path)},
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "school_within_500m" in df.columns
+    assert int(df["school_within_500m"][0]) == 1
+
+
+def test_missing_zonal_poi_layer_file_yields_zero_counts(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """A POI layer name in zonal_layer_names whose file is missing must
+    not crash; columns appear with zero counts so downstream schema is
+    stable across regions where the OSM extract hasn't been run yet."""
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        zonal_layer_names=["bus_stop"],
+        zonal_radii_m=[500],
+        geom_distance_layer_paths={
+            "bus_stop": str(tmp_path / "missing.geojsonseq")
+        },
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "bus_stop_within_500m" in df.columns
+    assert int(df["bus_stop_within_500m"][0]) == 0
 
 
 def test_missing_poly_area_layer_path_is_skipped_gracefully(tmp_path) -> None:  # type: ignore[no-untyped-def]

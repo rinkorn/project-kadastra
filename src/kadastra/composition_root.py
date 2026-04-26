@@ -222,7 +222,7 @@ class Container:
             zonal_layer_names=s.zonal_layer_names,
             poly_area_radii_m=s.poly_area_radii_m,
             poly_area_layer_paths=s.poly_area_layer_paths,
-            poly_distance_layer_paths=s.poly_distance_layer_paths,
+            geom_distance_layer_paths=s.geom_distance_layer_paths,
             gar_lookup_cadnum_index_path=s.gar_lookup_cadnum_index_path,
             gar_lookup_mun_lookup_path=s.gar_lookup_mun_lookup_path,
             gar_lookup_object_params_path=s.gar_lookup_object_params_path,

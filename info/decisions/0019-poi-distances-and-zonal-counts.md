@@ -1,6 +1,6 @@
 # ADR-0019: POI-расстояния и зональные счётчики (OSM)
 
-**Статус:** In progress (poly-distance готов; точечные POI/extracts ждут)
+**Статус:** Accepted (parts 1–4 wired; empirical Δ MAPE ждёт следующего retrain)
 **Дата:** 2026-04-26
 **Реализует:** [info/grid-rationale.md §7](../grid-rationale.md), [§8](../grid-rationale.md) (Дистанционные и Зональные ЦОФ).
 **Опирается на:** [ADR-0011](0011-graph-based-distance-features.md) (graph-distance pipeline для метро/road), [ADR-0013](0013-zonal-density-features-multi-radius.md) (zonal counts).

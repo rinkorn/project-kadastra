@@ -43,16 +43,34 @@ class Settings(BaseSettings):
         "industrial": "data/raw/osm/kazan-agg-industrial.geojsonseq",
         "cemetery": "data/raw/osm/kazan-agg-cemetery.geojsonseq",
     }
-    # ADR-0019: distance to nearest polygon of each layer. Separate
-    # from poly_area_layer_paths because the layer set may diverge
-    # over time (e.g., landfill is meaningful as distance, less so as
-    # share). Defaults reuse the four extracted layers; extend with
-    # landfill/powerline/railway when those OSM extracts ship.
-    poly_distance_layer_paths: dict[str, str] = {
+    # ADR-0019: distance to nearest geometry of each layer. The helper
+    # is type-agnostic (Polygon / LineString / Point), so this dict can
+    # mix polygonal layers, linear ones and point POIs over time — each
+    # entry is just an OSM-extracted GeoJSON-seq file. Separate from
+    # poly_area_layer_paths because the layer set may diverge over time
+    # (e.g., landfill is meaningful as distance, less so as share).
+    geom_distance_layer_paths: dict[str, str] = {
+        # Polygonal — distance to nearest polygon edge (or 0 if inside).
         "water": "data/raw/osm/kazan-agg-water.geojsonseq",
         "park": "data/raw/osm/kazan-agg-park.geojsonseq",
         "industrial": "data/raw/osm/kazan-agg-industrial.geojsonseq",
         "cemetery": "data/raw/osm/kazan-agg-cemetery.geojsonseq",
+        "landfill": "data/raw/osm/kazan-agg-landfill.geojsonseq",
+        # Linear — distance to nearest line.
+        "powerline": "data/raw/osm/kazan-agg-powerline.geojsonseq",
+        "railway": "data/raw/osm/kazan-agg-railway.geojsonseq",
+        # Point POIs — distance + (when in zonal_layer_names) counts.
+        "school": "data/raw/osm/kazan-agg-school.geojsonseq",
+        "kindergarten": "data/raw/osm/kazan-agg-kindergarten.geojsonseq",
+        "clinic": "data/raw/osm/kazan-agg-clinic.geojsonseq",
+        "hospital": "data/raw/osm/kazan-agg-hospital.geojsonseq",
+        "pharmacy": "data/raw/osm/kazan-agg-pharmacy.geojsonseq",
+        "supermarket": "data/raw/osm/kazan-agg-supermarket.geojsonseq",
+        "cafe": "data/raw/osm/kazan-agg-cafe.geojsonseq",
+        "restaurant": "data/raw/osm/kazan-agg-restaurant.geojsonseq",
+        "bus_stop": "data/raw/osm/kazan-agg-bus_stop.geojsonseq",
+        "tram_stop": "data/raw/osm/kazan-agg-tram_stop.geojsonseq",
+        "railway_station": "data/raw/osm/kazan-agg-railway_station.geojsonseq",
     }
     zonal_radii_m: list[int] = [100, 300, 500, 800]
     zonal_layer_names: list[str] = [
@@ -61,6 +79,22 @@ class Settings(BaseSettings):
         "apartments",
         "houses",
         "commercial",
+        # ADR-0019 point POIs — counts in radii alongside distance.
+        # Polygonal/linear layers (water/park/.../powerline) are NOT
+        # listed here on purpose: «share in buffer» covers area-density,
+        # «distance to nearest» covers proximity, a count would just be
+        # a noisier version of share.
+        "school",
+        "kindergarten",
+        "clinic",
+        "hospital",
+        "pharmacy",
+        "supermarket",
+        "cafe",
+        "restaurant",
+        "bus_stop",
+        "tram_stop",
+        "railway_station",
     ]
     relative_feature_parent_resolutions: list[int] = [7, 8]
     relative_feature_columns: list[str] = [
