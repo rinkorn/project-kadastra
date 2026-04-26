@@ -8,6 +8,7 @@ from shapely.geometry import shape
 from shapely.geometry.base import BaseGeometry
 
 from kadastra.domain.asset_class import AssetClass
+from kadastra.etl.object_age_features import compute_object_age_features
 from kadastra.etl.object_geometry_features import compute_object_geometry_features
 from kadastra.etl.object_metro_features import compute_object_metro_features
 from kadastra.etl.object_municipality_features import (
@@ -46,6 +47,7 @@ class BuildObjectFeatures:
         gar_lookup_mun_lookup_path: Path | None = None,
         gar_lookup_object_params_path: Path | None = None,
         osm_raions_geojson_path: Path | None = None,
+        current_year_for_age_features: int = 2026,
     ) -> None:
         self._reader = reader
         self._store = store
@@ -66,6 +68,7 @@ class BuildObjectFeatures:
         self._gar_lookup_mun_lookup_path = gar_lookup_mun_lookup_path
         self._gar_lookup_object_params_path = gar_lookup_object_params_path
         self._osm_raions_geojson_path = osm_raions_geojson_path
+        self._current_year_for_age_features = current_year_for_age_features
 
     def execute(self, region_code: str, asset_classes: list[AssetClass]) -> None:
         stations = pl.read_csv(
@@ -148,6 +151,13 @@ class BuildObjectFeatures:
         # KeyError if the column is missing — that is an upstream
         # contract violation (silver→gold).
         enriched = compute_object_geometry_features(enriched)
+        # Object age + era features (ADR-0020). Pure feature engineering
+        # over the existing year_built column; current_year is fixed by
+        # config so output stays deterministic across reruns.
+        enriched = compute_object_age_features(
+            enriched,
+            current_year=self._current_year_for_age_features,
+        )
         # Filter feature_columns to those present (allows configuring a
         # superset in Settings — missing ones are simply skipped, not
         # errors, so per-class slices with different schemas don't crash).

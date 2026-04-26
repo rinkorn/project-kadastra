@@ -67,6 +67,11 @@ class Settings(BaseSettings):
         "year_built",
     ]
 
+    # ADR-0020 derived age features. Fixed by config (not
+    # datetime.now()) so reruns are deterministic; bump once per year
+    # at release time.
+    current_year_for_age_features: int = 2026
+
     nspd_silver_store_path: Path = Path("data/silver/nspd")
     nspd_buildings_raw_dir: Path = Path("data/raw/nspd/buildings-kazan")
     nspd_landplots_raw_dir: Path = Path("data/raw/nspd/landplots-kazan")
