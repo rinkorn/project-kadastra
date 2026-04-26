@@ -105,6 +105,16 @@ class Settings(BaseSettings):
     train_n_splits: int = 5
     train_parent_resolution: int = 7
 
+    # Quartet training perf knobs (S1+S2). When parallel_folds is True,
+    # the n_splits per-fold fits are dispatched concurrently via joblib;
+    # this collapses landplot wall time from hours to tens of minutes
+    # at the cost of memory (n_splits × X). When skip_final_simplifier_fits
+    # is True, the EBM/Grey/Naive full-data refits at the end of execute()
+    # are skipped — no current consumer reads those *_model.pkl artifacts
+    # (inspector reads OOFs only).
+    quartet_parallel_folds: bool = True
+    quartet_skip_final_simplifier_fits: bool = True
+
     # Block 5 (ADR-0016) — White Box (EBM) and Grey Box (Decision
     # Tree) hyperparameters. EBM defaults from interpret-ml; Grey
     # depth = 10 keeps the tree shallow enough to be useful as an

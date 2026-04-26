@@ -44,14 +44,15 @@ class EbmQuartetModel:
             "nominal" if i in cat_set else "continuous"
             for i in range(X.shape[1])
         ]
-        kwargs: dict[str, object] = {
-            "feature_types": feature_types,
-            "max_bins": self._max_bins,
-            "interactions": self._interactions,
-        }
-        if self._n_jobs is not None:
-            kwargs["n_jobs"] = self._n_jobs
-        model = ExplainableBoostingRegressor(**kwargs)
+        # Default EBM n_jobs is -2 ("all-1 cores"). When the caller pins
+        # us to 1 (parallel-folds outer loop), pass it through.
+        n_jobs = self._n_jobs if self._n_jobs is not None else -2
+        model = ExplainableBoostingRegressor(
+            feature_types=feature_types,
+            max_bins=self._max_bins,
+            interactions=self._interactions,
+            n_jobs=n_jobs,
+        )
         model.fit(X, y)
         self._model = model
 

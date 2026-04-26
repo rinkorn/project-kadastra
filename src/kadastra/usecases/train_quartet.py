@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import io
 import json
-from typing import Any
+from typing import Any, cast
 
 import h3
 import numpy as np
@@ -159,10 +159,14 @@ class TrainQuartet:
             )
             for fold_id, (train_idx_list, val_idx_list) in enumerate(folds)
         ]
+        pass1_results: list[dict[str, Any]]
         if self._parallel_folds:
-            pass1_results = Parallel(
-                n_jobs=self._n_splits, backend="loky"
-            )(delayed(_fit_pass1_fold)(*args) for args in pass1_args)
+            pass1_results = cast(
+                "list[dict[str, Any]]",
+                Parallel(n_jobs=self._n_splits, backend="loky")(
+                    delayed(_fit_pass1_fold)(*args) for args in pass1_args
+                ),
+            )
         else:
             pass1_results = [_fit_pass1_fold(*args) for args in pass1_args]
 
@@ -193,10 +197,14 @@ class TrainQuartet:
             )
             for train_idx_list, val_idx_list in folds
         ]
+        pass2_results: list[dict[str, Any]]
         if self._parallel_folds:
-            pass2_results = Parallel(
-                n_jobs=self._n_splits, backend="loky"
-            )(delayed(_fit_pass2_grey_fold)(*args) for args in pass2_args)
+            pass2_results = cast(
+                "list[dict[str, Any]]",
+                Parallel(n_jobs=self._n_splits, backend="loky")(
+                    delayed(_fit_pass2_grey_fold)(*args) for args in pass2_args
+                ),
+            )
         else:
             pass2_results = [
                 _fit_pass2_grey_fold(*args) for args in pass2_args

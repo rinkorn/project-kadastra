@@ -43,18 +43,19 @@ class CatBoostQuartetModel:
         *,
         cat_feature_indices: list[int] | None = None,
     ) -> None:
-        kwargs: dict[str, object] = {
-            "iterations": self._iterations,
-            "learning_rate": self._learning_rate,
-            "depth": self._depth,
-            "random_seed": self._seed,
-            "verbose": False,
-            "allow_writing_files": False,
-            "cat_features": cat_feature_indices or None,
-        }
-        if self._thread_count is not None:
-            kwargs["thread_count"] = self._thread_count
-        model = CatBoostRegressor(**kwargs)
+        # Default CatBoost thread_count is -1 ("all cores"). When the
+        # caller pins us to 1 (parallel-folds outer loop), pass through.
+        thread_count = self._thread_count if self._thread_count is not None else -1
+        model = CatBoostRegressor(
+            iterations=self._iterations,
+            learning_rate=self._learning_rate,
+            depth=self._depth,
+            random_seed=self._seed,
+            verbose=False,
+            allow_writing_files=False,
+            cat_features=cat_feature_indices or None,
+            thread_count=thread_count,
+        )
         model.fit(X, y, cat_features=cat_feature_indices or None)
         self._model = model
 
