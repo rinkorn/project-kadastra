@@ -32,6 +32,11 @@ from kadastra.usecases.get_hex_aggregates import (
 )
 from kadastra.usecases.load_object_inspection import LoadObjectInspection
 
+# ADR-0016 quartet — model selector accepted by /api/inspection and
+# (later) /api/hex_aggregates. ``catboost`` is the default to keep the
+# UI working before any quartet run lands.
+QUARTET_MODELS = ("catboost", "ebm", "grey_tree", "naive_linear")
+
 
 def make_api_router(
     *,
@@ -71,27 +76,41 @@ def make_api_router(
         }
 
     @router.get("/inspection")
-    def inspection_list(asset_class: str = Query(...)) -> dict[str, Any]:
+    def inspection_list(
+        asset_class: str = Query(...),
+        model: str = Query("catboost"),
+    ) -> dict[str, Any]:
         ac = _parse_asset_class(asset_class)
+        _validate_model(model)
         return {
             "region": region_code,
             "asset_class": ac.value,
-            "data": load_inspection.list_for_map(region_code, ac),
+            "model": model,
+            "data": load_inspection.list_for_map(region_code, ac, model=model),
         }
 
     @router.get("/inspection/{object_id:path}")
     def inspection_detail(
         object_id: str,
         asset_class: str = Query(...),
+        model: str = Query("catboost"),
     ) -> dict[str, Any]:
         ac = _parse_asset_class(asset_class)
-        detail = load_inspection.get_detail(region_code, ac, object_id)
+        _validate_model(model)
+        detail = load_inspection.get_detail(
+            region_code, ac, object_id, model=model
+        )
         if detail is None:
             raise HTTPException(
                 status_code=404,
                 detail=f"object {object_id!r} not found for asset_class={ac.value}",
             )
-        return {"region": region_code, "asset_class": ac.value, "data": detail}
+        return {
+            "region": region_code,
+            "asset_class": ac.value,
+            "model": model,
+            "data": detail,
+        }
 
     @router.get("/feature_options")
     def feature_options() -> dict[str, Any]:
@@ -99,6 +118,7 @@ def make_api_router(
             "asset_classes": list(ASSET_CLASS_VALUES),
             "numeric_features": list(NUMERIC_FEATURES),
             "categorical_features": list(CATEGORICAL_FEATURES),
+            "models": list(QUARTET_MODELS),
         }
 
     return router
@@ -111,3 +131,11 @@ def _parse_asset_class(asset_class: str) -> AssetClass:
         raise HTTPException(
             status_code=400, detail=f"unknown asset_class: {asset_class!r}"
         ) from exc
+
+
+def _validate_model(model: str) -> None:
+    if model not in QUARTET_MODELS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown model: {model!r}; expected one of {QUARTET_MODELS}",
+        )
