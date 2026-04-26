@@ -193,15 +193,18 @@ def test_distance_to_linestring_layer() -> None:
 
 
 def test_object_on_linestring_distance_is_zero() -> None:
-    """If the object is exactly on the line, distance is 0."""
+    """If the object is exactly on a line endpoint, distance is 0.
+    Endpoint coincidence is the cleanest "on-line" check; using a midpoint
+    of a long lat-constant line introduces UTM chord-vs-arc deviation
+    (~1 m on a 6 km segment at 55.8° latitude)."""
     line = LineString(
-        [(_KAZAN_LON - 0.05, _KAZAN_LAT), (_KAZAN_LON + 0.05, _KAZAN_LAT)]
+        [(_KAZAN_LON, _KAZAN_LAT), (_KAZAN_LON + 0.01, _KAZAN_LAT + 0.01)]
     )
     df = compute_object_geom_distance_features(
         _objects([(_KAZAN_LAT, _KAZAN_LON)]),
         geometries_by_layer={"railway": [line]},
     )
-    assert float(df["dist_to_railway_m"][0]) < 1.0
+    assert float(df["dist_to_railway_m"][0]) < 0.01
 
 
 def test_mixed_geometry_types_in_one_call() -> None:
