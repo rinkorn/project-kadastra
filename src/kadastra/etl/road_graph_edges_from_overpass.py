@@ -11,6 +11,7 @@ relations) and ways without geometry are skipped.
 
 from __future__ import annotations
 
+from itertools import pairwise
 from typing import Any
 
 import polars as pl
@@ -36,7 +37,7 @@ def build_road_graph_edges_from_overpass(
         geometry = element.get("geometry")
         if not geometry or len(geometry) < 2:
             continue
-        for prev, curr in zip(geometry, geometry[1:], strict=False):
+        for prev, curr in pairwise(geometry):
             from_lat = float(prev["lat"])
             from_lon = float(prev["lon"])
             to_lat = float(curr["lat"])
