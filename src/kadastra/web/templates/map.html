@@ -61,25 +61,44 @@
     .legend .gradient { width: 240px; height: 8px; margin-top: 4px;
       background: linear-gradient(to right, #2c7bb6, #abd9e9, #ffffbf, #fdae61, #d7191c);
     }
-    .legend .ticks { display: flex; justify-content: space-between; margin-top: 2px;
-      align-items: center; gap: 8px;
+    .legend .ticks { display: flex; flex-direction: column; gap: 3px;
+      margin-top: 4px; align-items: stretch;
     }
-    .legend .ticks input { width: 80px; padding: 1px 4px; font: inherit;
-      background: rgba(255, 255, 255, 0.06);
-      color: inherit;
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      border-radius: 3px;
-      text-align: center;
+    .legend .range-row { display: flex; align-items: center; gap: 6px; }
+    .legend .range-row .label { font-size: 10px; opacity: 0.7;
+      width: 18px; text-align: center;
     }
-    .legend .ticks input::-webkit-outer-spin-button,
-    .legend .ticks input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-    .legend .ticks input { -moz-appearance: textfield; }
-    .legend .ticks input:focus { outline: none; border-color: #fde047; }
-    .legend .ticks .reset { cursor: pointer; opacity: 0.6;
+    .legend .range-row input[type="range"] { flex: 1; height: 14px;
+      background: transparent; -webkit-appearance: none; appearance: none;
+      margin: 0; cursor: pointer;
+    }
+    .legend .range-row input[type="range"]::-webkit-slider-runnable-track {
+      height: 3px; background: rgba(255, 255, 255, 0.25); border-radius: 2px;
+    }
+    .legend .range-row input[type="range"]::-moz-range-track {
+      height: 3px; background: rgba(255, 255, 255, 0.25); border-radius: 2px;
+    }
+    .legend .range-row input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none;
+      width: 11px; height: 11px; border-radius: 50%;
+      background: #fde047; cursor: pointer; margin-top: -4px;
+      border: 1px solid rgba(0, 0, 0, 0.5);
+    }
+    .legend .range-row input[type="range"]::-moz-range-thumb {
+      width: 11px; height: 11px; border-radius: 50%;
+      background: #fde047; cursor: pointer;
+      border: 1px solid rgba(0, 0, 0, 0.5);
+    }
+    .legend .range-row .val { font-size: 10px; opacity: 0.85;
+      min-width: 64px; text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .legend .range-row .val.custom { color: #fde047; opacity: 1; }
+    .legend .ticks .reset { cursor: pointer; opacity: 0.6; align-self: flex-end;
       font-size: 10px; padding: 0 4px; user-select: none;
     }
     .legend .ticks .reset:hover { opacity: 1; }
-    .legend .ticks .reset.hidden { visibility: hidden; }
+    .legend .ticks .reset.hidden { display: none; }
     .legend .swatches { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; }
     .legend .swatches span { display: inline-flex; align-items: center; gap: 4px; }
     .legend .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
@@ -184,9 +203,17 @@
     <div id="legend-feature"></div>
     <div class="gradient" id="legend-gradient"></div>
     <div class="ticks">
-      <input id="legend-min" type="number" step="any" placeholder="auto" />
-      <span class="reset hidden" id="legend-reset" title="Reset to auto">×</span>
-      <input id="legend-max" type="number" step="any" placeholder="auto" />
+      <div class="range-row">
+        <span class="label">lo</span>
+        <input id="legend-min" type="range" />
+        <span class="val" id="legend-min-val">auto</span>
+      </div>
+      <div class="range-row">
+        <span class="label">hi</span>
+        <input id="legend-max" type="range" />
+        <span class="val" id="legend-max-val">auto</span>
+      </div>
+      <span class="reset hidden" id="legend-reset" title="Reset to auto">× reset</span>
     </div>
     <div class="swatches" id="legend-swatches" style="display:none"></div>
     <div class="palette-controls" id="legend-palette-controls" style="display:none">
@@ -913,15 +940,11 @@ function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
     `${payload.feature} (${payload.asset_class})`;
   const gradient = document.getElementById('legend-gradient');
   const swatches = document.getElementById('legend-swatches');
-  const minInput = document.getElementById('legend-min');
-  const maxInput = document.getElementById('legend-max');
+  const ticks = legend.querySelector('.ticks');
   const reset = document.getElementById('legend-reset');
   if (isCategorical) {
     gradient.style.display = 'none';
-    setLegendBounds(null, null);
-    minInput.style.visibility = 'hidden';
-    maxInput.style.visibility = 'hidden';
-    reset.classList.add('hidden');
+    ticks.style.display = 'none';
     swatches.style.display = 'flex';
     const uniq = [...new Set(values)].sort();
     swatches.innerHTML = uniq.map(v => {
@@ -932,29 +955,15 @@ function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
     renderPalettePicker(null);
     return;
   }
-  minInput.style.visibility = '';
-  maxInput.style.visibility = '';
+  ticks.style.display = 'flex';
   swatches.style.display = 'none';
-  let lo, hi;
   if (isDiverging) {
     gradient.style.background = rampGradientCss(activeDivRamp());
-    let max = Math.max(...values.map(v => Math.abs(v)));
-    if (customLo != null || customHi != null) {
-      const candidates = [customLo, customHi].filter(v => v != null).map(v => Math.abs(v));
-      if (candidates.length > 0) max = Math.max(...candidates);
-    }
-    lo = -max; hi = max;
   } else {
     gradient.style.background = rampGradientCss(activeSeqRamp());
-    const sorted = [...values].sort((a, b) => a - b);
-    const mode = document.getElementById('scale').value;
-    if (mode === 'p98') { lo = quantile(sorted, 0.02); hi = quantile(sorted, 0.98); }
-    else { lo = sorted[0]; hi = sorted[sorted.length - 1]; }
-    if (customLo != null) lo = customLo;
-    if (customHi != null) hi = customHi;
   }
   gradient.style.display = '';
-  setLegendBounds(lo, hi);
+  setLegendSliders(values, isDiverging);
   reset.classList.toggle('hidden', customLo == null && customHi == null);
   const kind = isDiverging ? 'div' : 'seq';
   const reverseFlag = isDiverging ? divReverse : seqReverse;
@@ -965,32 +974,44 @@ function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
   renderPalettePicker(kind);
 }
 
-// Write the active gradient bounds into the editable inputs without
-// stomping on a value the user is currently typing (focused input is
-// left untouched). Custom clamps remain visible because they reflect
-// the user's choice; auto values land in the placeholder slot via
-// .value so the «×» reset chip can revert them in one click.
-function setLegendBounds(lo, hi) {
-  const minInput = document.getElementById('legend-min');
-  const maxInput = document.getElementById('legend-max');
-  if (lo == null && hi == null) {
-    if (document.activeElement !== minInput) minInput.value = '';
-    if (document.activeElement !== maxInput) maxInput.value = '';
+// Configure the lo / hi range sliders based on the current layer's
+// data extents. For diverging mode the slider track spans
+// [-|maxAbs|, +|maxAbs|] so both thumbs share one symmetric scale;
+// for sequential it spans [dataMin, dataMax]. Active thumb is left
+// alone so a live drag doesn't snap on every recolour.
+function setLegendSliders(values, isDiverging) {
+  const minSlider = document.getElementById('legend-min');
+  const maxSlider = document.getElementById('legend-max');
+  const minVal = document.getElementById('legend-min-val');
+  const maxVal = document.getElementById('legend-max-val');
+  const finite = (values || []).filter(v => Number.isFinite(v));
+  if (finite.length === 0) {
+    minVal.textContent = 'auto'; maxVal.textContent = 'auto';
     return;
   }
-  if (document.activeElement !== minInput) {
-    minInput.value = customLo != null ? customLo : (lo != null ? formatNumberForInput(lo) : '');
+  let trackMin, trackMax;
+  if (isDiverging) {
+    const m = Math.max(...finite.map(v => Math.abs(v))) || 1;
+    trackMin = -m; trackMax = m;
+  } else {
+    trackMin = Math.min(...finite); trackMax = Math.max(...finite);
+    if (trackMin === trackMax) trackMax = trackMin + 1;
   }
-  if (document.activeElement !== maxInput) {
-    maxInput.value = customHi != null ? customHi : (hi != null ? formatNumberForInput(hi) : '');
+  const span = trackMax - trackMin;
+  const step = span / 1000;
+  for (const s of [minSlider, maxSlider]) {
+    s.min = String(trackMin); s.max = String(trackMax); s.step = String(step);
   }
-}
-
-function formatNumberForInput(v) {
-  if (!Number.isFinite(v)) return '';
-  // 4 sig-figs is plenty for an editable bound — full precision makes
-  // the input awkward to read and edit.
-  return Number(v.toPrecision(4)).toString();
+  // Default thumb positions are the track extremes, so an unclamped
+  // gradient shows both thumbs at the ends. Custom values override.
+  const loVal = customLo != null ? customLo : trackMin;
+  const hiVal = customHi != null ? customHi : trackMax;
+  if (document.activeElement !== minSlider) minSlider.value = String(loVal);
+  if (document.activeElement !== maxSlider) maxSlider.value = String(hiVal);
+  minVal.textContent = formatValue(Number(minSlider.value));
+  maxVal.textContent = formatValue(Number(maxSlider.value));
+  minVal.classList.toggle('custom', customLo != null);
+  maxVal.classList.toggle('custom', customHi != null);
 }
 
 // Inline palette picker: a row of clickable mini-gradients in the
@@ -1064,26 +1085,21 @@ function recolor() {
   document.getElementById(id).addEventListener('change', recolor)
 );
 
-// Editable colour-scale clamps: empty input = auto (null), any number
-// = user override. Apply on `change` (Enter / blur) so accidental
-// keystrokes don't trigger a re-render on every digit.
-function applyLegendBounds() {
-  const minVal = document.getElementById('legend-min').value.trim();
-  const maxVal = document.getElementById('legend-max').value.trim();
-  customLo = minVal === '' ? null : Number(minVal);
-  customHi = maxVal === '' ? null : Number(maxVal);
-  if (Number.isNaN(customLo)) customLo = null;
-  if (Number.isNaN(customHi)) customHi = null;
+// Range sliders fire 'input' on every drag tick → live clamp. Each
+// thumb maps to its own state var; × reset chip clears both.
+function onLegendSliderInput(ev) {
+  const id = ev.target.id;
+  const v = Number(ev.target.value);
+  if (id === 'legend-min') customLo = v;
+  else customHi = v;
   recolor();
 }
 ['legend-min', 'legend-max'].forEach(id =>
-  document.getElementById(id).addEventListener('change', applyLegendBounds)
+  document.getElementById(id).addEventListener('input', onLegendSliderInput)
 );
 document.getElementById('legend-reset').addEventListener('click', () => {
   customLo = null;
   customHi = null;
-  document.getElementById('legend-min').value = '';
-  document.getElementById('legend-max').value = '';
   recolor();
 });
 
