@@ -112,6 +112,13 @@ def make_api_router(
             "data": load_inspection.list_for_map(region_code, ac, model=model),
         }
 
+    @router.get("/inspection/{object_id:path}/quartet")
+    def inspection_detail_quartet(
+        object_id: str,
+        asset_class: str = Query(...),
+    ) -> dict[str, Any]:
+        raise NotImplementedError
+
     @router.get("/inspection/{object_id:path}")
     def inspection_detail(
         object_id: str,
