@@ -55,6 +55,8 @@ class TrainQuartet:
         grey_tree_max_depth: int,
         n_splits: int,
         parent_resolution: int,
+        parallel_folds: bool = False,
+        skip_final_simplifier_fits: bool = False,
     ) -> None:
         self._reader = reader
         self._model_registry = model_registry
@@ -64,6 +66,18 @@ class TrainQuartet:
         self._grey_tree_max_depth = grey_tree_max_depth
         self._n_splits = n_splits
         self._parent_resolution = parent_resolution
+        # S1 (perf): when True, dispatch per-fold model fits via joblib
+        # so n_splits folds train concurrently. Inner thread pools are
+        # narrowed to 1 to avoid n_splits × outer_bags worker explosion.
+        # Logic for this flag is implemented in a follow-up commit.
+        self._parallel_folds = parallel_folds
+        # S2 (perf): when True, skip the EBM/Grey/Naive full-data refit
+        # at the end of execute() — those *_model.pkl artifacts are not
+        # consumed by any current code path (inspector reads OOFs only)
+        # and dominate landplot wall time. CatBoost final fit is kept
+        # because the model registry contract still requires a primary
+        # CatBoostRegressor. Logic implemented in a follow-up commit.
+        self._skip_final_simplifier_fits = skip_final_simplifier_fits
 
     def execute(self, region_code: str, asset_class: AssetClass) -> str:
         df = self._reader.load(region_code, asset_class).drop_nulls(
