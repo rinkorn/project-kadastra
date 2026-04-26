@@ -382,6 +382,8 @@ let selectedGeometry = null; // GeoJSON Polygon (WGS84) of the currently inspect
 const SEQ_RAMPS = {
   // matplotlib perceptual
   viridis: [[68, 1, 84], [59, 82, 139], [33, 144, 141], [93, 201, 99], [253, 231, 37]],
+  parula: [[53, 42, 135], [40, 100, 207], [25, 150, 195], [26, 184, 154], [161, 188, 65], [232, 190, 51], [249, 251, 14]],
+  jet: [[0, 0, 143], [0, 0, 255], [0, 255, 255], [0, 255, 0], [255, 255, 0], [255, 0, 0], [143, 0, 0]],
   magma: [[0, 0, 4], [80, 18, 123], [183, 55, 121], [251, 136, 97], [252, 253, 191]],
   plasma: [[13, 8, 135], [126, 3, 168], [204, 71, 120], [248, 149, 64], [240, 249, 33]],
   inferno: [[0, 0, 4], [87, 16, 110], [187, 55, 84], [249, 142, 9], [252, 255, 164]],
@@ -492,7 +494,7 @@ const DIV_RAMPS = {
   ],
 };
 
-let seqPaletteId = 'RdYlBu_r';
+let seqPaletteId = 'jet';
 let divPaletteId = 'RdBu';
 // Per-kind reverse flag: flips the stop order when active. Kept
 // separate so toggling it for sequential metrics doesn't affect the
@@ -530,7 +532,7 @@ function subsampleStops(stops, fromT, toT, n = 7) {
   return out;
 }
 const activeSeqRamp = () => subsampleStops(
-  maybeReverse(SEQ_RAMPS[seqPaletteId] || SEQ_RAMPS.RdYlBu_r, seqReverse),
+  maybeReverse(SEQ_RAMPS[seqPaletteId] || SEQ_RAMPS.jet, seqReverse),
   seqColorFrom, seqColorTo,
 );
 const activeDivRamp = () => subsampleStops(
@@ -540,7 +542,7 @@ const activeDivRamp = () => subsampleStops(
 // Untrimmed (0..1) ramp — used for the «source palette» preview bar
 // where the colour-range thumbs slide across the full palette.
 const fullSeqRamp = () =>
-  maybeReverse(SEQ_RAMPS[seqPaletteId] || SEQ_RAMPS.RdYlBu_r, seqReverse);
+  maybeReverse(SEQ_RAMPS[seqPaletteId] || SEQ_RAMPS.jet, seqReverse);
 const fullDivRamp = () =>
   maybeReverse(DIV_RAMPS[divPaletteId] || DIV_RAMPS.RdBu, divReverse);
 
