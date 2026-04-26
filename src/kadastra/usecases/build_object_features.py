@@ -9,15 +9,15 @@ from shapely.geometry.base import BaseGeometry
 
 from kadastra.domain.asset_class import AssetClass
 from kadastra.etl.object_age_features import compute_object_age_features
+from kadastra.etl.object_geom_distance_features import (
+    compute_object_geom_distance_features,
+)
 from kadastra.etl.object_geometry_features import compute_object_geometry_features
 from kadastra.etl.object_metro_features import compute_object_metro_features
 from kadastra.etl.object_municipality_features import (
     compute_object_municipality_features,
 )
 from kadastra.etl.object_neighbor_features import compute_object_neighbor_features
-from kadastra.etl.object_poly_distance_features import (
-    compute_object_poly_distance_features,
-)
 from kadastra.etl.object_polygon_features import compute_object_polygon_features
 from kadastra.etl.object_road_features import compute_object_road_features
 from kadastra.etl.object_zonal_features import compute_object_zonal_features
@@ -132,8 +132,8 @@ class BuildObjectFeatures:
             distance_layers = self._load_layer_polygons(
                 self._poly_distance_layer_paths
             )
-            enriched = compute_object_poly_distance_features(
-                enriched, polygons_by_layer=distance_layers
+            enriched = compute_object_geom_distance_features(
+                enriched, geometries_by_layer=distance_layers
             )
         # Territorial / municipality features (ADR-0015). ГАР primary
         # via cad_num→objectid→mun_lookup; NSPD readable_address parse

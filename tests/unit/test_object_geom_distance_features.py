@@ -16,8 +16,8 @@ import polars as pl
 from shapely.geometry import Polygon, box
 from shapely.geometry.base import BaseGeometry
 
-from kadastra.etl.object_poly_distance_features import (
-    compute_object_poly_distance_features,
+from kadastra.etl.object_geom_distance_features import (
+    compute_object_geom_distance_features,
 )
 
 # Kazan reference; objects are placed off it by tiny lat/lon deltas
@@ -46,9 +46,9 @@ def _polygon_around(lat: float, lon: float, radius_deg: float) -> Polygon:
 
 
 def test_empty_layer_yields_null_column() -> None:
-    df = compute_object_poly_distance_features(
+    df = compute_object_geom_distance_features(
         _objects([(_KAZAN_LAT, _KAZAN_LON)]),
-        polygons_by_layer={"water": []},
+        geometries_by_layer={"water": []},
     )
     assert "dist_to_water_m" in df.columns
     assert df["dist_to_water_m"][0] is None
@@ -56,9 +56,9 @@ def test_empty_layer_yields_null_column() -> None:
 
 def test_object_inside_polygon_distance_is_zero() -> None:
     poly = _polygon_around(_KAZAN_LAT, _KAZAN_LON, 0.001)  # ~110 m square
-    df = compute_object_poly_distance_features(
+    df = compute_object_geom_distance_features(
         _objects([(_KAZAN_LAT, _KAZAN_LON)]),
-        polygons_by_layer={"water": [poly]},
+        geometries_by_layer={"water": [poly]},
     )
     assert df["dist_to_water_m"][0] == 0.0
 
@@ -68,9 +68,9 @@ def test_object_outside_polygon_distance_is_positive() -> None:
     The east edge of the polygon is at lon + 0.001°; the object is at
     lon + 0.01°. Δ_lon = 0.009°. At φ ≈ 55.79° this is roughly 567 m."""
     poly = _polygon_around(_KAZAN_LAT, _KAZAN_LON, 0.001)
-    df = compute_object_poly_distance_features(
+    df = compute_object_geom_distance_features(
         _objects([(_KAZAN_LAT, _KAZAN_LON + 0.01)]),
-        polygons_by_layer={"water": [poly]},
+        geometries_by_layer={"water": [poly]},
     )
     d = float(df["dist_to_water_m"][0])
     # ~567 m at 55.79° latitude — give a 5% tolerance for the
@@ -83,9 +83,9 @@ def test_distance_to_nearest_of_multiple_polygons() -> None:
     object. Object should report distance to the closer (east) one."""
     near = _polygon_around(_KAZAN_LAT, _KAZAN_LON + 0.005, 0.001)
     far = _polygon_around(_KAZAN_LAT, _KAZAN_LON - 0.020, 0.001)
-    df = compute_object_poly_distance_features(
+    df = compute_object_geom_distance_features(
         _objects([(_KAZAN_LAT, _KAZAN_LON)]),
-        polygons_by_layer={"park": [far, near]},
+        geometries_by_layer={"park": [far, near]},
     )
     d = float(df["dist_to_park_m"][0])
     # Near polygon: east edge at lon + 0.004°, object at lon + 0° →
@@ -97,9 +97,9 @@ def test_distance_to_nearest_of_multiple_polygons() -> None:
 def test_multiple_layers_yield_one_column_each() -> None:
     poly_water = _polygon_around(_KAZAN_LAT, _KAZAN_LON + 0.010, 0.001)
     poly_park = _polygon_around(_KAZAN_LAT + 0.010, _KAZAN_LON, 0.001)
-    df = compute_object_poly_distance_features(
+    df = compute_object_geom_distance_features(
         _objects([(_KAZAN_LAT, _KAZAN_LON)]),
-        polygons_by_layer={"water": [poly_water], "park": [poly_park]},
+        geometries_by_layer={"water": [poly_water], "park": [poly_park]},
     )
     assert "dist_to_water_m" in df.columns
     assert "dist_to_park_m" in df.columns
@@ -117,9 +117,9 @@ def test_preserves_existing_columns() -> None:
         }
     )
     poly = _polygon_around(_KAZAN_LAT, _KAZAN_LON, 0.001)
-    df_out = compute_object_poly_distance_features(
+    df_out = compute_object_geom_distance_features(
         df_in,
-        polygons_by_layer={"water": [poly]},
+        geometries_by_layer={"water": [poly]},
     )
     assert df_out["object_id"].to_list() == ["w/1", "w/2"]
     assert df_out["asset_class"].to_list() == ["apartment", "house"]
@@ -127,8 +127,8 @@ def test_preserves_existing_columns() -> None:
 
 def test_no_layers_returns_unchanged_frame() -> None:
     df_in = _objects([(_KAZAN_LAT, _KAZAN_LON)])
-    df_out = compute_object_poly_distance_features(
-        df_in, polygons_by_layer={}
+    df_out = compute_object_geom_distance_features(
+        df_in, geometries_by_layer={}
     )
     assert df_out.columns == df_in.columns
 
@@ -148,8 +148,8 @@ def test_empty_objects_frame_emits_null_columns() -> None:
             "lon": pl.Float64,
         },
     )
-    df_out = compute_object_poly_distance_features(
-        df_in, polygons_by_layer=empty
+    df_out = compute_object_geom_distance_features(
+        df_in, geometries_by_layer=empty
     )
     assert "dist_to_water_m" in df_out.columns
     assert "dist_to_landfill_m" in df_out.columns

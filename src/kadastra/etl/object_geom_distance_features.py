@@ -43,10 +43,10 @@ def _flatten_to_parts(geom: BaseGeometry) -> list[BaseGeometry]:
     return parts
 
 
-def compute_object_poly_distance_features(
+def compute_object_geom_distance_features(
     objects: pl.DataFrame,
     *,
-    polygons_by_layer: dict[str, list[BaseGeometry]],
+    geometries_by_layer: dict[str, list[BaseGeometry]],
 ) -> pl.DataFrame:
     """Append ``dist_to_<layer>_m`` columns: distance in metres
     (EPSG:32639 UTM-39N) from each object to the nearest polygon of
@@ -56,7 +56,7 @@ def compute_object_poly_distance_features(
     empty columns with the expected names so downstream schema is
     stable across asset-class slices.
     """
-    if not polygons_by_layer:
+    if not geometries_by_layer:
         return objects
 
     n = objects.height
@@ -65,7 +65,7 @@ def compute_object_poly_distance_features(
         return objects.with_columns(
             [
                 pl.lit(None, dtype=pl.Float64).alias(f"dist_to_{layer}_m")
-                for layer in polygons_by_layer
+                for layer in geometries_by_layer
             ]
         )
 
@@ -75,7 +75,7 @@ def compute_object_poly_distance_features(
     points = shapely.points(np.asarray(obj_xs), np.asarray(obj_ys))
 
     new_columns: list[pl.Series] = []
-    for layer, polys in polygons_by_layer.items():
+    for layer, polys in geometries_by_layer.items():
         col_name = f"dist_to_{layer}_m"
         if not polys:
             new_columns.append(
