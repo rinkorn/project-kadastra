@@ -272,6 +272,132 @@ def test_list_for_map_threads_model_param_to_oof_reader() -> None:
     assert (AssetClass.APARTMENT, "ebm") in fake_oof.model_calls
 
 
+def test_get_detail_quartet_returns_per_model_predictions() -> None:
+    """Side-panel comparison view: one shared gold feature dict +
+    a ``models`` dict with per-model ``y_pred_oof`` / ``residual`` /
+    ``fold_id``. Folds are same across models in ADR-0016 (single
+    spatial split shared by all 4 trainers), so each per-model
+    entry can be compared like-for-like."""
+    objects = _objects(
+        [
+            {
+                "object_id": "a1", "asset_class": "apartment",
+                "lat": 55.78, "lon": 49.12,
+                "synthetic_target_rub_per_m2": 100_000.0,
+                "intra_city_raion": "Советский", "levels": 5,
+            }
+        ]
+    )
+    cb_oof = _oof(
+        [{"object_id": "a1", "lat": 55.78, "lon": 49.12,
+          "fold_id": 2, "y_true": 100_000.0, "y_pred_oof": 95_000.0}]
+    )
+    ebm_oof = _oof(
+        [{"object_id": "a1", "lat": 55.78, "lon": 49.12,
+          "fold_id": 2, "y_true": 100_000.0, "y_pred_oof": 92_000.0}]
+    )
+    grey_oof = _oof(
+        [{"object_id": "a1", "lat": 55.78, "lon": 49.12,
+          "fold_id": 2, "y_true": 100_000.0, "y_pred_oof": 96_500.0}]
+    )
+    naive_oof = _oof(
+        [{"object_id": "a1", "lat": 55.78, "lon": 49.12,
+          "fold_id": 2, "y_true": 100_000.0, "y_pred_oof": 110_000.0}]
+    )
+    fake_oof = _FakeOofReader(
+        by_model={
+            (AssetClass.APARTMENT, "catboost"): cb_oof,
+            (AssetClass.APARTMENT, "ebm"): ebm_oof,
+            (AssetClass.APARTMENT, "grey_tree"): grey_oof,
+            (AssetClass.APARTMENT, "naive_linear"): naive_oof,
+        }
+    )
+    usecase = LoadObjectInspection(
+        reader=_FakeReader({AssetClass.APARTMENT: objects}),
+        oof_reader=fake_oof,
+    )
+
+    detail = usecase.get_detail_quartet(
+        "RU-KAZAN-AGG", AssetClass.APARTMENT, "a1"
+    )
+    assert detail is not None
+    # Shared gold features are at the top level (single source of truth).
+    assert detail["object_id"] == "a1"
+    assert detail["intra_city_raion"] == "Советский"
+    assert detail["y_true"] == 100_000.0
+    # Per-model breakdown.
+    models = detail["models"]
+    assert set(models.keys()) == {"catboost", "ebm", "grey_tree", "naive_linear"}
+    assert models["catboost"]["y_pred_oof"] == 95_000.0
+    assert models["catboost"]["residual"] == -5_000.0
+    assert models["catboost"]["fold_id"] == 2
+    assert models["ebm"]["y_pred_oof"] == 92_000.0
+    assert models["ebm"]["residual"] == -8_000.0
+    assert models["grey_tree"]["y_pred_oof"] == 96_500.0
+    assert models["naive_linear"]["y_pred_oof"] == 110_000.0
+    assert models["naive_linear"]["residual"] == 10_000.0
+    # No raw per-model y_pred_oof at top level (those live under "models").
+    assert "y_pred_oof" not in detail
+    assert "residual" not in detail
+
+
+def test_get_detail_quartet_returns_nulls_for_missing_oof_per_model() -> None:
+    """If only some quartet OOFs are present (e.g. EBM run failed),
+    the missing models still appear in ``models`` with nulls — so the
+    UI can render an empty cell instead of dropping the column."""
+    objects = _objects(
+        [
+            {
+                "object_id": "a1", "asset_class": "apartment",
+                "lat": 55.78, "lon": 49.12,
+                "synthetic_target_rub_per_m2": 100_000.0,
+                "intra_city_raion": "Советский", "levels": 5,
+            }
+        ]
+    )
+    cb_oof = _oof(
+        [{"object_id": "a1", "lat": 55.78, "lon": 49.12,
+          "fold_id": 2, "y_true": 100_000.0, "y_pred_oof": 95_000.0}]
+    )
+    fake_oof = _FakeOofReader(
+        by_model={(AssetClass.APARTMENT, "catboost"): cb_oof},
+    )
+    usecase = LoadObjectInspection(
+        reader=_FakeReader({AssetClass.APARTMENT: objects}),
+        oof_reader=fake_oof,
+    )
+
+    detail = usecase.get_detail_quartet(
+        "RU-KAZAN-AGG", AssetClass.APARTMENT, "a1"
+    )
+    assert detail is not None
+    assert detail["models"]["catboost"]["y_pred_oof"] == 95_000.0
+    assert detail["models"]["ebm"]["y_pred_oof"] is None
+    assert detail["models"]["ebm"]["residual"] is None
+    assert detail["models"]["ebm"]["fold_id"] is None
+
+
+def test_get_detail_quartet_returns_none_for_unknown_object() -> None:
+    objects = _objects(
+        [
+            {
+                "object_id": "a1", "asset_class": "apartment",
+                "lat": 55.78, "lon": 49.12,
+                "synthetic_target_rub_per_m2": 100_000.0,
+                "intra_city_raion": "Советский", "levels": 5,
+            }
+        ]
+    )
+    usecase = LoadObjectInspection(
+        reader=_FakeReader({AssetClass.APARTMENT: objects}),
+        oof_reader=_FakeOofReader({}),
+    )
+    assert (
+        usecase.get_detail_quartet("RU-KAZAN-AGG", AssetClass.APARTMENT, "missing")
+        is None
+    )
+
+
 def test_get_detail_threads_model_param_to_oof_reader() -> None:
     objects = _objects(
         [

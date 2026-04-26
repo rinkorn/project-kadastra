@@ -112,6 +112,26 @@ def make_api_router(
             "data": load_inspection.list_for_map(region_code, ac, model=model),
         }
 
+    @router.get("/inspection/{object_id:path}/quartet")
+    def inspection_detail_quartet(
+        object_id: str,
+        asset_class: str = Query(...),
+    ) -> dict[str, Any]:
+        ac = _parse_asset_class(asset_class)
+        detail = load_inspection.get_detail_quartet(region_code, ac, object_id)
+        if detail is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"object {object_id!r} not found for asset_class={ac.value}",
+            )
+        wkt = detail.pop("polygon_wkt_3857", None)
+        detail["geometry"] = _convert_wkt_3857_to_geojson_wgs84(wkt)
+        return {
+            "region": region_code,
+            "asset_class": ac.value,
+            "data": detail,
+        }
+
     @router.get("/inspection/{object_id:path}")
     def inspection_detail(
         object_id: str,

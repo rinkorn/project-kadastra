@@ -299,6 +299,44 @@ def test_inspection_detail_returns_404_for_unknown_object(
     assert response.status_code == 404
 
 
+def test_inspection_detail_quartet_returns_per_model_breakdown(
+    client: TestClient,
+) -> None:
+    """Side-panel comparison endpoint: shared gold features +
+    geometry at top level + ``models`` dict with one entry per
+    ADR-0016 model. Test fixture seeds only catboost OOF, so ebm /
+    grey_tree / naive_linear must come back as null entries — the
+    UI relies on the column existing to render an empty cell."""
+    response = client.get(
+        "/api/inspection/way/1/quartet", params={"asset_class": "apartment"}
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    detail = payload["data"]
+    assert detail["object_id"] == "way/1"
+    assert detail["intra_city_raion"] == "Советский"
+    assert detail["y_true"] == 100_000.0
+    assert detail["geometry"]["type"] == "Polygon"
+    models = detail["models"]
+    assert set(models.keys()) == {"catboost", "ebm", "grey_tree", "naive_linear"}
+    assert models["catboost"]["y_pred_oof"] == 95_000.0
+    assert models["catboost"]["fold_id"] == 0
+    assert models["catboost"]["residual"] == -5_000.0
+    assert models["ebm"]["y_pred_oof"] is None
+    assert models["grey_tree"]["y_pred_oof"] is None
+    assert models["naive_linear"]["y_pred_oof"] is None
+
+
+def test_inspection_detail_quartet_returns_404_for_unknown_object(
+    client: TestClient,
+) -> None:
+    response = client.get(
+        "/api/inspection/way/missing/quartet",
+        params={"asset_class": "apartment"},
+    )
+    assert response.status_code == 404
+
+
 def test_feature_options_lists_choices(client: TestClient) -> None:
     response = client.get("/api/feature_options")
     assert response.status_code == 200

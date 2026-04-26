@@ -42,6 +42,14 @@
     .panel .row .val { font-family: ui-monospace, SFMono-Regular, monospace; word-break: break-all; text-align: right; }
     .panel .section { margin-bottom: 12px; }
     .panel .section.summary .row .val { color: #fde68a; }
+    .panel .section.quartet { border-top: 1px solid #1f2937; padding-top: 4px; }
+    .panel .qrow { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 3px 0; border-bottom: 1px solid #1f2937; align-items: baseline; }
+    .panel .qhead { color: #9ca3af; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .panel .qfoot { color: #fde68a; font-weight: 600; }
+    .panel .qactive { background: rgba(253, 224, 71, 0.08); margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
+    .panel .qcell { font-family: ui-monospace, SFMono-Regular, monospace; }
+    .panel .qcell.qmodel { color: #93c5fd; }
+    .panel .qcell.qval { text-align: right; }
     .legend {
       position: fixed; bottom: 16px; left: 16px;
       background: rgba(31, 41, 55, 0.92); color: #fff;
@@ -94,6 +102,14 @@
         <option value="y_pred_oof">y_pred_oof (CV)</option>
         <option value="residual">residual (pred − true)</option>
         <option value="fold_id">fold_id (spatial split)</option>
+      </select>
+    </label>
+    <label id="model-wrap" style="display:none">Model
+      <select id="model">
+        <option value="catboost" selected>catboost (Black Box)</option>
+        <option value="ebm">ebm (White Box)</option>
+        <option value="grey_tree">grey_tree (Grey Box)</option>
+        <option value="naive_linear">naive_linear (baseline)</option>
       </select>
     </label>
     <label>Scale
@@ -264,13 +280,30 @@ async function fetchHex() {
 async function fetchObjects() {
   const ac = document.getElementById('asset_class').value;
   if (ac === 'all') throw new Error('object scatter does not support "all"; choose a class');
-  const r = await fetch(`/api/inspection?asset_class=${ac}`);
+  const model = document.getElementById('model').value;
+  const r = await fetch(`/api/inspection?asset_class=${ac}&model=${model}`);
   if (!r.ok) throw new Error(`inspection ${r.status}: ${(await r.json()).detail}`);
   return await r.json();
 }
 
+// Per-model detail (for the active "Model" selector — feeds the
+// summary section and confirms the y_pred_oof currently colored on
+// the scatter layer).
 async function fetchObjectDetail(objectId, assetClass) {
-  const r = await fetch(`/api/inspection/${encodeURIComponent(objectId)}?asset_class=${assetClass}`);
+  const model = document.getElementById('model').value;
+  const r = await fetch(
+    `/api/inspection/${encodeURIComponent(objectId)}?asset_class=${assetClass}&model=${model}`
+  );
+  if (!r.ok) return null;
+  return (await r.json()).data;
+}
+
+// 4-model comparison side-by-side (independent of the active "Model"
+// selector — always returns all 4 entries under data.models).
+async function fetchObjectQuartet(objectId, assetClass) {
+  const r = await fetch(
+    `/api/inspection/${encodeURIComponent(objectId)}/quartet?asset_class=${assetClass}`
+  );
   if (!r.ok) return null;
   return (await r.json()).data;
 }
@@ -413,7 +446,12 @@ function showHexInspector(hex, payload) {
 async function showObjectInspector(obj, assetClass) {
   const panel = document.getElementById('panel');
   panel.innerHTML = `<h2>Loading inspector for ${escapeHtml(obj.object_id)}…</h2>`;
-  const detail = await fetchObjectDetail(obj.object_id, assetClass);
+  // Two parallel requests: per-active-model detail (geometry + full
+  // gold features) and quartet (4-model y_pred_oof for comparison).
+  const [detail, quartet] = await Promise.all([
+    fetchObjectDetail(obj.object_id, assetClass),
+    fetchObjectQuartet(obj.object_id, assetClass),
+  ]);
   if (!detail) {
     panel.innerHTML = `<h2>Inspector</h2><p class="empty">Could not load detail for ${escapeHtml(obj.object_id)}.</p>`;
     return;
@@ -425,9 +463,10 @@ async function showObjectInspector(obj, assetClass) {
   delete detail.geometry;
   selectedGeometry = geometry && geometry.type === 'Polygon' ? geometry : null;
   redrawWithSelection();
+  const activeModel = document.getElementById('model').value;
 
   const sections = [];
-  sections.push(`<h2>Object inspector</h2>`);
+  sections.push(`<h2>Object inspector — model: ${escapeHtml(activeModel)}</h2>`);
   // Summary first.
   const summary = ['object_id', 'asset_class', 'lat', 'lon', 'cad_num', 'readable_address',
     'mun_okrug_name', 'intra_city_raion', 'settlement_name', 'mun_source',
@@ -444,6 +483,14 @@ async function showObjectInspector(obj, assetClass) {
       : '— (no silver polygon)',
   ]);
   sections.push(rowsSection('summary', summaryRows));
+  // 4-model side-by-side (ADR-0016). One row per model: y_pred_oof,
+  // residual, |residual|/y_true as MAPE-style ratio. fold_id same
+  // across models (single spatial split per ADR-0016) — surface once
+  // outside the table to avoid noise.
+  if (quartet && quartet.models) {
+    sections.push(`<h2>Quartet comparison (ADR-0016)</h2>`);
+    sections.push(quartetSection(quartet));
+  }
   // Everything else — sorted alphabetically.
   const rest = Object.keys(detail)
     .filter(k => !summary.includes(k))
@@ -460,6 +507,35 @@ function rowsSection(cls, rows) {
   return `<div class="section ${cls}">` + rows.map(([k, v]) =>
     `<div class="row"><span class="key">${escapeHtml(k)}</span><span class="val">${escapeHtml(String(v))}</span></div>`
   ).join('') + `</div>`;
+}
+
+// 4-model comparison table. Layout: model name + y_pred_oof + residual.
+// Highlights the model currently selected in the topbar. Missing OOF
+// for a model → "—" cell, not a hidden row.
+function quartetSection(quartet) {
+  const yTrue = quartet.y_true;
+  const activeModel = document.getElementById('model').value;
+  const order = ['catboost', 'ebm', 'grey_tree', 'naive_linear'];
+  const headerRow = `<div class="qrow qhead">
+    <span class="qcell qmodel">model</span>
+    <span class="qcell qval">y_pred_oof</span>
+    <span class="qcell qval">residual</span>
+  </div>`;
+  const dataRows = order.map(m => {
+    const entry = quartet.models[m] || {};
+    const isActive = m === activeModel ? ' qactive' : '';
+    return `<div class="qrow${isActive}">
+      <span class="qcell qmodel">${escapeHtml(m)}</span>
+      <span class="qcell qval">${escapeHtml(formatValue(entry.y_pred_oof))}</span>
+      <span class="qcell qval">${escapeHtml(formatValue(entry.residual))}</span>
+    </div>`;
+  }).join('');
+  const yTrueRow = `<div class="qrow qfoot">
+    <span class="qcell qmodel">y_true</span>
+    <span class="qcell qval">${escapeHtml(formatValue(yTrue))}</span>
+    <span class="qcell qval"></span>
+  </div>`;
+  return `<div class="section quartet">${headerRow}${dataRows}${yTrueRow}</div>`;
 }
 
 function escapeHtml(s) {
@@ -525,6 +601,10 @@ async function refresh() {
   document.getElementById('hex-feature-wrap').style.display = layer === 'hex' ? '' : 'none';
   document.getElementById('hex-resolution-wrap').style.display = layer === 'hex' ? '' : 'none';
   document.getElementById('object-mode-wrap').style.display = layer === 'object' ? '' : 'none';
+  // Model selector is meaningful only on the per-object scatter
+  // layer right now; once /api/hex_aggregates accepts ?model= we'll
+  // unhide it on hex too.
+  document.getElementById('model-wrap').style.display = layer === 'object' ? '' : 'none';
   const stat = document.getElementById('stat');
   stat.textContent = 'loading…';
   try {
@@ -551,7 +631,7 @@ function recolor() {
   else renderObjects(lastDataset.payload);
 }
 
-['layer', 'asset_class', 'hex_feature', 'hex_resolution'].forEach(id =>
+['layer', 'asset_class', 'hex_feature', 'hex_resolution', 'model'].forEach(id =>
   document.getElementById(id).addEventListener('change', refresh)
 );
 ['object_mode', 'scale'].forEach(id =>
