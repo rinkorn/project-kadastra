@@ -15,6 +15,9 @@ from kadastra.etl.object_municipality_features import (
     compute_object_municipality_features,
 )
 from kadastra.etl.object_neighbor_features import compute_object_neighbor_features
+from kadastra.etl.object_poly_distance_features import (
+    compute_object_poly_distance_features,
+)
 from kadastra.etl.object_polygon_features import compute_object_polygon_features
 from kadastra.etl.object_road_features import compute_object_road_features
 from kadastra.etl.object_zonal_features import compute_object_zonal_features
@@ -43,6 +46,7 @@ class BuildObjectFeatures:
         zonal_layer_names: list[str],
         poly_area_radii_m: list[int],
         poly_area_layer_paths: dict[str, str],
+        poly_distance_layer_paths: dict[str, str] | None = None,
         gar_lookup_cadnum_index_path: Path | None = None,
         gar_lookup_mun_lookup_path: Path | None = None,
         gar_lookup_object_params_path: Path | None = None,
@@ -64,6 +68,7 @@ class BuildObjectFeatures:
         self._zonal_layer_names = zonal_layer_names
         self._poly_area_radii_m = poly_area_radii_m
         self._poly_area_layer_paths = poly_area_layer_paths
+        self._poly_distance_layer_paths = poly_distance_layer_paths or {}
         self._gar_lookup_cadnum_index_path = gar_lookup_cadnum_index_path
         self._gar_lookup_mun_lookup_path = gar_lookup_mun_lookup_path
         self._gar_lookup_object_params_path = gar_lookup_object_params_path
@@ -118,6 +123,18 @@ class BuildObjectFeatures:
             polygons_by_layer=poly_layers,
             radii_m=self._poly_area_radii_m,
         )
+        # Poly-distance features (ADR-0019). Loads polygon layers once
+        # via the same helper used for share. Missing files → empty
+        # layer → null dist column. The two feature blocks (share +
+        # distance) carry orthogonal signals; the model learns to
+        # weight them independently.
+        if self._poly_distance_layer_paths:
+            distance_layers = self._load_layer_polygons(
+                self._poly_distance_layer_paths
+            )
+            enriched = compute_object_poly_distance_features(
+                enriched, polygons_by_layer=distance_layers
+            )
         # Territorial / municipality features (ADR-0015). ГАР primary
         # via cad_num→objectid→mun_lookup; NSPD readable_address parse
         # fallback for the ~55–75 % unmatched rows. Skip if either
@@ -228,13 +245,21 @@ class BuildObjectFeatures:
         return named
 
     def _load_poly_area_layers(self) -> dict[str, list[BaseGeometry]]:
+        return self._load_layer_polygons(self._poly_area_layer_paths)
+
+    def _load_layer_polygons(
+        self, paths: dict[str, str]
+    ) -> dict[str, list[BaseGeometry]]:
+        """Load each ``{name: path}`` GeoJSON-seq into a polygons list.
+
+        Missing files yield empty layers — downstream produces
+        zero/null columns rather than failing, so the pipeline stays
+        composable while OSM extractions are still being run.
+        """
         layers: dict[str, list[BaseGeometry]] = {}
-        for name, path_str in self._poly_area_layer_paths.items():
+        for name, path_str in paths.items():
             path = Path(path_str)
             if not path.is_file():
-                # Missing extraction — emit as empty layer; downstream will
-                # produce zero-share columns. Keeps the pipeline composable
-                # while OSM extractions are still being run.
                 layers[name] = []
                 continue
             polys: list[BaseGeometry] = []
@@ -242,7 +267,6 @@ class BuildObjectFeatures:
                 for raw_line in f:
                     line = raw_line.strip()
                     if not line or line.startswith("\x1e"):
-                        # GeoJSON-seq lines may be RS-prefixed; skip if so.
                         line = line.lstrip("\x1e").strip()
                         if not line:
                             continue

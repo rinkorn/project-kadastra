@@ -1,6 +1,6 @@
 # ADR-0019: POI-расстояния и зональные счётчики (OSM)
 
-**Статус:** Proposed
+**Статус:** In progress (poly-distance готов; точечные POI/extracts ждут)
 **Дата:** 2026-04-26
 **Реализует:** [info/grid-rationale.md §7](../grid-rationale.md), [§8](../grid-rationale.md) (Дистанционные и Зональные ЦОФ).
 **Опирается на:** [ADR-0011](0011-graph-based-distance-features.md) (graph-distance pipeline для метро/road), [ADR-0013](0013-zonal-density-features-multi-radius.md) (zonal counts).
@@ -54,7 +54,7 @@
 
 ### Что **не** делаем в этой итерации
 
-- **Walking-isochrone enrichment** через road_graph (пешеходная доступность за 15 мин). Технически возможно — у нас уже есть road graph ([ADR-0011](0011-graph-based-distance-features.md)) — но это перепрыгивает в [ADR-0024](#) (road-network advanced). Здесь — euclidean dist + radius counts.
+- **Walking-isochrone enrichment** через road_graph (пешеходная доступность за 15 мин). Технически возможно — у нас уже есть road graph ([ADR-0011](0011-graph-based-distance-features.md)) — но это перепрыгивает в [ADR-0024](0024-road-network-advanced-features.md) (road-network advanced). Здесь — euclidean dist + radius counts.
 - **Качество POI** (рейтинг, площадь, бренд). У OSM это есть редко, не унифицировано.
 - **Density gradients per OSM-классу** (например, восстановление «коммерческой улицы» через kernel density). Перебор — счётчики в кольцах справляются.
 

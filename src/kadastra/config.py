@@ -43,6 +43,17 @@ class Settings(BaseSettings):
         "industrial": "data/raw/osm/kazan-agg-industrial.geojsonseq",
         "cemetery": "data/raw/osm/kazan-agg-cemetery.geojsonseq",
     }
+    # ADR-0019: distance to nearest polygon of each layer. Separate
+    # from poly_area_layer_paths because the layer set may diverge
+    # over time (e.g., landfill is meaningful as distance, less so as
+    # share). Defaults reuse the four extracted layers; extend with
+    # landfill/powerline/railway when those OSM extracts ship.
+    poly_distance_layer_paths: dict[str, str] = {
+        "water": "data/raw/osm/kazan-agg-water.geojsonseq",
+        "park": "data/raw/osm/kazan-agg-park.geojsonseq",
+        "industrial": "data/raw/osm/kazan-agg-industrial.geojsonseq",
+        "cemetery": "data/raw/osm/kazan-agg-cemetery.geojsonseq",
+    }
     zonal_radii_m: list[int] = [100, 300, 500, 800]
     zonal_layer_names: list[str] = [
         "stations",
