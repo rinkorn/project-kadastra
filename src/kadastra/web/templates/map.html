@@ -46,6 +46,8 @@
     .panel .qrow { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 3px 0; border-bottom: 1px solid #1f2937; align-items: baseline; }
     .panel .qhead { color: #9ca3af; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
     .panel .qfoot { color: #fde68a; font-weight: 600; }
+    .panel .qmarket { color: #86efac; font-style: italic; }
+    .panel .qmarket .qmodel { color: #4ade80; }
     .panel .qactive { background: rgba(253, 224, 71, 0.08); margin: 0 -16px; padding-left: 16px; padding-right: 16px; }
     .panel .qcell { font-family: ui-monospace, SFMono-Regular, monospace; }
     .panel .qcell.qmodel { color: #93c5fd; }
@@ -312,6 +314,18 @@ async function fetchObjectQuartet(objectId, assetClass) {
   return (await r.json()).data;
 }
 
+// ADR-0010 anchor: EMISS market reference for the active asset_class.
+// Apartments: returns {primary_rub_per_m2, secondary_rub_per_m2}.
+// Other classes / unconfigured regions: returns null → caller hides
+// the row entirely.
+async function fetchMarketReference(assetClass) {
+  const r = await fetch(
+    `/api/market_reference?asset_class=${assetClass}`
+  );
+  if (!r.ok) return null;
+  return await r.json();
+}
+
 // ---------- rendering ----------
 
 function renderHex(payload) {
@@ -450,11 +464,13 @@ function showHexInspector(hex, payload) {
 async function showObjectInspector(obj, assetClass) {
   const panel = document.getElementById('panel');
   panel.innerHTML = `<h2>Loading inspector for ${escapeHtml(obj.object_id)}…</h2>`;
-  // Two parallel requests: per-active-model detail (geometry + full
-  // gold features) and quartet (4-model y_pred_oof for comparison).
-  const [detail, quartet] = await Promise.all([
+  // Three parallel requests: per-active-model detail (geometry + full
+  // gold features), quartet (4-model y_pred_oof for comparison), and
+  // EMISS market reference (apartments only — null for other classes).
+  const [detail, quartet, marketRef] = await Promise.all([
     fetchObjectDetail(obj.object_id, assetClass),
     fetchObjectQuartet(obj.object_id, assetClass),
+    fetchMarketReference(assetClass),
   ]);
   if (!detail) {
     panel.innerHTML = `<h2>Inspector</h2><p class="empty">Could not load detail for ${escapeHtml(obj.object_id)}.</p>`;
@@ -493,7 +509,7 @@ async function showObjectInspector(obj, assetClass) {
   // outside the table to avoid noise.
   if (quartet && quartet.models) {
     sections.push(`<h2>Quartet comparison (ADR-0016)</h2>`);
-    sections.push(quartetSection(quartet));
+    sections.push(quartetSection(quartet, marketRef));
   }
   // Everything else — sorted alphabetically.
   const rest = Object.keys(detail)
@@ -516,7 +532,12 @@ function rowsSection(cls, rows) {
 // 4-model comparison table. Layout: model name + y_pred_oof + residual.
 // Highlights the model currently selected in the topbar. Missing OOF
 // for a model → "—" cell, not a hidden row.
-function quartetSection(quartet) {
+//
+// EMISS market reference (ADR-0010 anchor): apartments only — when
+// available, two extra rows below y_true show вторичный/первичный
+// рынок from EMISS-61781. The Δ column relative to y_true makes the
+// «ЕГРН broken» gap visible at a glance.
+function quartetSection(quartet, marketRef) {
   const yTrue = quartet.y_true;
   const activeModel = document.getElementById('model').value;
   const order = ['catboost', 'ebm', 'grey_tree', 'naive_linear'];
@@ -535,11 +556,44 @@ function quartetSection(quartet) {
     </div>`;
   }).join('');
   const yTrueRow = `<div class="qrow qfoot">
-    <span class="qcell qmodel">y_true</span>
+    <span class="qcell qmodel">y_true (ЕГРН)</span>
     <span class="qcell qval">${escapeHtml(formatValue(yTrue))}</span>
     <span class="qcell qval"></span>
   </div>`;
-  return `<div class="section quartet">${headerRow}${dataRows}${yTrueRow}</div>`;
+  const marketRows = marketRefRows(marketRef, yTrue);
+  return `<div class="section quartet">${headerRow}${dataRows}${yTrueRow}${marketRows}</div>`;
+}
+
+function marketRefRows(marketRef, yTrue) {
+  if (!marketRef || !marketRef.data) return '';
+  const data = marketRef.data;
+  const year = marketRef.year;
+  const rows = [];
+  if (data.secondary_rub_per_m2 != null) {
+    const delta = (yTrue != null)
+      ? data.secondary_rub_per_m2 - yTrue
+      : null;
+    rows.push({
+      label: `EMISS вторичный ${year}`,
+      value: data.secondary_rub_per_m2,
+      delta,
+    });
+  }
+  if (data.primary_rub_per_m2 != null) {
+    const delta = (yTrue != null)
+      ? data.primary_rub_per_m2 - yTrue
+      : null;
+    rows.push({
+      label: `EMISS первичный ${year}`,
+      value: data.primary_rub_per_m2,
+      delta,
+    });
+  }
+  return rows.map(r => `<div class="qrow qmarket">
+    <span class="qcell qmodel">${escapeHtml(r.label)}</span>
+    <span class="qcell qval">${escapeHtml(formatValue(r.value))}</span>
+    <span class="qcell qval">${escapeHtml(formatValue(r.delta))}</span>
+  </div>`).join('');
 }
 
 function escapeHtml(s) {

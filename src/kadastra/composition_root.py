@@ -35,6 +35,7 @@ from kadastra.usecases.build_road_features import BuildRoadFeatures
 from kadastra.usecases.build_synthetic_target import BuildSyntheticTarget
 from kadastra.usecases.build_valuation_objects import BuildValuationObjects
 from kadastra.usecases.get_hex_aggregates import GetHexAggregates
+from kadastra.usecases.get_market_reference import GetMarketReference
 from kadastra.usecases.infer_object_valuation import InferObjectValuation
 from kadastra.usecases.infer_valuation import InferValuation
 from kadastra.usecases.load_nspd_raw_objects import LoadNspdRawObjects
@@ -295,6 +296,10 @@ class Container:
         s = self._settings
         return GetHexAggregates(s.hex_aggregates_base_path)
 
+    def build_get_market_reference(self) -> GetMarketReference:
+        s = self._settings
+        return GetMarketReference(s.emiss_silver_base_path)
+
     def build_load_object_inspection(self) -> LoadObjectInspection:
         s = self._settings
         return LoadObjectInspection(
@@ -313,6 +318,8 @@ def create_app(settings: Settings) -> FastAPI:
             region_code=settings.region_code,
             get_hex_aggregates=container.build_get_hex_aggregates(),
             load_inspection=container.build_load_object_inspection(),
+            get_market_reference=container.build_get_market_reference(),
+            market_reference_year=settings.emiss_market_reference_year,
         )
     )
     app.include_router(make_web_router(templates_dir))
