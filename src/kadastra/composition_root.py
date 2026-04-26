@@ -270,6 +270,8 @@ class Container:
             grey_tree_max_depth=s.grey_tree_max_depth,
             n_splits=s.train_n_splits,
             parent_resolution=s.train_parent_resolution,
+            parallel_folds=s.quartet_parallel_folds,
+            skip_final_simplifier_fits=s.quartet_skip_final_simplifier_fits,
         )
 
     def build_hex_aggregates(self) -> BuildHexAggregates:

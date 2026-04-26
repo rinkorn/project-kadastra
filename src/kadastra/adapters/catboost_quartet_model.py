@@ -24,11 +24,16 @@ class CatBoostQuartetModel:
         learning_rate: float = 0.05,
         depth: int = 6,
         seed: int = 42,
+        thread_count: int | None = None,
     ) -> None:
         self._iterations = iterations
         self._learning_rate = learning_rate
         self._depth = depth
         self._seed = seed
+        # When TrainQuartet runs folds in parallel, callers pass
+        # thread_count=1 here to keep total CPU usage bounded
+        # (otherwise N folds × CatBoost's default all-cores oversubscribes).
+        self._thread_count = thread_count
         self._model: CatBoostRegressor | None = None
 
     def fit(
@@ -38,6 +43,9 @@ class CatBoostQuartetModel:
         *,
         cat_feature_indices: list[int] | None = None,
     ) -> None:
+        # Default CatBoost thread_count is -1 ("all cores"). When the
+        # caller pins us to 1 (parallel-folds outer loop), pass through.
+        thread_count = self._thread_count if self._thread_count is not None else -1
         model = CatBoostRegressor(
             iterations=self._iterations,
             learning_rate=self._learning_rate,
@@ -46,6 +54,7 @@ class CatBoostQuartetModel:
             verbose=False,
             allow_writing_files=False,
             cat_features=cat_feature_indices or None,
+            thread_count=thread_count,
         )
         model.fit(X, y, cat_features=cat_feature_indices or None)
         self._model = model

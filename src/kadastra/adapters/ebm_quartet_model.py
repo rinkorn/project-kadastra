@@ -17,9 +17,19 @@ from interpret.glassbox import ExplainableBoostingRegressor
 
 
 class EbmQuartetModel:
-    def __init__(self, *, max_bins: int = 256, interactions: int = 10) -> None:
+    def __init__(
+        self,
+        *,
+        max_bins: int = 256,
+        interactions: int = 10,
+        n_jobs: int | None = None,
+    ) -> None:
         self._max_bins = max_bins
         self._interactions = interactions
+        # When TrainQuartet runs folds in parallel, callers pass
+        # n_jobs=1 here so EBM's outer_bags stay sequential — a parallel
+        # outer × parallel inner combination oversubscribes the machine.
+        self._n_jobs = n_jobs
         self._model: ExplainableBoostingRegressor | None = None
 
     def fit(
@@ -34,10 +44,14 @@ class EbmQuartetModel:
             "nominal" if i in cat_set else "continuous"
             for i in range(X.shape[1])
         ]
+        # Default EBM n_jobs is -2 ("all-1 cores"). When the caller pins
+        # us to 1 (parallel-folds outer loop), pass it through.
+        n_jobs = self._n_jobs if self._n_jobs is not None else -2
         model = ExplainableBoostingRegressor(
             feature_types=feature_types,
             max_bins=self._max_bins,
             interactions=self._interactions,
+            n_jobs=n_jobs,
         )
         model.fit(X, y)
         self._model = model

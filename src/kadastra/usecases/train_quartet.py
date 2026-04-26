@@ -15,10 +15,12 @@ from __future__ import annotations
 
 import io
 import json
+from typing import Any, cast
 
 import h3
 import numpy as np
 import polars as pl
+from joblib import Parallel, delayed
 
 from kadastra.adapters.catboost_quartet_model import CatBoostQuartetModel
 from kadastra.adapters.ebm_quartet_model import EbmQuartetModel
@@ -55,6 +57,8 @@ class TrainQuartet:
         grey_tree_max_depth: int,
         n_splits: int,
         parent_resolution: int,
+        parallel_folds: bool = False,
+        skip_final_simplifier_fits: bool = False,
     ) -> None:
         self._reader = reader
         self._model_registry = model_registry
@@ -64,6 +68,18 @@ class TrainQuartet:
         self._grey_tree_max_depth = grey_tree_max_depth
         self._n_splits = n_splits
         self._parent_resolution = parent_resolution
+        # S1 (perf): when True, dispatch per-fold model fits via joblib
+        # so n_splits folds train concurrently. Inner thread pools are
+        # narrowed to 1 to avoid n_splits × outer_bags worker explosion.
+        # Logic for this flag is implemented in a follow-up commit.
+        self._parallel_folds = parallel_folds
+        # S2 (perf): when True, skip the EBM/Grey/Naive full-data refit
+        # at the end of execute() — those *_model.pkl artifacts are not
+        # consumed by any current code path (inspector reads OOFs only)
+        # and dominate landplot wall time. CatBoost final fit is kept
+        # because the model registry contract still requires a primary
+        # CatBoostRegressor. Logic implemented in a follow-up commit.
+        self._skip_final_simplifier_fits = skip_final_simplifier_fits
 
     def execute(self, region_code: str, asset_class: AssetClass) -> str:
         df = self._reader.load(region_code, asset_class).drop_nulls(
@@ -122,77 +138,88 @@ class TrainQuartet:
             for m in ("catboost", "ebm", "naive_linear", "grey_tree")
         }
 
-        for fold_id, (train_idx_list, val_idx_list) in enumerate(folds):
-            train_idx = np.array(train_idx_list, dtype=np.int64)
-            val_idx = np.array(val_idx_list, dtype=np.int64)
-            fold_ids[val_idx] = fold_id
+        # When folds run in parallel, inner thread pools are pinned to 1
+        # so n_splits × default-all-cores doesn't oversubscribe the box.
+        inner_threads = 1 if self._parallel_folds else None
 
-            # Black Box (CatBoost).
-            bb = CatBoostQuartetModel(
-                iterations=self._catboost_params.iterations,
-                learning_rate=self._catboost_params.learning_rate,
-                depth=self._catboost_params.depth,
-                seed=self._catboost_params.seed,
+        pass1_args = [
+            (
+                fold_id,
+                np.array(train_idx_list, dtype=np.int64),
+                np.array(val_idx_list, dtype=np.int64),
+                X_full,
+                X_naive,
+                y,
+                full_cat_idx,
+                naive_cat_idx,
+                self._catboost_params,
+                self._ebm_max_bins,
+                self._ebm_interactions,
+                inner_threads,
             )
-            bb.fit(
-                X_full[train_idx],
-                y[train_idx],
-                cat_feature_indices=full_cat_idx or None,
+            for fold_id, (train_idx_list, val_idx_list) in enumerate(folds)
+        ]
+        pass1_results: list[dict[str, Any]]
+        if self._parallel_folds:
+            pass1_results = cast(
+                "list[dict[str, Any]]",
+                Parallel(n_jobs=self._n_splits, backend="loky")(
+                    delayed(_fit_pass1_fold)(*args) for args in pass1_args
+                ),
             )
-            bb_pred = bb.predict(X_full[val_idx])
-            oof["catboost"][val_idx] = bb_pred
-            _record_fold_metrics(per_fold["catboost"], y[val_idx], bb_pred)
+        else:
+            pass1_results = [_fit_pass1_fold(*args) for args in pass1_args]
 
-            # White Box (EBM).
-            wb = EbmQuartetModel(
-                max_bins=self._ebm_max_bins,
-                interactions=self._ebm_interactions,
-            )
-            wb.fit(
-                X_full[train_idx],
-                y[train_idx],
-                cat_feature_indices=full_cat_idx or None,
-            )
-            wb_pred = wb.predict(X_full[val_idx])
-            oof["ebm"][val_idx] = wb_pred
-            _record_fold_metrics(per_fold["ebm"], y[val_idx], wb_pred)
-
-            # Naive Linear.
-            nl = NaiveLinearQuartetModel()
-            nl.fit(
-                X_naive[train_idx],
-                y[train_idx],
-                cat_feature_indices=naive_cat_idx or None,
-            )
-            nl_pred = nl.predict(X_naive[val_idx])
-            oof["naive_linear"][val_idx] = nl_pred
-            _record_fold_metrics(per_fold["naive_linear"], y[val_idx], nl_pred)
+        for r in pass1_results:
+            val_idx = r["val_idx"]
+            fold_ids[val_idx] = r["fold_id"]
+            oof["catboost"][val_idx] = r["cb_pred"]
+            oof["ebm"][val_idx] = r["ebm_pred"]
+            oof["naive_linear"][val_idx] = r["nl_pred"]
+            for model_name in ("catboost", "ebm", "naive_linear"):
+                m = r["metrics"][model_name]
+                per_fold[model_name]["mae"].append(m["mae"])
+                per_fold[model_name]["rmse"].append(m["rmse"])
+                per_fold[model_name]["mape"].append(m["mape"])
 
         # Pass 2: Grey Box on Black-OOF predictions. Per-fold so
         # Grey's val rows never see their own training target leak in.
-        for train_idx_list, val_idx_list in folds:
-            train_idx = np.array(train_idx_list, dtype=np.int64)
-            val_idx = np.array(val_idx_list, dtype=np.int64)
-
-            grey = GreyTreeQuartetModel(
-                max_depth=self._grey_tree_max_depth,
-                seed=self._catboost_params.seed,
+        pass2_args = [
+            (
+                np.array(train_idx_list, dtype=np.int64),
+                np.array(val_idx_list, dtype=np.int64),
+                X_full,
+                oof["catboost"],
+                y,
+                full_cat_idx,
+                self._grey_tree_max_depth,
+                self._catboost_params.seed,
             )
-            grey.fit(
-                X_full[train_idx],
-                oof["catboost"][train_idx],
-                cat_feature_indices=full_cat_idx or None,
+            for train_idx_list, val_idx_list in folds
+        ]
+        pass2_results: list[dict[str, Any]]
+        if self._parallel_folds:
+            pass2_results = cast(
+                "list[dict[str, Any]]",
+                Parallel(n_jobs=self._n_splits, backend="loky")(
+                    delayed(_fit_pass2_grey_fold)(*args) for args in pass2_args
+                ),
             )
-            grey_pred = grey.predict(X_full[val_idx])
-            oof["grey_tree"][val_idx] = grey_pred
-            # Grey fold metrics computed against y_true so they're
-            # comparable to the rest; fidelity to Black is reported
-            # separately below.
-            _record_fold_metrics(per_fold["grey_tree"], y[val_idx], grey_pred)
+        else:
+            pass2_results = [
+                _fit_pass2_grey_fold(*args) for args in pass2_args
+            ]
 
-        # Final fits on the full data — only the CatBoost one is
-        # passed as the "model" of the run; the other three are
-        # serialized into artifacts.
+        for r in pass2_results:
+            val_idx = r["val_idx"]
+            oof["grey_tree"][val_idx] = r["grey_pred"]
+            m = r["metrics"]
+            per_fold["grey_tree"]["mae"].append(m["mae"])
+            per_fold["grey_tree"]["rmse"].append(m["rmse"])
+            per_fold["grey_tree"]["mape"].append(m["mape"])
+
+        # CatBoost final fit always runs — registry contract requires
+        # a primary CatBoostRegressor as the run's model.
         bb_final = CatBoostQuartetModel(
             iterations=self._catboost_params.iterations,
             learning_rate=self._catboost_params.learning_rate,
@@ -201,24 +228,33 @@ class TrainQuartet:
         )
         bb_final.fit(X_full, y, cat_feature_indices=full_cat_idx or None)
 
-        wb_final = EbmQuartetModel(
-            max_bins=self._ebm_max_bins,
-            interactions=self._ebm_interactions,
-        )
-        wb_final.fit(X_full, y, cat_feature_indices=full_cat_idx or None)
+        # The three simplifiers' full-data refits are not consumed by
+        # any current code path (inspector reads OOFs only). On
+        # landplot they dominate wall time, so they're skippable.
+        wb_final: EbmQuartetModel | None = None
+        nl_final: NaiveLinearQuartetModel | None = None
+        grey_final: GreyTreeQuartetModel | None = None
+        if not self._skip_final_simplifier_fits:
+            wb_final = EbmQuartetModel(
+                max_bins=self._ebm_max_bins,
+                interactions=self._ebm_interactions,
+            )
+            wb_final.fit(X_full, y, cat_feature_indices=full_cat_idx or None)
 
-        nl_final = NaiveLinearQuartetModel()
-        nl_final.fit(X_naive, y, cat_feature_indices=naive_cat_idx or None)
+            nl_final = NaiveLinearQuartetModel()
+            nl_final.fit(
+                X_naive, y, cat_feature_indices=naive_cat_idx or None
+            )
 
-        grey_final = GreyTreeQuartetModel(
-            max_depth=self._grey_tree_max_depth,
-            seed=self._catboost_params.seed,
-        )
-        grey_final.fit(
-            X_full,
-            oof["catboost"],
-            cat_feature_indices=full_cat_idx or None,
-        )
+            grey_final = GreyTreeQuartetModel(
+                max_depth=self._grey_tree_max_depth,
+                seed=self._catboost_params.seed,
+            )
+            grey_final.fit(
+                X_full,
+                oof["catboost"],
+                cat_feature_indices=full_cat_idx or None,
+            )
 
         # Aggregate metrics + Spearman + percentile asymmetry per model.
         models_payload: dict[str, dict[str, float]] = {}
@@ -279,10 +315,13 @@ class TrainQuartet:
             "naive_linear_oof_predictions.parquet": _build_oof_parquet(
                 df, fold_ids, y, oof["naive_linear"]
             ),
-            "ebm_model.pkl": wb_final.serialize(),
-            "grey_tree_model.pkl": grey_final.serialize(),
-            "naive_linear_model.pkl": nl_final.serialize(),
         }
+        if wb_final is not None:
+            artifacts["ebm_model.pkl"] = wb_final.serialize()
+        if grey_final is not None:
+            artifacts["grey_tree_model.pkl"] = grey_final.serialize()
+        if nl_final is not None:
+            artifacts["naive_linear_model.pkl"] = nl_final.serialize()
 
         params_payload = {
             "asset_class": asset_class.value,
@@ -322,15 +361,93 @@ class TrainQuartet:
         )
 
 
-def _record_fold_metrics(
-    bucket: dict[str, list[float]],
-    y_true: np.ndarray,
-    y_pred: np.ndarray,
-) -> None:
-    m = regression_metrics(y_true, y_pred)
-    bucket["mae"].append(m["mae"])
-    bucket["rmse"].append(m["rmse"])
-    bucket["mape"].append(m["mape"])
+def _fit_pass1_fold(
+    fold_id: int,
+    train_idx: np.ndarray,
+    val_idx: np.ndarray,
+    X_full: np.ndarray,
+    X_naive: np.ndarray,
+    y: np.ndarray,
+    full_cat_idx: list[int],
+    naive_cat_idx: list[int],
+    catboost_params: CatBoostParams,
+    ebm_max_bins: int,
+    ebm_interactions: int,
+    inner_threads: int | None,
+) -> dict[str, Any]:
+    """Train Black/White/Naive on one fold and return per-fold OOF
+    predictions + metrics. Top-level function so joblib can pickle it
+    when dispatched across processes."""
+    bb = CatBoostQuartetModel(
+        iterations=catboost_params.iterations,
+        learning_rate=catboost_params.learning_rate,
+        depth=catboost_params.depth,
+        seed=catboost_params.seed,
+        thread_count=inner_threads,
+    )
+    bb.fit(X_full[train_idx], y[train_idx], cat_feature_indices=full_cat_idx or None)
+    cb_pred = bb.predict(X_full[val_idx])
+    cb_metrics = regression_metrics(y[val_idx], cb_pred)
+
+    wb = EbmQuartetModel(
+        max_bins=ebm_max_bins,
+        interactions=ebm_interactions,
+        n_jobs=inner_threads,
+    )
+    wb.fit(X_full[train_idx], y[train_idx], cat_feature_indices=full_cat_idx or None)
+    ebm_pred = wb.predict(X_full[val_idx])
+    ebm_metrics = regression_metrics(y[val_idx], ebm_pred)
+
+    nl = NaiveLinearQuartetModel()
+    nl.fit(
+        X_naive[train_idx],
+        y[train_idx],
+        cat_feature_indices=naive_cat_idx or None,
+    )
+    nl_pred = nl.predict(X_naive[val_idx])
+    nl_metrics = regression_metrics(y[val_idx], nl_pred)
+
+    return {
+        "fold_id": fold_id,
+        "val_idx": val_idx,
+        "cb_pred": cb_pred,
+        "ebm_pred": ebm_pred,
+        "nl_pred": nl_pred,
+        "metrics": {
+            "catboost": cb_metrics,
+            "ebm": ebm_metrics,
+            "naive_linear": nl_metrics,
+        },
+    }
+
+
+def _fit_pass2_grey_fold(
+    train_idx: np.ndarray,
+    val_idx: np.ndarray,
+    X_full: np.ndarray,
+    catboost_oof: np.ndarray,
+    y: np.ndarray,
+    full_cat_idx: list[int],
+    grey_tree_max_depth: int,
+    seed: int,
+) -> dict[str, Any]:
+    """Grey Box fold: fit on Black-OOF predictions for train rows,
+    predict on val. Top-level function so joblib can pickle it."""
+    grey = GreyTreeQuartetModel(max_depth=grey_tree_max_depth, seed=seed)
+    grey.fit(
+        X_full[train_idx],
+        catboost_oof[train_idx],
+        cat_feature_indices=full_cat_idx or None,
+    )
+    grey_pred = grey.predict(X_full[val_idx])
+    return {
+        "val_idx": val_idx,
+        "grey_pred": grey_pred,
+        # Grey fold metrics computed against y_true so they're
+        # comparable to the rest; fidelity to Black is reported
+        # separately at the aggregate level.
+        "metrics": regression_metrics(y[val_idx], grey_pred),
+    }
 
 
 def _build_oof_parquet(

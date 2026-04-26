@@ -29,7 +29,9 @@ def main() -> None:
         f"interactions={settings.ebm_interactions}) "
         f"grey(max_depth={settings.grey_tree_max_depth}) "
         f"n_splits={settings.train_n_splits} "
-        f"parent_res={settings.train_parent_resolution} backend={backend}"
+        f"parent_res={settings.train_parent_resolution} backend={backend} "
+        f"parallel_folds={settings.quartet_parallel_folds} "
+        f"skip_final_fits={settings.quartet_skip_final_simplifier_fits}"
     )
 
     for asset_class in classes:
