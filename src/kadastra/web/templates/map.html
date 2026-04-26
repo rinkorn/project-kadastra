@@ -61,7 +61,25 @@
     .legend .gradient { width: 240px; height: 8px; margin-top: 4px;
       background: linear-gradient(to right, #2c7bb6, #abd9e9, #ffffbf, #fdae61, #d7191c);
     }
-    .legend .ticks { display: flex; justify-content: space-between; margin-top: 2px; }
+    .legend .ticks { display: flex; justify-content: space-between; margin-top: 2px;
+      align-items: center; gap: 8px;
+    }
+    .legend .ticks input { width: 80px; padding: 1px 4px; font: inherit;
+      background: rgba(255, 255, 255, 0.06);
+      color: inherit;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 3px;
+      text-align: center;
+    }
+    .legend .ticks input::-webkit-outer-spin-button,
+    .legend .ticks input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .legend .ticks input { -moz-appearance: textfield; }
+    .legend .ticks input:focus { outline: none; border-color: #fde047; }
+    .legend .ticks .reset { cursor: pointer; opacity: 0.6;
+      font-size: 10px; padding: 0 4px; user-select: none;
+    }
+    .legend .ticks .reset:hover { opacity: 1; }
+    .legend .ticks .reset.hidden { visibility: hidden; }
     .legend .swatches { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; }
     .legend .swatches span { display: inline-flex; align-items: center; gap: 4px; }
     .legend .swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
@@ -148,7 +166,11 @@
   <div class="legend" id="legend" style="display:none">
     <div id="legend-feature"></div>
     <div class="gradient" id="legend-gradient"></div>
-    <div class="ticks"><span id="legend-min"></span><span id="legend-max"></span></div>
+    <div class="ticks">
+      <input id="legend-min" type="number" step="any" placeholder="auto" />
+      <span class="reset hidden" id="legend-reset" title="Reset to auto">×</span>
+      <input id="legend-max" type="number" step="any" placeholder="auto" />
+    </div>
     <div class="swatches" id="legend-swatches" style="display:none"></div>
     <div class="palette-picker" id="legend-palette-picker"></div>
   </div>
@@ -283,7 +305,14 @@ function quantile(sortedValues, q) {
   return sortedValues[base];
 }
 
-function buildScaler(values, mode) {
+// User-provided clamp bounds for the legend gradient. null = auto
+// (computed from data per Scale-mode rules below). Persisted across
+// recolours so a tweak survives mode/asset switches; the user clears
+// them via the × reset chip in the legend.
+let customLo = null;
+let customHi = null;
+
+function buildScaler(values, mode, override = {}) {
   const sorted = [...values].filter(v => Number.isFinite(v)).sort((a, b) => a - b);
   if (sorted.length === 0) return { lo: 0, hi: 1, normalize: () => 0.5 };
   let lo, hi, transform;
@@ -297,14 +326,28 @@ function buildScaler(values, mode) {
     transform = v => v;
     lo = sorted[0]; hi = sorted[sorted.length - 1];
   }
+  // Custom clamps win over auto-computed bounds. For log mode, the
+  // user's input is treated as a raw value and run through the log
+  // transform so the slider stays intuitive (₽/m², not its log).
+  if (override.lo != null) lo = mode === 'log' ? transform(override.lo) : override.lo;
+  if (override.hi != null) hi = mode === 'log' ? transform(override.hi) : override.hi;
   const range = hi - lo || 1;
   return { lo, hi, normalize: v => Math.min(Math.max((transform(v) - lo) / range, 0), 1) };
 }
 
-function buildDivergingScaler(values) {
+function buildDivergingScaler(values, override = {}) {
   // For signed metrics (residuals, fold) — center at 0, symmetric range.
   const sorted = [...values].filter(v => Number.isFinite(v)).sort((a, b) => Math.abs(a) - Math.abs(b));
-  const max = sorted.length ? Math.abs(sorted[sorted.length - 1]) : 1;
+  let max = sorted.length ? Math.abs(sorted[sorted.length - 1]) : 1;
+  // Diverging clamps stay symmetric: any user-provided endpoint sets
+  // |max|. If both lo and hi are typed in, take the larger magnitude
+  // so neither extreme gets clipped silently.
+  if (override.lo != null || override.hi != null) {
+    const candidates = [override.lo, override.hi]
+      .filter(v => v != null)
+      .map(v => Math.abs(v));
+    if (candidates.length > 0) max = Math.max(...candidates);
+  }
   return {
     lo: -max, hi: max,
     normalize: v => Math.min(Math.max((v / (2 * max)) + 0.5, 0), 1),
@@ -424,7 +467,11 @@ function renderHex(payload) {
   if (isCategorical) {
     getFillColor = d => categoryColor(String(d.value));
   } else {
-    const scaler = buildScaler(data.map(d => d.value), document.getElementById('scale').value);
+    const scaler = buildScaler(
+      data.map(d => d.value),
+      document.getElementById('scale').value,
+      { lo: customLo, hi: customHi },
+    );
     const alpha = PALETTE_FILL_ALPHA[seqPaletteId] ?? 180;
     getFillColor = d => rampColor(activeSeqRamp(), scaler.normalize(d.value), alpha);
   }
@@ -434,9 +481,12 @@ function renderHex(payload) {
     getHexagon: d => d.hex,
     getFillColor,
     // updateTriggers force deck.gl to re-evaluate getFillColor when
-    // the palette state changes — without this the hex buffer is
-    // cached against the (unchanged) data array reference.
-    updateTriggers: { getFillColor: [seqPaletteId, isCategorical] },
+    // palette state OR custom-clamp bounds change — without this the
+    // hex buffer is cached against the (unchanged) data array ref.
+    updateTriggers: {
+      getFillColor: [seqPaletteId, isCategorical, customLo, customHi,
+                     document.getElementById('scale').value],
+    },
     stroked: true,
     getLineColor: [0, 0, 0, 60],
     lineWidthMinPixels: 0.5,
@@ -477,12 +527,19 @@ function renderObjects(payload) {
   } else if (mode === 'residual') {
     isDiverging = true;
     activePaletteId = divPaletteId;
-    const scaler = buildDivergingScaler(data.map(d => d[mode]));
+    const scaler = buildDivergingScaler(
+      data.map(d => d[mode]),
+      { lo: customLo, hi: customHi },
+    );
     const alpha = PALETTE_FILL_ALPHA[divPaletteId] ?? 180;
     getFillColor = d => rampColor(activeDivRamp(), scaler.normalize(d[mode]), alpha);
   } else {
     activePaletteId = seqPaletteId;
-    const scaler = buildScaler(data.map(d => d[mode]), document.getElementById('scale').value);
+    const scaler = buildScaler(
+      data.map(d => d[mode]),
+      document.getElementById('scale').value,
+      { lo: customLo, hi: customHi },
+    );
     const alpha = PALETTE_FILL_ALPHA[seqPaletteId] ?? 180;
     getFillColor = d => rampColor(activeSeqRamp(), scaler.normalize(d[mode]), alpha);
   }
@@ -507,10 +564,13 @@ function renderObjects(payload) {
     const lift = c => Math.min(255, Math.round(c + (255 - c) * 0.35));
     return [lift(r), lift(g), lift(b), 255];
   };
-  // updateTriggers: re-evaluate accessors when palette state changes.
-  // Without these, deck.gl reuses the previously-bound colour buffer
-  // because the data array reference is unchanged across recolours.
-  const colorTriggers = { getFillColor: activePaletteId, getLineColor: activePaletteId };
+  // updateTriggers: re-evaluate accessors when palette state, custom
+  // clamps OR scale mode changes. Without these, deck.gl reuses the
+  // previously-bound colour buffer because the data array reference
+  // is unchanged across recolours.
+  const triggerKey = [activePaletteId, customLo, customHi,
+                      document.getElementById('scale').value];
+  const colorTriggers = { getFillColor: triggerKey, getLineColor: triggerKey };
   const layers = [];
   if (withPolygon.length > 0) {
     layers.push(new deck.PolygonLayer({
@@ -824,10 +884,15 @@ function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
     `${payload.feature} (${payload.asset_class})`;
   const gradient = document.getElementById('legend-gradient');
   const swatches = document.getElementById('legend-swatches');
+  const minInput = document.getElementById('legend-min');
+  const maxInput = document.getElementById('legend-max');
+  const reset = document.getElementById('legend-reset');
   if (isCategorical) {
     gradient.style.display = 'none';
-    document.getElementById('legend-min').textContent = '';
-    document.getElementById('legend-max').textContent = '';
+    setLegendBounds(null, null);
+    minInput.style.visibility = 'hidden';
+    maxInput.style.visibility = 'hidden';
+    reset.classList.add('hidden');
     swatches.style.display = 'flex';
     const uniq = [...new Set(values)].sort();
     swatches.innerHTML = uniq.map(v => {
@@ -835,27 +900,61 @@ function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
       return `<span><span class="swatch" style="background: rgb(${r},${g},${b})"></span>${escapeHtml(String(v))}</span>`;
     }).join('');
     renderPalettePicker(null);
-  } else if (isDiverging) {
-    gradient.style.display = '';
+    return;
+  }
+  minInput.style.visibility = '';
+  maxInput.style.visibility = '';
+  swatches.style.display = 'none';
+  let lo, hi;
+  if (isDiverging) {
     gradient.style.background = rampGradientCss(activeDivRamp());
-    swatches.style.display = 'none';
-    const max = Math.max(...values.map(v => Math.abs(v)));
-    document.getElementById('legend-min').textContent = formatValue(-max);
-    document.getElementById('legend-max').textContent = formatValue(max);
-    renderPalettePicker('div');
+    let max = Math.max(...values.map(v => Math.abs(v)));
+    if (customLo != null || customHi != null) {
+      const candidates = [customLo, customHi].filter(v => v != null).map(v => Math.abs(v));
+      if (candidates.length > 0) max = Math.max(...candidates);
+    }
+    lo = -max; hi = max;
   } else {
-    gradient.style.display = '';
     gradient.style.background = rampGradientCss(activeSeqRamp());
-    swatches.style.display = 'none';
     const sorted = [...values].sort((a, b) => a - b);
     const mode = document.getElementById('scale').value;
-    let lo, hi;
     if (mode === 'p98') { lo = quantile(sorted, 0.02); hi = quantile(sorted, 0.98); }
     else { lo = sorted[0]; hi = sorted[sorted.length - 1]; }
-    document.getElementById('legend-min').textContent = formatValue(lo);
-    document.getElementById('legend-max').textContent = formatValue(hi);
-    renderPalettePicker('seq');
+    if (customLo != null) lo = customLo;
+    if (customHi != null) hi = customHi;
   }
+  gradient.style.display = '';
+  setLegendBounds(lo, hi);
+  reset.classList.toggle('hidden', customLo == null && customHi == null);
+  renderPalettePicker(isDiverging ? 'div' : 'seq');
+}
+
+// Write the active gradient bounds into the editable inputs without
+// stomping on a value the user is currently typing (focused input is
+// left untouched). Custom clamps remain visible because they reflect
+// the user's choice; auto values land in the placeholder slot via
+// .value so the «×» reset chip can revert them in one click.
+function setLegendBounds(lo, hi) {
+  const minInput = document.getElementById('legend-min');
+  const maxInput = document.getElementById('legend-max');
+  if (lo == null && hi == null) {
+    if (document.activeElement !== minInput) minInput.value = '';
+    if (document.activeElement !== maxInput) maxInput.value = '';
+    return;
+  }
+  if (document.activeElement !== minInput) {
+    minInput.value = customLo != null ? customLo : (lo != null ? formatNumberForInput(lo) : '');
+  }
+  if (document.activeElement !== maxInput) {
+    maxInput.value = customHi != null ? customHi : (hi != null ? formatNumberForInput(hi) : '');
+  }
+}
+
+function formatNumberForInput(v) {
+  if (!Number.isFinite(v)) return '';
+  // 4 sig-figs is plenty for an editable bound — full precision makes
+  // the input awkward to read and edit.
+  return Number(v.toPrecision(4)).toString();
 }
 
 // Inline palette picker: a row of clickable mini-gradients in the
@@ -924,6 +1023,29 @@ function recolor() {
 ['object_mode', 'scale'].forEach(id =>
   document.getElementById(id).addEventListener('change', recolor)
 );
+
+// Editable colour-scale clamps: empty input = auto (null), any number
+// = user override. Apply on `change` (Enter / blur) so accidental
+// keystrokes don't trigger a re-render on every digit.
+function applyLegendBounds() {
+  const minVal = document.getElementById('legend-min').value.trim();
+  const maxVal = document.getElementById('legend-max').value.trim();
+  customLo = minVal === '' ? null : Number(minVal);
+  customHi = maxVal === '' ? null : Number(maxVal);
+  if (Number.isNaN(customLo)) customLo = null;
+  if (Number.isNaN(customHi)) customHi = null;
+  recolor();
+}
+['legend-min', 'legend-max'].forEach(id =>
+  document.getElementById(id).addEventListener('change', applyLegendBounds)
+);
+document.getElementById('legend-reset').addEventListener('click', () => {
+  customLo = null;
+  customHi = null;
+  document.getElementById('legend-min').value = '';
+  document.getElementById('legend-max').value = '';
+  recolor();
+});
 
 map.on('load', async () => {
   await loadFeatureOptions();
