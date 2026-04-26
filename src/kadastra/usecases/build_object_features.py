@@ -8,6 +8,7 @@ from shapely.geometry import shape
 from shapely.geometry.base import BaseGeometry
 
 from kadastra.domain.asset_class import AssetClass
+from kadastra.etl.object_geometry_features import compute_object_geometry_features
 from kadastra.etl.object_metro_features import compute_object_metro_features
 from kadastra.etl.object_municipality_features import (
     compute_object_municipality_features,
@@ -142,6 +143,11 @@ class BuildObjectFeatures:
                 object_params=object_params,
                 intra_raion_polygons=raion_polygons,
             )
+        # Object geometry features (ADR-0018). Reads polygon_wkt_3857
+        # passthrough from ADR-0017 and derives 7 shape descriptors.
+        # KeyError if the column is missing — that is an upstream
+        # contract violation (silver→gold).
+        enriched = compute_object_geometry_features(enriched)
         # Filter feature_columns to those present (allows configuring a
         # superset in Settings — missing ones are simply skipped, not
         # errors, so per-class slices with different schemas don't crash).

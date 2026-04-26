@@ -272,6 +272,7 @@ def test_appends_object_geometry_feature_columns() -> None:
 
 def test_neighbor_counts_see_all_classes() -> None:
     # Apartment near a house and a commercial — neighbor counts should reflect that
+    sq = "POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0))"
     apt = pl.DataFrame(
         [
             {
@@ -281,6 +282,7 @@ def test_neighbor_counts_see_all_classes() -> None:
                 "lon": KAZAN_LON,
                 "levels": 9,
                 "flats": 72,
+                "polygon_wkt_3857": sq,
             }
         ],
         schema={
@@ -290,6 +292,7 @@ def test_neighbor_counts_see_all_classes() -> None:
             "lon": pl.Float64,
             "levels": pl.Int64,
             "flats": pl.Int64,
+            "polygon_wkt_3857": pl.Utf8,
         },
     )
     house = pl.DataFrame(
@@ -301,6 +304,7 @@ def test_neighbor_counts_see_all_classes() -> None:
                 "lon": KAZAN_LON,
                 "levels": 1,
                 "flats": None,
+                "polygon_wkt_3857": sq,
             }
         ],
         schema=apt.schema,
@@ -314,6 +318,7 @@ def test_neighbor_counts_see_all_classes() -> None:
                 "lon": KAZAN_LON + 0.0009,
                 "levels": 1,
                 "flats": None,
+                "polygon_wkt_3857": sq,
             }
         ],
         schema=apt.schema,
