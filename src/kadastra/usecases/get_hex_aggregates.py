@@ -34,6 +34,7 @@ NUMERIC_FEATURES: tuple[str, ...] = (
     # ADR-0019 distance to nearest geometry — polygonal (dist_to_*)
     "mean_dist_to_water_m",
     "mean_dist_to_park_m",
+    "mean_dist_to_forest_m",
     "mean_dist_to_industrial_m",
     "mean_dist_to_cemetery_m",
     "mean_dist_to_landfill_m",
@@ -58,6 +59,7 @@ NUMERIC_FEATURES: tuple[str, ...] = (
     # Polygonal share-in-buffer at the canonical 500 m radius
     "mean_water_share_500m",
     "mean_park_share_500m",
+    "mean_forest_share_500m",
     "mean_industrial_share_500m",
     "mean_cemetery_share_500m",
     # Road density

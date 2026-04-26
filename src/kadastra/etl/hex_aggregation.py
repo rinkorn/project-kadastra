@@ -52,7 +52,8 @@ _NUMERIC_MEANS: tuple[str, ...] = (
     # convention used by build_object_features for ADR-0019 layers;
     # the legacy ``dist_metro_m`` / ``dist_entrance_m`` predate that
     # convention and stay as-is.
-    "dist_to_water_m", "dist_to_park_m", "dist_to_industrial_m",
+    "dist_to_water_m", "dist_to_park_m", "dist_to_forest_m",
+    "dist_to_industrial_m",
     "dist_to_cemetery_m", "dist_to_landfill_m",
     "dist_to_powerline_m", "dist_to_railway_m",
     "dist_to_school_m", "dist_to_kindergarten_m", "dist_to_clinic_m",
@@ -64,7 +65,7 @@ _NUMERIC_MEANS: tuple[str, ...] = (
     # other radii (100/300/800 m) are also on the per-object frame
     # but only one is exposed on the hex map to keep the feature
     # picker readable.
-    "water_share_500m", "park_share_500m",
+    "water_share_500m", "park_share_500m", "forest_share_500m",
     "industrial_share_500m", "cemetery_share_500m",
     # Road density.
     "road_length_500m",

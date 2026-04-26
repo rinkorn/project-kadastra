@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     poly_area_layer_paths: dict[str, str] = {
         "water": "data/raw/osm/kazan-agg-water.geojsonseq",
         "park": "data/raw/osm/kazan-agg-park.geojsonseq",
+        "forest": "data/raw/osm/kazan-agg-forest.geojsonseq",
         "industrial": "data/raw/osm/kazan-agg-industrial.geojsonseq",
         "cemetery": "data/raw/osm/kazan-agg-cemetery.geojsonseq",
     }
@@ -53,6 +54,7 @@ class Settings(BaseSettings):
         # Polygonal — distance to nearest polygon edge (or 0 if inside).
         "water": "data/raw/osm/kazan-agg-water.geojsonseq",
         "park": "data/raw/osm/kazan-agg-park.geojsonseq",
+        "forest": "data/raw/osm/kazan-agg-forest.geojsonseq",
         "industrial": "data/raw/osm/kazan-agg-industrial.geojsonseq",
         "cemetery": "data/raw/osm/kazan-agg-cemetery.geojsonseq",
         "landfill": "data/raw/osm/kazan-agg-landfill.geojsonseq",
