@@ -575,6 +575,72 @@ def test_missing_geom_distance_layer_path_yields_null_column(tmp_path) -> None: 
     assert df["dist_to_landfill_m"][0] is None
 
 
+def test_zonal_poi_layer_loaded_from_disk(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """ADR-0019 part 4: zonal counts for OSM-extracted point POIs.
+
+    When a layer name is in zonal_layer_names but is not stations /
+    entrances / a self-class slice, the pipeline should look it up in
+    geom_distance_layer_paths and load the GeoJSON-seq as a point layer
+    (Point features as-is, polygon features centroided) for the count
+    helper. Verifies that `school_within_500m` materialises with at
+    least one count when a school point is placed near the test object.
+    """
+    geojson_path = tmp_path / "school.geojsonseq"
+    # Place a Point right on KAZAN_LAT/LON — should fall within every
+    # radius (100/300/500/800 m) for the test object at the same location.
+    geojson_path.write_text(
+        '{"type":"Feature","properties":{"name":"Школа №1"},'
+        f'"geometry":{{"type":"Point","coordinates":[{KAZAN_LON},{KAZAN_LAT}]}}}}\n'
+    )
+
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        zonal_layer_names=["school"],
+        zonal_radii_m=[500],
+        geom_distance_layer_paths={"school": str(geojson_path)},
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "school_within_500m" in df.columns
+    assert int(df["school_within_500m"][0]) == 1
+
+
+def test_missing_zonal_poi_layer_file_yields_zero_counts(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """A POI layer name in zonal_layer_names whose file is missing must
+    not crash; columns appear with zero counts so downstream schema is
+    stable across regions where the OSM extract hasn't been run yet."""
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        zonal_layer_names=["bus_stop"],
+        zonal_radii_m=[500],
+        geom_distance_layer_paths={
+            "bus_stop": str(tmp_path / "missing.geojsonseq")
+        },
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "bus_stop_within_500m" in df.columns
+    assert int(df["bus_stop_within_500m"][0]) == 0
+
+
 def test_missing_poly_area_layer_path_is_skipped_gracefully(tmp_path) -> None:  # type: ignore[no-untyped-def]
     """If a configured poly-area layer's file does not exist, the
     pipeline must not crash — it just emits zero-share columns. This
