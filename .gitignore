@@ -16,3 +16,7 @@ wheels/
 # Data and ML artifacts
 data/
 mlruns/
+
+
+# Local research/probe scratchpad
+.tmp_research/
