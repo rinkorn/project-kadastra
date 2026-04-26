@@ -32,7 +32,18 @@ class BuildHexAggregates:
         self._output_base_path = output_base_path
         self._resolutions = resolutions
 
-    def execute(self, region_code: str, asset_classes: list[AssetClass]) -> None:
+    def execute(
+        self,
+        region_code: str,
+        asset_classes: list[AssetClass],
+        *,
+        model: str = "catboost",
+    ) -> None:
+        # ADR-0016 quartet: stub will be replaced in the next commit so
+        # that ``model`` actually drives both the OOF lookup and the
+        # output-path partitioning. For now keep the legacy single-OOF
+        # behaviour to leave existing callers unbroken between commits.
+        del model
         per_class_frames: list[pl.DataFrame] = []
         for ac in asset_classes:
             objects = self._reader.load(region_code, ac)
