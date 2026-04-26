@@ -109,9 +109,9 @@ def compute_object_polygon_features(
     buffers_by_r: dict[int, np.ndarray] = {}
     buffer_areas_by_r: dict[int, np.ndarray] = {}
     for r in radii_sorted:
-        buffers = shapely.buffer(points, r)
+        buffers = np.asarray(shapely.buffer(points, r))
         buffers_by_r[r] = buffers
-        buffer_areas_by_r[r] = shapely.area(buffers)
+        buffer_areas_by_r[r] = np.asarray(shapely.area(buffers))
 
     # Per-layer STRtree (None when the layer has no polygons).
     trees_by_layer: dict[str, tuple[shapely.STRtree, np.ndarray] | None] = {}
@@ -153,9 +153,10 @@ def compute_object_polygon_features(
             results[(layer, r)] = shares
     else:
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
-            for layer, r, shares in ex.map(
-                lambda lr: _share_for_pair(*lr), pairs_to_run
-            ):
+            def _run_pair(lr: tuple[str, int]) -> tuple[str, int, np.ndarray]:
+                return _share_for_pair(*lr)
+
+            for layer, r, shares in ex.map(_run_pair, pairs_to_run):
                 results[(layer, r)] = shares
 
     new_columns: list[pl.Series] = [

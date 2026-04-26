@@ -16,7 +16,7 @@ from pathlib import Path
 import networkx as nx
 import numpy as np
 import polars as pl
-from scipy.spatial import cKDTree
+from scipy.spatial import cKDTree  # pyright: ignore[reportAttributeAccessIssue]
 
 from kadastra.etl.haversine import haversine_meters
 from kadastra.ports.road_graph import RoadGraphPort
@@ -26,7 +26,7 @@ _EDGES_SCHEMA = ("from_lat", "from_lon", "to_lat", "to_lon", "length_m")
 
 
 class NetworkxRoadGraph(RoadGraphPort):
-    def __init__(self, graph: nx.Graph, node_coords: np.ndarray) -> None:
+    def __init__(self, graph: nx.Graph[int], node_coords: np.ndarray) -> None:
         if node_coords.ndim != 2 or node_coords.shape[1] != 2:
             raise ValueError(
                 f"node_coords must have shape (n, 2); got {node_coords.shape}"
@@ -41,7 +41,7 @@ class NetworkxRoadGraph(RoadGraphPort):
     ) -> NetworkxRoadGraph:
         coord_to_id: dict[_Coord, int] = {}
         node_coords: list[_Coord] = []
-        graph: nx.Graph = nx.Graph()
+        graph: nx.Graph[int] = nx.Graph()
         for from_coord, to_coord, length in edges:
             for c in (from_coord, to_coord):
                 if c not in coord_to_id:

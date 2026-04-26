@@ -14,7 +14,7 @@ import math
 
 import numpy as np
 import polars as pl
-from scipy.spatial import cKDTree
+from scipy.spatial import cKDTree  # pyright: ignore[reportAttributeAccessIssue]
 
 from kadastra.etl.haversine import EARTH_RADIUS_METERS
 
