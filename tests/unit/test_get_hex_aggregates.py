@@ -12,7 +12,10 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from kadastra.usecases.get_hex_aggregates import GetHexAggregates
+from kadastra.usecases.get_hex_aggregates import (
+    NUMERIC_FEATURES,
+    GetHexAggregates,
+)
 
 
 def _write_aggregates(
@@ -143,6 +146,26 @@ def test_default_model_is_catboost(tmp_path: Path) -> None:
         feature="median_pred_oof_rub_per_m2",
     )
     assert {r["hex"]: r["value"] for r in out}["8a"] == 42_000.0
+
+
+def test_numeric_features_includes_geo_and_age_means() -> None:
+    """ADR-0019/0020 mean_<col> aggregates must be advertised by
+    NUMERIC_FEATURES so the map UI's /api/feature_options call lists
+    them in the hex feature dropdown — otherwise the data is in the
+    parquet but invisible to the user."""
+    expected_subset = {
+        # Distance to nearest geometry (polygonal / linear / point POI).
+        "mean_dist_water_m", "mean_dist_park_m", "mean_dist_school_m",
+        "mean_dist_railway_m", "mean_dist_bus_stop_m",
+        # Polygonal share-in-buffer at 500 m.
+        "mean_water_share_500m", "mean_park_share_500m",
+        # Road density and zonal counts.
+        "mean_road_length_500m", "mean_count_apartments_500m",
+        # Age (ADR-0020).
+        "mean_age_years",
+    }
+    missing = expected_subset - set(NUMERIC_FEATURES)
+    assert not missing, f"NUMERIC_FEATURES is missing {missing}"
 
 
 def test_missing_model_partition_raises_filenotfound(tmp_path: Path) -> None:
