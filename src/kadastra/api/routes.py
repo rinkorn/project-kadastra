@@ -9,8 +9,10 @@ Endpoints:
   ``{object_id, lat, lon, y_true, y_pred_oof, residual, fold_id}``
   for the requested asset class. Drives the scatter layer.
 - ``GET /api/inspection/{object_id}`` — full feature dict for a
-  single object (every gold column + OOF columns). Powers the side
-  panel.
+  single object (every gold column + OOF columns) plus a
+  ``geometry`` field with the object polygon in GeoJSON WGS84
+  (re-projected from the gold ``polygon_wkt_3857`` column at the
+  API edge). Powers the side panel + deck.gl PolygonLayer.
 
 The legacy ``/api/hex_features`` endpoint (sourced from the old gold
 hex feature store, never re-built after the move to the per-object
@@ -21,7 +23,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
+import pyproj
+import shapely
 from fastapi import APIRouter, HTTPException, Query
+from shapely.geometry import mapping
 
 from kadastra.domain.asset_class import AssetClass
 from kadastra.usecases.get_hex_aggregates import (
@@ -31,6 +37,22 @@ from kadastra.usecases.get_hex_aggregates import (
     GetHexAggregates,
 )
 from kadastra.usecases.load_object_inspection import LoadObjectInspection
+
+# Constructed once: web-mercator metres (silver/gold storage CRS) →
+# WGS84 lon/lat degrees (deck.gl + maplibre input).
+_WGS84_FROM_3857 = pyproj.Transformer.from_crs(3857, 4326, always_xy=True)
+
+
+def _convert_wkt_3857_to_geojson_wgs84(wkt: str | None) -> dict[str, Any] | None:
+    if wkt is None:
+        return None
+    geom = shapely.from_wkt(wkt)
+
+    def _reproject(coords: np.ndarray) -> np.ndarray:
+        lons, lats = _WGS84_FROM_3857.transform(coords[:, 0], coords[:, 1])
+        return np.column_stack([lons, lats])
+
+    return mapping(shapely.transform(geom, _reproject))
 
 
 def make_api_router(
@@ -91,6 +113,8 @@ def make_api_router(
                 status_code=404,
                 detail=f"object {object_id!r} not found for asset_class={ac.value}",
             )
+        wkt = detail.pop("polygon_wkt_3857", None)
+        detail["geometry"] = _convert_wkt_3857_to_geojson_wgs84(wkt)
         return {"region": region_code, "asset_class": ac.value, "data": detail}
 
     @router.get("/feature_options")
