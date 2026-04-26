@@ -36,6 +36,12 @@ _FAKE_GRAPH = _HaversineRoadGraph()
 
 
 def _objects_for(ac: AssetClass) -> pl.DataFrame:
+    # ADR-0017 + ADR-0018: a polygon_wkt_3857 column is part of the
+    # gold contract. Use a 10×10 square in mercator metres so the
+    # geometry compute step has a deterministic input — the exact
+    # numbers are checked by the geometry-features unit tests; here
+    # the fixture just guarantees the column is present and parseable.
+    sq = "POLYGON ((0 0, 10 0, 10 10, 0 10, 0 0))"
     return pl.DataFrame(
         [
             {
@@ -45,6 +51,7 @@ def _objects_for(ac: AssetClass) -> pl.DataFrame:
                 "lon": KAZAN_LON,
                 "levels": 9,
                 "flats": 72,
+                "polygon_wkt_3857": sq,
             },
             {
                 "object_id": f"way/{ac.value}-2",
@@ -53,6 +60,7 @@ def _objects_for(ac: AssetClass) -> pl.DataFrame:
                 "lon": KAZAN_LON,
                 "levels": 5,
                 "flats": 30,
+                "polygon_wkt_3857": sq,
             },
         ],
         schema={
@@ -62,6 +70,7 @@ def _objects_for(ac: AssetClass) -> pl.DataFrame:
             "lon": pl.Float64,
             "levels": pl.Int64,
             "flats": pl.Int64,
+            "polygon_wkt_3857": pl.Utf8,
         },
     )
 
@@ -229,6 +238,36 @@ def test_appends_feature_columns_to_each_partition() -> None:
         "road_length_500m",
     }
     assert expected.issubset(set(df.columns))
+
+
+def test_appends_object_geometry_feature_columns() -> None:
+    """ADR-0018: BuildObjectFeatures must call compute_object_geometry_features
+    so the 7 geometry-derived columns appear in the saved partition."""
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(store, raw).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    geometry_cols = {
+        "polygon_area_m2",
+        "polygon_perimeter_m",
+        "polygon_compactness",
+        "polygon_convexity",
+        "bbox_aspect_ratio",
+        "polygon_orientation_deg",
+        "polygon_n_vertices",
+    }
+    assert geometry_cols.issubset(set(df.columns))
+    # Fixture is a 10×10 square in EPSG:3857 metres → area = 100, n_verts = 4.
+    row = df.row(0, named=True)
+    assert row["polygon_area_m2"] == 100.0
+    assert row["polygon_n_vertices"] == 4
 
 
 def test_neighbor_counts_see_all_classes() -> None:
