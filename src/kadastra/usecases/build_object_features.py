@@ -290,8 +290,7 @@ class BuildObjectFeatures:
         stations: pl.DataFrame,
         entrances: pl.DataFrame,
     ) -> dict[str, pl.DataFrame]:
-        # Layer name → AssetClass for self-class slices. Names that aren't
-        # in this map are treated as external point layers.
+        # Layer name → AssetClass for self-class slices.
         class_layer_map = {
             "apartments": AssetClass.APARTMENT.value,
             "houses": AssetClass.HOUSE.value,
@@ -310,4 +309,51 @@ class BuildObjectFeatures:
                 layers[name] = enriched.filter(
                     pl.col("asset_class") == class_layer_map[name]
                 ).select(["object_id", "lat", "lon"])
+            elif name in self._geom_distance_layer_paths:
+                # ADR-0019 part 4: OSM-extracted POI layer (school,
+                # bus_stop, ...). Reuse the same GeoJSON-seq file that
+                # geom-distance reads, centroiding non-Point features
+                # so the count helper sees lat/lon points uniformly.
+                layers[name] = self._load_zonal_poi_layer(
+                    self._geom_distance_layer_paths[name]
+                )
         return layers
+
+    def _load_zonal_poi_layer(self, path_str: str) -> pl.DataFrame:
+        """Read a GeoJSON-seq file and return one (lat, lon) per feature.
+
+        Point geometries pass through unchanged; LineString / Polygon /
+        Multi* are reduced to their centroid so a hospital mapped as a
+        polygon still contributes a single point to the count helper.
+
+        Missing file → empty frame so downstream emits zero counts (same
+        semantic as poly-area layer with a missing extract). Keeps the
+        pipeline composable while OSM extractions are still being run.
+        """
+        path = Path(path_str)
+        if not path.is_file():
+            return pl.DataFrame(
+                {"lat": [], "lon": []},
+                schema={"lat": pl.Float64, "lon": pl.Float64},
+            )
+        lats: list[float] = []
+        lons: list[float] = []
+        with path.open("r", encoding="utf-8") as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line or line.startswith("\x1e"):
+                    line = line.lstrip("\x1e").strip()
+                    if not line:
+                        continue
+                feature = json.loads(line)
+                geom_dict = feature.get("geometry")
+                if geom_dict is None:
+                    continue
+                geom = shape(geom_dict)
+                if geom.is_empty:
+                    continue
+                pt = geom if geom.geom_type == "Point" else geom.centroid
+                pt_x, pt_y = pt.coords[0]
+                lons.append(float(pt_x))
+                lats.append(float(pt_y))
+        return pl.DataFrame({"lat": lats, "lon": lons})
