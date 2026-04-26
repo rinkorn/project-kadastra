@@ -1,13 +1,14 @@
-"""ADR-0019: per-object distance to the nearest polygon of each layer.
+"""ADR-0019: per-object distance to the nearest geometry of each layer.
 
 Mirror of ``compute_object_polygon_features`` (share-in-buffer) for
 absolute-distance signals. Same projection (EPSG:32639 UTM-39N) so the
 two feature blocks are dimensionally compatible.
 
-Implementation: per-layer ``unary_union`` → flatten parts → STRtree;
-per-object ``tree.nearest(point)`` returns the nearest part, then
-``shapely.distance`` gives the metric. Inside a polygon the distance
-is naturally 0. Empty layer → null column.
+Geometry-agnostic: a layer is a list of arbitrary Shapely geometries
+(Polygon, LineString, Point, plus their Multi/Collection forms). One
+STRtree → ``shapely.distance`` pipeline serves all three so that point
+POIs (school, bus_stop), linear externalities (powerline, railway) and
+polygonal layers (water, park, landfill) reuse the same code path.
 """
 
 from __future__ import annotations
@@ -16,7 +17,6 @@ import numpy as np
 import polars as pl
 import shapely
 from pyproj import Transformer
-from shapely.geometry import MultiPolygon, Polygon
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import transform as shapely_transform
 from shapely.ops import unary_union
@@ -30,16 +30,21 @@ def _project_lonlat(geom: BaseGeometry) -> BaseGeometry:
 
 
 def _flatten_to_parts(geom: BaseGeometry) -> list[BaseGeometry]:
+    """Flatten any geometry into its atomic non-empty parts.
+
+    Required because ``unary_union`` of mixed-type input may produce a
+    GeometryCollection, and STRtree needs flat leaves to index. Atomic
+    parts are anything without ``.geoms`` (Point, LineString, LinearRing,
+    Polygon); collection types (Multi*, GeometryCollection) are recursed.
+    """
     if geom.is_empty:
         return []
-    if isinstance(geom, Polygon):
+    sub_geoms = getattr(geom, "geoms", None)
+    if sub_geoms is None:
         return [geom]
-    if isinstance(geom, MultiPolygon):
-        return [p for p in geom.geoms if not p.is_empty]
     parts: list[BaseGeometry] = []
-    for sub in getattr(geom, "geoms", []):
-        if isinstance(sub, (Polygon, MultiPolygon)):
-            parts.extend(_flatten_to_parts(sub))
+    for sub in sub_geoms:
+        parts.extend(_flatten_to_parts(sub))
     return parts
 
 
@@ -49,8 +54,9 @@ def compute_object_geom_distance_features(
     geometries_by_layer: dict[str, list[BaseGeometry]],
 ) -> pl.DataFrame:
     """Append ``dist_to_<layer>_m`` columns: distance in metres
-    (EPSG:32639 UTM-39N) from each object to the nearest polygon of
-    each layer. Distance is 0.0 when the object is inside a polygon.
+    (EPSG:32639 UTM-39N) from each object to the nearest geometry of
+    each layer. Distance is 0.0 when the object is inside a polygon
+    or sits exactly on a line; positive otherwise.
 
     Empty layers produce all-null columns. Empty input frames produce
     empty columns with the expected names so downstream schema is
