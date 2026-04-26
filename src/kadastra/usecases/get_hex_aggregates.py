@@ -17,15 +17,56 @@ from pathlib import Path
 import polars as pl
 
 # Numeric metrics → linear/log gradient on the map.
+# Order matters: groups close together so the dropdown reads
+# «base / building / geo distance / share / count / age».
 NUMERIC_FEATURES: tuple[str, ...] = (
+    # Base
     "count",
     "median_target_rub_per_m2",
     "median_pred_oof_rub_per_m2",
     "median_residual_rub_per_m2",
+    # Building / land descriptors
     "mean_levels",
     "mean_flats",
     "mean_area_m2",
     "mean_year_built",
+    "mean_age_years",
+    # ADR-0019 distance to nearest geometry — polygonal
+    "mean_dist_water_m",
+    "mean_dist_park_m",
+    "mean_dist_industrial_m",
+    "mean_dist_cemetery_m",
+    "mean_dist_landfill_m",
+    # ADR-0019 distance — linear
+    "mean_dist_powerline_m",
+    "mean_dist_railway_m",
+    # ADR-0019 distance — point POIs
+    "mean_dist_school_m",
+    "mean_dist_kindergarten_m",
+    "mean_dist_clinic_m",
+    "mean_dist_hospital_m",
+    "mean_dist_pharmacy_m",
+    "mean_dist_supermarket_m",
+    "mean_dist_cafe_m",
+    "mean_dist_restaurant_m",
+    "mean_dist_bus_stop_m",
+    "mean_dist_tram_stop_m",
+    "mean_dist_railway_station_m",
+    # Pre-existing transport distances (silver-built)
+    "mean_dist_metro_m",
+    "mean_dist_entrance_m",
+    # Polygonal share-in-buffer at the canonical 500 m radius
+    "mean_water_share_500m",
+    "mean_park_share_500m",
+    "mean_industrial_share_500m",
+    "mean_cemetery_share_500m",
+    # Road density + zonal counts at 500 m / 1 km
+    "mean_road_length_500m",
+    "mean_count_stations_1km",
+    "mean_count_entrances_500m",
+    "mean_count_apartments_500m",
+    "mean_count_houses_500m",
+    "mean_count_commercial_500m",
 )
 # Categorical metrics → categorical palette on the map.
 CATEGORICAL_FEATURES: tuple[str, ...] = (
