@@ -494,7 +494,7 @@ const DIV_RAMPS = {
   ],
 };
 
-let seqPaletteId = 'RdYlBu_r';
+let seqPaletteId = 'jet';
 let divPaletteId = 'RdBu';
 // Per-kind reverse flag: flips the stop order when active. Kept
 // separate so toggling it for sequential metrics doesn't affect the
@@ -532,7 +532,7 @@ function subsampleStops(stops, fromT, toT, n = 7) {
   return out;
 }
 const activeSeqRamp = () => subsampleStops(
-  maybeReverse(SEQ_RAMPS[seqPaletteId] || SEQ_RAMPS.RdYlBu_r, seqReverse),
+  maybeReverse(SEQ_RAMPS[seqPaletteId] || SEQ_RAMPS.jet, seqReverse),
   seqColorFrom, seqColorTo,
 );
 const activeDivRamp = () => subsampleStops(
@@ -542,7 +542,7 @@ const activeDivRamp = () => subsampleStops(
 // Untrimmed (0..1) ramp — used for the «source palette» preview bar
 // where the colour-range thumbs slide across the full palette.
 const fullSeqRamp = () =>
-  maybeReverse(SEQ_RAMPS[seqPaletteId] || SEQ_RAMPS.RdYlBu_r, seqReverse);
+  maybeReverse(SEQ_RAMPS[seqPaletteId] || SEQ_RAMPS.jet, seqReverse);
 const fullDivRamp = () =>
   maybeReverse(DIV_RAMPS[divPaletteId] || DIV_RAMPS.RdBu, divReverse);
 
