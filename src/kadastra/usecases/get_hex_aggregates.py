@@ -48,11 +48,14 @@ class GetHexAggregates:
         resolution: int,
         asset_class: str,
         feature: str,
+        *,
+        model: str = "catboost",
     ) -> list[dict[str, object]]:
         path = (
             self._base_path
             / f"region={region_code}"
             / f"resolution={resolution}"
+            / f"model={model}"
             / "data.parquet"
         )
         if not path.is_file():

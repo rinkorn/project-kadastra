@@ -1,10 +1,18 @@
 """Build per-hex aggregate parquets from per-object gold + OOF predictions.
 
-Output layout:
-``{base_path}/region={REGION}/resolution={R}/data.parquet``
+Output layout (ADR-0016 quartet, per-model):
+
+``{base_path}/region={REGION}/resolution={R}/model={MODEL}/data.parquet``
 
 One row per (h3_index, asset_class) tuple, where ``asset_class`` is
 either a real class value or ``"all"`` for the cross-class roll-up.
+``MODEL`` is one of ``catboost / ebm / grey_tree / naive_linear`` —
+each partition uses the matching ``OofPredictionsReaderPort`` artifact
+and produces its own ``median_pred_oof_rub_per_m2`` /
+``median_residual_rub_per_m2``. The model-agnostic columns
+(``median_target_rub_per_m2``, ``count``, ``dominant_*``) are
+duplicated across partitions so the API can read one parquet without
+joining.
 """
 
 from __future__ import annotations
@@ -32,13 +40,19 @@ class BuildHexAggregates:
         self._output_base_path = output_base_path
         self._resolutions = resolutions
 
-    def execute(self, region_code: str, asset_classes: list[AssetClass]) -> None:
+    def execute(
+        self,
+        region_code: str,
+        asset_classes: list[AssetClass],
+        *,
+        model: str = "catboost",
+    ) -> None:
         per_class_frames: list[pl.DataFrame] = []
         for ac in asset_classes:
             objects = self._reader.load(region_code, ac)
             if objects.is_empty():
                 continue
-            oof = self._oof_reader.load_latest(ac)
+            oof = self._oof_reader.load_latest(ac, model=model)
             joined = self._join_oof(objects, oof)
             per_class_frames.append(joined)
 
@@ -52,6 +66,7 @@ class BuildHexAggregates:
                 self._output_base_path
                 / f"region={region_code}"
                 / f"resolution={resolution}"
+                / f"model={model}"
                 / "data.parquet"
             )
             out_path.parent.mkdir(parents=True, exist_ok=True)
