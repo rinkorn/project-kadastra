@@ -3,20 +3,21 @@ from pathlib import Path
 import mlflow
 import numpy as np
 import pytest
+from catboost import CatBoostRegressor
 
 from kadastra.adapters.mlflow_model_registry import MLflowModelRegistry
 from kadastra.ml.train import CatBoostParams, train_catboost
 
 
 @pytest.fixture
-def trained_model():
+def trained_model() -> CatBoostRegressor:
     rng = np.random.default_rng(0)
     X = rng.normal(size=(30, 2))
     y = X[:, 0] + 2 * X[:, 1]
     return train_catboost(X, y, CatBoostParams(iterations=10, learning_rate=0.3, depth=3, seed=0))
 
 
-def test_log_run_returns_mlflow_run_id(tmp_path: Path, trained_model) -> None:
+def test_log_run_returns_mlflow_run_id(tmp_path: Path, trained_model: CatBoostRegressor) -> None:
     registry = MLflowModelRegistry(
         tracking_uri=f"file:{tmp_path / 'mlruns'}", experiment_name="test-exp"
     )
@@ -33,7 +34,7 @@ def test_log_run_returns_mlflow_run_id(tmp_path: Path, trained_model) -> None:
     assert all(c in "0123456789abcdef" for c in run_id)
 
 
-def test_log_run_records_params_and_metrics_in_mlflow(tmp_path: Path, trained_model) -> None:
+def test_log_run_records_params_and_metrics_in_mlflow(tmp_path: Path, trained_model: CatBoostRegressor) -> None:
     registry = MLflowModelRegistry(
         tracking_uri=f"file:{tmp_path / 'mlruns'}", experiment_name="test-exp"
     )
@@ -54,7 +55,7 @@ def test_log_run_records_params_and_metrics_in_mlflow(tmp_path: Path, trained_mo
     assert run.data.metrics["mape"] == 0.05
 
 
-def test_log_run_creates_experiment_if_missing(tmp_path: Path, trained_model) -> None:
+def test_log_run_creates_experiment_if_missing(tmp_path: Path, trained_model: CatBoostRegressor) -> None:
     registry = MLflowModelRegistry(
         tracking_uri=f"file:{tmp_path / 'mlruns'}", experiment_name="brand-new-exp"
     )

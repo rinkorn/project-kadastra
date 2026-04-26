@@ -24,6 +24,9 @@ class _FakeRawData:
         assert key == "buildings.csv"
         return self._payload
 
+    def list_keys(self, prefix: str) -> list[str]:
+        return ["buildings.csv"] if "buildings.csv".startswith(prefix) else []
+
 
 @dataclass
 class _StoreCall:

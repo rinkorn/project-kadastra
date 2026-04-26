@@ -30,9 +30,16 @@ class FakeRegistry:
         params: Mapping[str, Any],
         metrics: Mapping[str, float],
         model: CatBoostRegressor,
+        artifacts: Mapping[str, bytes] | None = None,
     ) -> str:
         self.calls.append(
-            {"run_name": run_name, "params": dict(params), "metrics": dict(metrics), "model": model}
+            {
+                "run_name": run_name,
+                "params": dict(params),
+                "metrics": dict(metrics),
+                "model": model,
+                "artifacts": dict(artifacts or {}),
+            }
         )
         return f"run_{len(self.calls)}"
 

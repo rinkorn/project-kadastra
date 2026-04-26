@@ -125,6 +125,9 @@ class _FakeRawData:
     def read_bytes(self, key: str) -> bytes:
         return self._payloads[key]
 
+    def list_keys(self, prefix: str) -> list[str]:
+        return [k for k in self._payloads if k.startswith(prefix)]
+
 
 def _usecase(
     store: _FakeStore,
