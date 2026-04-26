@@ -69,6 +69,14 @@ class LoadObjectInspection:
             return None
         return match.row(0, named=True)
 
+    def get_detail_quartet(
+        self,
+        region_code: str,
+        asset_class: AssetClass,
+        object_id: str,
+    ) -> dict[str, Any] | None:
+        raise NotImplementedError
+
     def _load_joined(
         self, region_code: str, asset_class: AssetClass, *, model: str
     ) -> pl.DataFrame:
