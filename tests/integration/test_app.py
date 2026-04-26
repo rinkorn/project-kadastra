@@ -458,17 +458,6 @@ def test_inspection_detail_geometry_null_when_wkt_missing(
     assert detail["geometry"] is None
 
 
-def test_inspection_list_does_not_carry_geometry(client: TestClient) -> None:
-    """The map scatter list must stay slim — geometry lives only in
-    the per-object detail card. Otherwise the response balloons by
-    ~2KB per row × 200k rows."""
-    response = client.get("/api/inspection", params={"asset_class": "apartment"})
-    assert response.status_code == 200
-    for row in response.json()["data"]:
-        assert "geometry" not in row
-        assert "polygon_wkt_3857" not in row
-
-
 def test_inspection_detail_returns_404_for_unknown_object(
     client: TestClient,
 ) -> None:

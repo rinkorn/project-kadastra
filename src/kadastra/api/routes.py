@@ -111,11 +111,18 @@ def make_api_router(
     ) -> dict[str, Any]:
         ac = _parse_asset_class(asset_class)
         _validate_model(model)
+        rows = load_inspection.list_for_map(region_code, ac, model=model)
+        # Convert polygon WKT (gold's storage CRS, EPSG:3857) to GeoJSON
+        # WGS84 once per row — same convention as the detail endpoint.
+        # WKT itself is dropped from the payload (no consumer needs it).
+        for row in rows:
+            wkt = row.pop("polygon_wkt_3857", None)
+            row["geometry"] = _convert_wkt_3857_to_geojson_wgs84(wkt)
         return {
             "region": region_code,
             "asset_class": ac.value,
             "model": model,
-            "data": load_inspection.list_for_map(region_code, ac, model=model),
+            "data": rows,
         }
 
     @router.get("/inspection/{object_id:path}/quartet")
