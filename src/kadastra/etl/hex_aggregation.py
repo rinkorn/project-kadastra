@@ -48,16 +48,17 @@ _NUMERIC_MEANS: tuple[str, ...] = (
     # Building / land descriptors
     "levels", "flats", "area_m2", "year_built", "age_years",
     # ADR-0019 distance to nearest geometry of each layer (polygonal,
-    # linear, point-POI). Mean over the hex tells "how close, on
-    # average, are objects in this cell to <thing>".
-    "dist_water_m", "dist_park_m", "dist_industrial_m",
-    "dist_cemetery_m", "dist_landfill_m",
-    "dist_powerline_m", "dist_railway_m",
-    "dist_school_m", "dist_kindergarten_m", "dist_clinic_m",
-    "dist_hospital_m", "dist_pharmacy_m", "dist_supermarket_m",
-    "dist_cafe_m", "dist_restaurant_m",
-    "dist_bus_stop_m", "dist_tram_stop_m", "dist_railway_station_m",
-    # Pre-existing transport distances (silver-built).
+    # linear, point-POI). Names follow the ``dist_to_<layer>_m``
+    # convention used by build_object_features for ADR-0019 layers;
+    # the legacy ``dist_metro_m`` / ``dist_entrance_m`` predate that
+    # convention and stay as-is.
+    "dist_to_water_m", "dist_to_park_m", "dist_to_industrial_m",
+    "dist_to_cemetery_m", "dist_to_landfill_m",
+    "dist_to_powerline_m", "dist_to_railway_m",
+    "dist_to_school_m", "dist_to_kindergarten_m", "dist_to_clinic_m",
+    "dist_to_hospital_m", "dist_to_pharmacy_m", "dist_to_supermarket_m",
+    "dist_to_cafe_m", "dist_to_restaurant_m",
+    "dist_to_bus_stop_m", "dist_to_tram_stop_m", "dist_to_railway_station_m",
     "dist_metro_m", "dist_entrance_m",
     # Polygonal share-in-buffer at the canonical 500 m radius. The
     # other radii (100/300/800 m) are also on the per-object frame
@@ -65,10 +66,19 @@ _NUMERIC_MEANS: tuple[str, ...] = (
     # picker readable.
     "water_share_500m", "park_share_500m",
     "industrial_share_500m", "cemetery_share_500m",
-    # Road density and zonal counts at 500 m.
+    # Road density.
     "road_length_500m",
+    # Zonal density. Pre-existing ``count_*`` columns (legacy naming)
+    # plus per-POI ``<layer>_within_500m`` columns produced by the
+    # ADR-0019 zonal pipeline.
     "count_stations_1km", "count_entrances_500m",
     "count_apartments_500m", "count_houses_500m", "count_commercial_500m",
+    "school_within_500m", "kindergarten_within_500m",
+    "clinic_within_500m", "hospital_within_500m",
+    "pharmacy_within_500m", "supermarket_within_500m",
+    "cafe_within_500m", "restaurant_within_500m",
+    "bus_stop_within_500m", "tram_stop_within_500m",
+    "railway_station_within_500m",
 )
 _CATEGORICAL_MODES: tuple[str, ...] = (
     "intra_city_raion",

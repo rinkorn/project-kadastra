@@ -160,14 +160,18 @@ def test_mean_geofeatures_per_hex() -> None:
         "object_id": pl.Utf8, "asset_class": pl.Utf8,
         "lat": pl.Float64, "lon": pl.Float64,
         "synthetic_target_rub_per_m2": pl.Float64, "y_pred_oof": pl.Float64,
-        # Curated subset of per-object geo / age features.
-        "dist_water_m": pl.Float64,
-        "dist_park_m": pl.Float64,
-        "dist_school_m": pl.Float64,
+        # Curated subset of per-object geo / age features. Names match
+        # the build_object_features convention: dist_to_<layer>_m for
+        # ADR-0019 layers, dist_metro_m / dist_entrance_m for legacy,
+        # <layer>_share_<radius> for polygonal buffer share,
+        # <layer>_within_<radius>m for zonal POI counts.
+        "dist_to_water_m": pl.Float64,
+        "dist_to_park_m": pl.Float64,
+        "dist_to_school_m": pl.Float64,
         "water_share_500m": pl.Float64,
         "park_share_500m": pl.Float64,
         "road_length_500m": pl.Float64,
-        "count_apartments_500m": pl.Float64,
+        "school_within_500m": pl.Float64,
         "age_years": pl.Float64,
     }
     rows = [
@@ -175,30 +179,32 @@ def test_mean_geofeatures_per_hex() -> None:
             "object_id": "a1", "asset_class": "apartment",
             "lat": KAZAN_LAT, "lon": KAZAN_LON,
             "synthetic_target_rub_per_m2": 100.0, "y_pred_oof": 100.0,
-            "dist_water_m": 100.0, "dist_park_m": 200.0, "dist_school_m": 50.0,
+            "dist_to_water_m": 100.0, "dist_to_park_m": 200.0,
+            "dist_to_school_m": 50.0,
             "water_share_500m": 0.10, "park_share_500m": 0.20,
-            "road_length_500m": 1000.0, "count_apartments_500m": 8.0,
+            "road_length_500m": 1000.0, "school_within_500m": 2.0,
             "age_years": 10.0,
         },
         {
             "object_id": "a2", "asset_class": "apartment",
             "lat": KAZAN_LAT + 1e-5, "lon": KAZAN_LON + 1e-5,
             "synthetic_target_rub_per_m2": 100.0, "y_pred_oof": 100.0,
-            "dist_water_m": 300.0, "dist_park_m": 400.0, "dist_school_m": 150.0,
+            "dist_to_water_m": 300.0, "dist_to_park_m": 400.0,
+            "dist_to_school_m": 150.0,
             "water_share_500m": 0.30, "park_share_500m": 0.40,
-            "road_length_500m": 2000.0, "count_apartments_500m": 12.0,
+            "road_length_500m": 2000.0, "school_within_500m": 4.0,
             "age_years": 20.0,
         },
     ]
     out = aggregate_objects_to_hex(pl.DataFrame(rows, schema=schema), resolution=10)
     apt = out.filter(pl.col("asset_class") == "apartment").row(0, named=True)
-    assert apt["mean_dist_water_m"] == pytest.approx(200.0)
-    assert apt["mean_dist_park_m"] == pytest.approx(300.0)
-    assert apt["mean_dist_school_m"] == pytest.approx(100.0)
+    assert apt["mean_dist_to_water_m"] == pytest.approx(200.0)
+    assert apt["mean_dist_to_park_m"] == pytest.approx(300.0)
+    assert apt["mean_dist_to_school_m"] == pytest.approx(100.0)
     assert apt["mean_water_share_500m"] == pytest.approx(0.20)
     assert apt["mean_park_share_500m"] == pytest.approx(0.30)
     assert apt["mean_road_length_500m"] == pytest.approx(1500.0)
-    assert apt["mean_count_apartments_500m"] == pytest.approx(10.0)
+    assert apt["mean_school_within_500m"] == pytest.approx(3.0)
     assert apt["mean_age_years"] == pytest.approx(15.0)
 
 
@@ -217,7 +223,7 @@ def test_mean_geofeatures_absent_when_columns_missing() -> None:
         }
     ]
     out = aggregate_objects_to_hex(_objects(rows), resolution=10)
-    assert "mean_dist_water_m" not in out.columns
+    assert "mean_dist_to_water_m" not in out.columns
     assert "mean_water_share_500m" not in out.columns
 
 

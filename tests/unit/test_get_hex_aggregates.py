@@ -154,13 +154,17 @@ def test_numeric_features_includes_geo_and_age_means() -> None:
     them in the hex feature dropdown — otherwise the data is in the
     parquet but invisible to the user."""
     expected_subset = {
-        # Distance to nearest geometry (polygonal / linear / point POI).
-        "mean_dist_water_m", "mean_dist_park_m", "mean_dist_school_m",
-        "mean_dist_railway_m", "mean_dist_bus_stop_m",
+        # Distance to nearest geometry — ADR-0019 layers use the
+        # ``dist_to_<layer>_m`` convention (legacy ``dist_metro_m`` /
+        # ``dist_entrance_m`` predate that and are also listed).
+        "mean_dist_to_water_m", "mean_dist_to_park_m",
+        "mean_dist_to_school_m", "mean_dist_to_railway_m",
+        "mean_dist_to_bus_stop_m",
         # Polygonal share-in-buffer at 500 m.
         "mean_water_share_500m", "mean_park_share_500m",
-        # Road density and zonal counts.
+        # Road density + zonal count (legacy + ADR-0019 within_500m).
         "mean_road_length_500m", "mean_count_apartments_500m",
+        "mean_school_within_500m",
         # Age (ADR-0020).
         "mean_age_years",
     }
