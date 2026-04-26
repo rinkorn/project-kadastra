@@ -10,6 +10,7 @@ from collections.abc import Mapping, Sequence
 
 import h3
 import polars as pl
+import pytest
 
 from kadastra.etl.hex_aggregation import aggregate_objects_to_hex
 
@@ -191,14 +192,14 @@ def test_mean_geofeatures_per_hex() -> None:
     ]
     out = aggregate_objects_to_hex(pl.DataFrame(rows, schema=schema), resolution=10)
     apt = out.filter(pl.col("asset_class") == "apartment").row(0, named=True)
-    assert apt["mean_dist_water_m"] == 200.0
-    assert apt["mean_dist_park_m"] == 300.0
-    assert apt["mean_dist_school_m"] == 100.0
-    assert apt["mean_water_share_500m"] == 0.20
-    assert apt["mean_park_share_500m"] == 0.30
-    assert apt["mean_road_length_500m"] == 1500.0
-    assert apt["mean_count_apartments_500m"] == 10.0
-    assert apt["mean_age_years"] == 15.0
+    assert apt["mean_dist_water_m"] == pytest.approx(200.0)
+    assert apt["mean_dist_park_m"] == pytest.approx(300.0)
+    assert apt["mean_dist_school_m"] == pytest.approx(100.0)
+    assert apt["mean_water_share_500m"] == pytest.approx(0.20)
+    assert apt["mean_park_share_500m"] == pytest.approx(0.30)
+    assert apt["mean_road_length_500m"] == pytest.approx(1500.0)
+    assert apt["mean_count_apartments_500m"] == pytest.approx(10.0)
+    assert apt["mean_age_years"] == pytest.approx(15.0)
 
 
 def test_mean_geofeatures_absent_when_columns_missing() -> None:

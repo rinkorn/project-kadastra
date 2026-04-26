@@ -39,7 +39,37 @@ import polars as pl
 
 _TARGET = "synthetic_target_rub_per_m2"
 _PRED = "y_pred_oof"
-_NUMERIC_MEANS: tuple[str, ...] = ("levels", "flats", "area_m2", "year_built")
+# Per-hex means. The aggregator only emits a `mean_<col>` row for
+# columns actually present in the input — so dropping an OSM extract
+# (e.g., no landfill polygons) just drops the matching map option,
+# never an all-null column. The list below is the full curated set
+# the map UI knows how to display; presence per-region varies.
+_NUMERIC_MEANS: tuple[str, ...] = (
+    # Building / land descriptors
+    "levels", "flats", "area_m2", "year_built", "age_years",
+    # ADR-0019 distance to nearest geometry of each layer (polygonal,
+    # linear, point-POI). Mean over the hex tells "how close, on
+    # average, are objects in this cell to <thing>".
+    "dist_water_m", "dist_park_m", "dist_industrial_m",
+    "dist_cemetery_m", "dist_landfill_m",
+    "dist_powerline_m", "dist_railway_m",
+    "dist_school_m", "dist_kindergarten_m", "dist_clinic_m",
+    "dist_hospital_m", "dist_pharmacy_m", "dist_supermarket_m",
+    "dist_cafe_m", "dist_restaurant_m",
+    "dist_bus_stop_m", "dist_tram_stop_m", "dist_railway_station_m",
+    # Pre-existing transport distances (silver-built).
+    "dist_metro_m", "dist_entrance_m",
+    # Polygonal share-in-buffer at the canonical 500 m radius. The
+    # other radii (100/300/800 m) are also on the per-object frame
+    # but only one is exposed on the hex map to keep the feature
+    # picker readable.
+    "water_share_500m", "park_share_500m",
+    "industrial_share_500m", "cemetery_share_500m",
+    # Road density and zonal counts at 500 m.
+    "road_length_500m",
+    "count_stations_1km", "count_entrances_500m",
+    "count_apartments_500m", "count_houses_500m", "count_commercial_500m",
+)
 _CATEGORICAL_MODES: tuple[str, ...] = (
     "intra_city_raion",
     "mun_okrug_name",
