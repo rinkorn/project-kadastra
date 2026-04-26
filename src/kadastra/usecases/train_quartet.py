@@ -204,9 +204,8 @@ class TrainQuartet:
             # separately below.
             _record_fold_metrics(per_fold["grey_tree"], y[val_idx], grey_pred)
 
-        # Final fits on the full data — only the CatBoost one is
-        # passed as the "model" of the run; the other three are
-        # serialized into artifacts.
+        # CatBoost final fit always runs — registry contract requires
+        # a primary CatBoostRegressor as the run's model.
         bb_final = CatBoostQuartetModel(
             iterations=self._catboost_params.iterations,
             learning_rate=self._catboost_params.learning_rate,
@@ -215,24 +214,33 @@ class TrainQuartet:
         )
         bb_final.fit(X_full, y, cat_feature_indices=full_cat_idx or None)
 
-        wb_final = EbmQuartetModel(
-            max_bins=self._ebm_max_bins,
-            interactions=self._ebm_interactions,
-        )
-        wb_final.fit(X_full, y, cat_feature_indices=full_cat_idx or None)
+        # The three simplifiers' full-data refits are not consumed by
+        # any current code path (inspector reads OOFs only). On
+        # landplot they dominate wall time, so they're skippable.
+        wb_final: EbmQuartetModel | None = None
+        nl_final: NaiveLinearQuartetModel | None = None
+        grey_final: GreyTreeQuartetModel | None = None
+        if not self._skip_final_simplifier_fits:
+            wb_final = EbmQuartetModel(
+                max_bins=self._ebm_max_bins,
+                interactions=self._ebm_interactions,
+            )
+            wb_final.fit(X_full, y, cat_feature_indices=full_cat_idx or None)
 
-        nl_final = NaiveLinearQuartetModel()
-        nl_final.fit(X_naive, y, cat_feature_indices=naive_cat_idx or None)
+            nl_final = NaiveLinearQuartetModel()
+            nl_final.fit(
+                X_naive, y, cat_feature_indices=naive_cat_idx or None
+            )
 
-        grey_final = GreyTreeQuartetModel(
-            max_depth=self._grey_tree_max_depth,
-            seed=self._catboost_params.seed,
-        )
-        grey_final.fit(
-            X_full,
-            oof["catboost"],
-            cat_feature_indices=full_cat_idx or None,
-        )
+            grey_final = GreyTreeQuartetModel(
+                max_depth=self._grey_tree_max_depth,
+                seed=self._catboost_params.seed,
+            )
+            grey_final.fit(
+                X_full,
+                oof["catboost"],
+                cat_feature_indices=full_cat_idx or None,
+            )
 
         # Aggregate metrics + Spearman + percentile asymmetry per model.
         models_payload: dict[str, dict[str, float]] = {}
@@ -293,10 +301,13 @@ class TrainQuartet:
             "naive_linear_oof_predictions.parquet": _build_oof_parquet(
                 df, fold_ids, y, oof["naive_linear"]
             ),
-            "ebm_model.pkl": wb_final.serialize(),
-            "grey_tree_model.pkl": grey_final.serialize(),
-            "naive_linear_model.pkl": nl_final.serialize(),
         }
+        if wb_final is not None:
+            artifacts["ebm_model.pkl"] = wb_final.serialize()
+        if grey_final is not None:
+            artifacts["grey_tree_model.pkl"] = grey_final.serialize()
+        if nl_final is not None:
+            artifacts["naive_linear_model.pkl"] = nl_final.serialize()
 
         params_payload = {
             "asset_class": asset_class.value,
