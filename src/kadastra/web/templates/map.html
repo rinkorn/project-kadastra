@@ -104,7 +104,7 @@
         <option value="fold_id">fold_id (spatial split)</option>
       </select>
     </label>
-    <label id="model-wrap" style="display:none">Model
+    <label id="model-wrap">Model
       <select id="model">
         <option value="catboost" selected>catboost (Black Box)</option>
         <option value="ebm">ebm (White Box)</option>
@@ -272,7 +272,11 @@ async function fetchHex() {
   const resolution = +document.getElementById('hex_resolution').value;
   const ac = document.getElementById('asset_class').value;
   const feature = document.getElementById('hex_feature').value;
-  const r = await fetch(`/api/hex_aggregates?resolution=${resolution}&asset_class=${ac}&feature=${encodeURIComponent(feature)}`);
+  const model = document.getElementById('model').value;
+  const r = await fetch(
+    `/api/hex_aggregates?resolution=${resolution}&asset_class=${ac}` +
+    `&feature=${encodeURIComponent(feature)}&model=${model}`
+  );
   if (!r.ok) throw new Error(`hex ${r.status}: ${(await r.json()).detail}`);
   return await r.json();
 }
@@ -601,10 +605,8 @@ async function refresh() {
   document.getElementById('hex-feature-wrap').style.display = layer === 'hex' ? '' : 'none';
   document.getElementById('hex-resolution-wrap').style.display = layer === 'hex' ? '' : 'none';
   document.getElementById('object-mode-wrap').style.display = layer === 'object' ? '' : 'none';
-  // Model selector is meaningful only on the per-object scatter
-  // layer right now; once /api/hex_aggregates accepts ?model= we'll
-  // unhide it on hex too.
-  document.getElementById('model-wrap').style.display = layer === 'object' ? '' : 'none';
+  // Both hex and object layers honour ?model= now (ADR-0016 quartet).
+  document.getElementById('model-wrap').style.display = '';
   const stat = document.getElementById('stat');
   stat.textContent = 'loading…';
   try {
