@@ -8,14 +8,29 @@ set -e
 # first cold-start is cheap. Endpoints that need data files will see
 # them gradually appear; the app already tolerates a missing parquet
 # (404 from /api/hex_aggregates etc.) rather than crashing.
+#
+# Pull prefixes are explicit: by default we mirror only the runtime-
+# critical bits (`gold/` for hex aggregates and inspection, `models/`
+# for quartet OOFs, `silver/` for EMISS market reference + road graph
+# + GAR lookups). ETL-only prefixes (`gar_xml/` 3 GB+ XML dumps, raw
+# OSM/NSPD, listings, …) are *not* pulled — they live on S3 as cold
+# storage and only need to be present on the dev box that rebuilds
+# features. This keeps cold-start to ~1 minute on LAN instead of
+# blocking the inspector behind tens of GB of irrelevant data.
+DATA_DST="${PULL_DATA_ON_START_DST:-data}"
+DEFAULT_PREFIXES="Kadatastr/gold,Kadatastr/models,Kadatastr/silver"
+PREFIXES="${PULL_DATA_ON_START_PREFIXES:-$DEFAULT_PREFIXES}"
+
 if [ "${PULL_DATA_ON_START:-false}" = "true" ]; then
-    echo "[entrypoint] PULL_DATA_ON_START=true → background mirror s3://${S3_BUCKET}/${PULL_DATA_ON_START_PREFIX:-Kadatastr}/ → ${PULL_DATA_ON_START_DST:-data}/" >&2
+    echo "[entrypoint] PULL_DATA_ON_START=true → background mirror s3://${S3_BUCKET}/{${PREFIXES}} → ${DATA_DST}/" >&2
     (
-        .venv/bin/python scripts/download_dir_from_s3.py \
-            --prefix "${PULL_DATA_ON_START_PREFIX:-Kadatastr}" \
-            --dst "${PULL_DATA_ON_START_DST:-data}" \
-            && echo "[entrypoint] background data pull done" >&2 \
-            || echo "[entrypoint] background data pull FAILED — see prior log" >&2
+        for prefix in $(echo "$PREFIXES" | tr ',' ' '); do
+            echo "[entrypoint] pulling $prefix" >&2
+            .venv/bin/python scripts/download_dir_from_s3.py \
+                --prefix "$prefix" --dst "$DATA_DST" \
+                || { echo "[entrypoint] pull FAILED for $prefix" >&2; exit 1; }
+        done
+        echo "[entrypoint] background data pull done" >&2
     ) &
     echo "[entrypoint] data pull PID=$! running in background" >&2
 fi
