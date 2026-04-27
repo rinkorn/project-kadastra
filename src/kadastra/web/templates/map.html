@@ -28,6 +28,28 @@
       padding: 3px 8px; border-radius: 10px; font-size: 11px;
       background: #b45309; color: #fff; cursor: help; user-select: none;
     }
+    .topbar .tip-toggle {
+      padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 500;
+      background: #111827; color: #fde047; border: 1px solid #4b5563;
+      cursor: pointer; user-select: none;
+    }
+    .topbar .tip-toggle.off { color: #6b7280; }
+    .topbar .tip-toggle:hover { border-color: #fde047; }
+    /* Custom hover tooltip driven by [data-tip="..."]. Disabled
+       globally when <body> has the `tooltips-off` class. */
+    [data-tip] { position: relative; }
+    body:not(.tooltips-off) [data-tip]:hover::after {
+      content: attr(data-tip);
+      position: absolute; top: 100%; left: 0;
+      margin-top: 6px; max-width: 360px; min-width: 180px;
+      padding: 6px 9px; border-radius: 4px;
+      background: #0b1220; color: #e5e7eb;
+      border: 1px solid #4b5563;
+      font-size: 11px; line-height: 1.4; font-weight: 400;
+      white-space: pre-line; z-index: 100;
+      pointer-events: none;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    }
     #map { position: fixed; top: 56px; bottom: 0; left: 0; right: 380px; }
     .panel {
       position: fixed; top: 56px; bottom: 0; right: 0; width: 380px;
@@ -240,7 +262,7 @@
 <body>
   <div class="topbar">
     <strong>kadastra</strong>
-    <span class="badge" title="Target = synthetic_target_rub_per_m2 (= cost_index из ЕГРН по ADR-0009/0010, interim placeholder до подключения сделок). y_pred_oof = spatial-CV out-of-fold prediction.">target = ЕГРН cost_index</span>
+    <span class="badge" data-tip="Целевая метка модели — кадастровая стоимость ₽/м² по данным ЕГРН (cost_index). Пока используется как proxy реальных сделок (для пилота); по мере подключения данных рынка таргет может быть обновлён.&#10;&#10;y_pred_oof = honest out-of-fold прогноз на пространственной кросс-валидации.">target = ЕГРН cost_index</span>
     <label>Layer
       <select id="layer">
         <option value="hex" selected>Hex aggregate</option>
@@ -299,6 +321,9 @@
         <option value="off">off (transparent)</option>
       </select>
     </label>
+    <button id="tip-toggle" class="tip-toggle"
+            title="Показывать/скрывать всплывающие подсказки"
+            type="button">💡 подсказки</button>
     <span class="stat" id="stat"></span>
   </div>
 
@@ -345,6 +370,195 @@
   </div>
 
 <script>
+// ---------- tooltip dictionary ----------
+// Hover-подсказки на топбаре: ключ — id-обёртки (label) или id select-а
+// для общего описания control-а; per-option и per-feature словари ниже.
+// Тумблер «💡 подсказки» отключает их через body.tooltips-off.
+const TIPS = {
+  controls: {
+    layer: 'Способ показа данных на карте.\n\n«Hex aggregate» — карта разбивается на шестиугольники одинакового размера (сетка H3), и в каждом считается агрегат по объектам внутри (медиана цены, среднее расстояние и т.п.). Удобно искать пространственные паттерны и зоны переоценки/недооценки.\n\n«Object scatter» — каждый объект показан отдельно: точкой или полигоном с реальной геометрией здания/участка. Удобно смотреть конкретные объекты и их признаки.',
+    asset_class: 'Тип недвижимости. Влияет и на источник данных, и на обученную модель — для каждого класса своя.\n\nВ режиме «Object scatter» нельзя выбрать «all» — точки объектов привязаны к классу, а у каждого класса свой набор признаков.',
+    hex_feature: 'Какой именно показатель усредняется/медианится по гексу и кодируется цветом.\n\nГруппы признаков:\n• «count» — количество объектов в гексе.\n• «median_target / pred / residual» — оценка стоимости и качества модели.\n• «mean_levels / flats / area / year_built / age» — описание самих объектов.\n• «mean_dist_to_*» — среднее расстояние до ближайших значимых объектов (метро, школа, парк, ж/д…).\n• «*_share_500m» — доля площади (вода, парк, лес, промзона…) в буфере 500 м.\n• «*_within_500m / count_*» — число POI в окрестности.\n• «dominant_*» — категориальный признак (район/округ/населённый пункт).',
+    hex_resolution: 'Размер шестиугольника H3. Чем выше номер — тем мельче ячейки.\n\n• 7 (≈5 км²) — район города/пригород целиком.\n• 8 (≈0.7 км²) — несколько кварталов, дефолт.\n• 9 (≈0.1 км²) — один-два квартала.\n• 10 (≈15 000 м²) — отдельные дворы.\n\nНа мелких разрешениях ячейки с малым числом объектов становятся шумными и могут быть пустыми.',
+    object_mode: 'Чем раскрашивать отдельные объекты в режиме «Object scatter».\n\nГруппа «prediction» — посмотреть, как модель работает: фактическая цена, прогноз, ошибка, разбиение на фолды.\n\nГруппа «features» — посмотреть распределение конкретного признака объекта (площадь, этажность, расстояние до школы и т.п.) — то же, что для гексов, но без агрегирования.',
+    model: 'Какой моделью оценивать стоимость и считать ошибку.\n\nВ системе обучены 4 модели разной природы — от простой линейной (для baseline) до CatBoost (максимальная точность, но «чёрный ящик»). Выбор модели меняет: out-of-fold прогноз (y_pred_oof), остаток (residual) и медианные агрегаты прогноза/остатка по гексам.\n\nИспользуйте: для проверки качества → CatBoost; для понимания вклада признаков → EBM или grey_tree.',
+    scale: 'Как числовое значение признака переводится в цвет.\n\n• «linear (p2–p98)» — линейная шкала, обрезанная по 2-му и 98-му перцентилям. Выбросы не «съедают» всю цветовую гамму. Дефолт.\n• «log» — логарифмическая шкала от min до max. Полезна, когда значения растянуты на несколько порядков (цены, расстояния).\n• «linear» — простой линейный мап от min до max. Чувствителен к выбросам, но точно отражает шкалу.',
+    basemap: 'Подложка под слоем данных.\n\n• «OSM» — карта OpenStreetMap (улицы, здания, ориентиры).\n• «off» — прозрачный фон, виден только слой данных. Удобно для скриншотов и презентаций.',
+  },
+  options: {
+    // layer
+    hex: 'Карта разбита на одинаковые шестиугольники H3. В каждом — агрегат по объектам внутри (медиана / среднее / счёт).',
+    object: 'Каждый объект показан отдельно: точкой или полигоном с реальной геометрией. Цвет — выбранный признак или прогноз.',
+    // asset_class
+    all: 'Объединение всех классов в одну карту. Доступно только в режиме hex (для object scatter нужен конкретный класс).',
+    apartment: 'Квартиры в многоквартирных домах. Самый массовый класс — больше всего данных и наиболее точная модель.',
+    house: 'Индивидуальные жилые дома (ИЖС): частные коттеджи, таунхаусы.',
+    commercial: 'Коммерческая недвижимость: офисы, торговые помещения, склады, отдельные коммерческие здания.',
+    landplot: 'Земельные участки без капитальных строений (или где постройки не учитываются).',
+    // hex_resolution
+    7: 'Крупные гексы по ~5 км². Обзорный масштаб — район города или пригород целиком. Хорошо видны крупные градиенты, мелкая структура теряется.',
+    8: 'Средние гексы по ~0.7 км². Дефолт — компромисс между детальностью и устойчивостью статистики (в каждом гексе достаточно объектов).',
+    9: 'Мелкие гексы по ~0.1 км². Уровень одного-двух кварталов. Лучше видно микрорайонную структуру, но в малонаселённых местах статистика шумная.',
+    10: 'Самые мелкие гексы по ~15 000 м² (≈100×150 м). Уровень отдельных дворов. Многие гексы будут пустыми, медианы по 1–2 объектам нерепрезентативны.',
+    // object_mode core
+    y_true: 'Реальная цена ₽/м² из ЕГРН для каждого объекта. То, чему модель училась соответствовать.',
+    y_pred_oof: 'Прогноз модели «out-of-fold»: для каждого объекта берётся прогноз модели, обученной на данных без него (честная оценка обобщающей способности).',
+    residual: 'Ошибка модели: y_pred − y_true. Палитра расходящаяся, белый — нулевая ошибка, синий — модель недооценила объект, красный — переоценила. Помогает увидеть систематические смещения по районам.',
+    fold_id: 'Номер фолда из cross-validation: данные пространственно разбиты на N групп, каждая группа по очереди была валидационной. Раскраска показывает, как именно разбита карта.',
+    // model
+    catboost: 'CatBoost — градиентный бустинг над деревьями. Самая точная модель в наборе, но интерпретируется тяжело — «чёрный ящик». Используйте для оценки качества и для production-прогноза.',
+    ebm: 'Explainable Boosting Machine — аддитивная модель: вклад каждого признака можно показать отдельно, как в обобщённой линейной модели. Чуть менее точна, чем CatBoost, но полностью интерпретируема — видно, на сколько ₽/м² каждый признак двигает прогноз.',
+    grey_tree: 'Дерево решений с монотонными ограничениями (например, цена не убывает с площадью). Компромисс: интерпретируется лучше CatBoost, но точнее, чем EBM на сложных взаимодействиях.',
+    naive_linear: 'Простая линейная регрессия по основным признакам. Никакой не магии — точка отсчёта, чтобы понять, насколько выигрывают сложные модели по сравнению с базовым «здравым смыслом».',
+    // scale
+    p98: 'Линейная шкала, отсечённая по 2-му и 98-му перцентилю. Самые крайние 2% значений с каждой стороны клиппируются — выбросы не «съедают» цветовую гамму. Дефолт; работает для большинства признаков.',
+    log: 'Логарифмическая шкала от min до max. Полезна, когда значения растянуты на несколько порядков — например, цены ₽/м² от 5 000 до 500 000 или расстояния до метро от 50 м до 50 км.',
+    linear: 'Простая линейная шкала от минимума до максимума без обрезки. Точно отражает реальные значения, но единичный сильный выброс может «задавить» весь градиент в один цвет.',
+    // basemap
+    osm: 'Стандартная подложка OpenStreetMap: улицы, здания, метро, водоёмы, подписи.',
+    off: 'Без подложки — прозрачный тёмный фон, виден только слой данных. Удобно для презентаций и сравнения слоёв друг с другом.',
+  },
+  // Per-feature descriptions for the dynamic dropdowns. Generic
+  // patterns below cover the rest by suffix.
+  features: {
+    count: 'Сколько объектов попало в этот гекс. Косвенный индикатор плотности застройки выбранного класса. В пустых гексах остальные показатели смотреть бессмысленно.',
+    median_target_rub_per_m2: 'Медианная цена ₽/м² (из ЕГРН) среди объектов гекса. Главный показатель «средней стоимости в районе». Медиана, а не среднее, чтобы один дорогой объект не искажал картину.',
+    median_pred_oof_rub_per_m2: 'Медианный прогноз выбранной модели по объектам гекса. Сравните с median_target_rub_per_m2, чтобы увидеть, где модель в среднем завышает или занижает цену.',
+    median_residual_rub_per_m2: 'Медианный остаток (прогноз − факт) по гексу. Положительное значение — модель в среднем переоценивает район, отрицательное — недооценивает. Чисто диагностический слой: ноль здесь — идеал.',
+    mean_levels: 'Средняя этажность зданий в гексе. Низкая (1–3) — частный сектор, высокая (15+) — современные жилые комплексы.',
+    mean_flats: 'Среднее число квартир на здание в гексе. Маркер крупности жилых комплексов.',
+    mean_area_m2: 'Средняя площадь объекта (квартиры / дома / участка / помещения) в гексе.',
+    mean_year_built: 'Средний год постройки зданий в гексе. Помогает увидеть «возраст» района: довоенная застройка, послевоенная, новостройки.',
+    mean_age_years: 'Средний возраст зданий в гексе (на текущий год). То же, что mean_year_built, но в количестве лет — иногда удобнее интерпретировать.',
+    area_m2: 'Площадь конкретного объекта, м².',
+    levels: 'Число этажей в здании.',
+    flats: 'Число квартир в доме (для apartment-объектов).',
+    year_built: 'Год постройки здания.',
+    age_years: 'Возраст здания на текущий год.',
+    mean_road_length_500m: 'Сумма длин всех дорог (любого класса) в радиусе 500 м от объекта, усреднённая по гексу. Прокси для транспортной связности района.',
+    road_length_500m: 'Сумма длин всех дорог в радиусе 500 м от объекта. Чем выше — тем плотнее уличная сеть вокруг.',
+  },
+  patterns: [
+    [/^(mean_)?dist_to_(.+?)_m$/, (m) => {
+      const head = `Расстояние до ближайшего объекта «${humanPoiRu(m[2])}», в метрах.`;
+      const useFor = ` ${interpretDistanceRu(m[2])}`;
+      const agg = m[1] ? ' Усреднено по всем объектам внутри гекса.' : '';
+      return head + useFor + agg;
+    }],
+    [/^(mean_)?dist_metro_m$/, (m) => {
+      const base = 'Расстояние до ближайшей станции метро, в метрах. Один из самых сильных факторов цены в крупных городах: близость к метро поднимает стоимость.';
+      return base + (m[1] ? ' Усреднено по объектам гекса.' : '');
+    }],
+    [/^(mean_)?dist_entrance_m$/, (m) => {
+      const base = 'Расстояние до ближайшего входа в метро, в метрах. Уточнение dist_metro_m: важно реальное пешее расстояние до входа, а не до центра станции.';
+      return base + (m[1] ? ' Усреднено по объектам гекса.' : '');
+    }],
+    [/^(mean_)?(.+?)_share_(\d+)m$/, (m) => {
+      const what = humanPoiRu(m[2]);
+      const r = m[3];
+      const head = `Доля площади «${what}» в круге радиуса ${r} м вокруг объекта (0 — нет совсем, 1 — круг полностью покрыт).`;
+      return head + (m[1] ? ' Усреднено по объектам гекса.' : '');
+    }],
+    [/^(mean_)?(.+?)_within_(\d+)m$/, (m) => {
+      const what = humanPoiRu(m[2]);
+      const r = m[3];
+      const head = `Сколько объектов «${what}» попадает в круг радиуса ${r} м вокруг объекта.`;
+      return head + (m[1] ? ' Усреднено по объектам гекса.' : '');
+    }],
+    [/^(mean_)?count_(.+?)_(\d+)(km|m)$/, (m) => {
+      const what = humanPoiRu(m[2]);
+      const head = `Сколько объектов «${what}» в радиусе ${m[3]} ${m[4]} вокруг объекта.`;
+      return head + (m[1] ? ' Усреднено по объектам гекса.' : '');
+    }],
+    [/^dominant_(.+)$/, (m) => `Доминирующее значение административного признака «${m[1].replace(/_/g, ' ')}» в гексе. Категориальный признак — раскраска по дискретным значениям, а не по числовой шкале.`],
+  ],
+};
+
+// Тонкая интерпретация по типу POI: для каких — близость удорожает,
+// для каких — обесценивает (используется в описаниях dist_to_*).
+function interpretDistanceRu(token) {
+  const positive = new Set(['park', 'forest', 'water', 'school', 'kindergarten', 'clinic', 'hospital', 'pharmacy', 'supermarket', 'cafe', 'restaurant', 'bus_stop', 'tram_stop', 'railway_station']);
+  const negative = new Set(['industrial', 'cemetery', 'landfill', 'powerline', 'railway']);
+  if (positive.has(token)) return 'Чем меньше расстояние — тем привлекательнее локация (положительный фактор цены).';
+  if (negative.has(token)) return 'Чем меньше расстояние — тем сильнее негативный фактор (промзона / шум / экология): обычно снижает цену.';
+  return '';
+}
+
+function humanPoiRu(token) {
+  const map = {
+    water: 'водоём', park: 'парк', forest: 'лес',
+    industrial: 'промзона', cemetery: 'кладбище', landfill: 'свалка',
+    powerline: 'ЛЭП', railway: 'ж/д', railway_station: 'ж/д станция',
+    school: 'школа', kindergarten: 'детсад',
+    clinic: 'поликлиника', hospital: 'больница', pharmacy: 'аптека',
+    supermarket: 'супермаркет', cafe: 'кафе', restaurant: 'ресторан',
+    bus_stop: 'автобусная остановка', tram_stop: 'трамвайная остановка',
+    stations: 'станции метро', entrances: 'входы в метро',
+    apartments: 'жилые дома (квартирные)', houses: 'ИЖС',
+    commercial: 'коммерческие объекты',
+  };
+  return map[token] || token.replace(/_/g, ' ');
+}
+
+function describeFeature(name) {
+  if (TIPS.features[name]) return TIPS.features[name];
+  for (const [re, fn] of TIPS.patterns) {
+    const m = name.match(re);
+    if (m) return fn(m);
+  }
+  return null;
+}
+
+function applyStaticTooltips() {
+  // Top-bar control labels — wrap a <select> with the same id;
+  // the label is the closest container to attach data-tip to.
+  for (const [selectId, tip] of Object.entries(TIPS.controls)) {
+    const sel = document.getElementById(selectId);
+    if (!sel) continue;
+    const host = sel.closest('label') || sel;
+    host.setAttribute('data-tip', tip);
+  }
+  // Per-option titles (browser native — visible in open dropdown).
+  document.querySelectorAll('.topbar option').forEach((opt) => {
+    const tip = TIPS.options[opt.value];
+    if (tip) opt.title = tip;
+  });
+}
+
+function applyFeatureOptionTooltips() {
+  // Called after loadFeatureOptions — features were just appended.
+  document.querySelectorAll('#hex_feature option, #object-mode-features-group option').forEach((opt) => {
+    const tip = describeFeature(opt.value);
+    if (tip) opt.title = tip;
+  });
+}
+
+// ---------- tooltip on/off toggle ----------
+const TIPS_STORAGE_KEY = 'kadastra_tooltips_enabled';
+function tooltipsEnabled() {
+  // default ON; explicit "false" string disables.
+  return localStorage.getItem(TIPS_STORAGE_KEY) !== 'false';
+}
+function applyTooltipState() {
+  const on = tooltipsEnabled();
+  document.body.classList.toggle('tooltips-off', !on);
+  const btn = document.getElementById('tip-toggle');
+  if (btn) {
+    btn.textContent = on ? '💡 подсказки' : '💡 выкл';
+    btn.classList.toggle('off', !on);
+  }
+}
+function initTooltipToggle() {
+  const btn = document.getElementById('tip-toggle');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    const next = !tooltipsEnabled();
+    localStorage.setItem(TIPS_STORAGE_KEY, String(next));
+    applyTooltipState();
+  });
+  applyTooltipState();
+}
+
 const map = new maplibregl.Map({
   container: 'map',
   style: {
@@ -1052,7 +1266,7 @@ async function showObjectInspector(obj, assetClass) {
   // hunting through the alphabetical "All features" dump.
   const geometrySection = renderGeometrySection(detail);
   if (geometrySection) {
-    sections.push(`<h2>Geometry (ADR-0018)</h2>`);
+    sections.push(`<h2>Геометрия объекта</h2>`);
     sections.push(geometrySection);
   }
   // 4-model side-by-side (ADR-0016). One row per model: y_pred_oof,
@@ -1060,7 +1274,7 @@ async function showObjectInspector(obj, assetClass) {
   // across models (single spatial split per ADR-0016) — surface once
   // outside the table to avoid noise.
   if (quartet && quartet.models) {
-    sections.push(`<h2>Quartet comparison (ADR-0016)</h2>`);
+    sections.push(`<h2>Сравнение моделей</h2>`);
     sections.push(quartetSection(quartet, marketRef));
   }
   // Everything else — sorted alphabetically. Geometry-derived columns
@@ -1576,7 +1790,10 @@ document.getElementById('legend-color-reset').addEventListener('click', () => {
 });
 
 map.on('load', async () => {
+  applyStaticTooltips();
+  initTooltipToggle();
   await loadFeatureOptions();
+  applyFeatureOptionTooltips();
   await refresh();
 });
 </script>
