@@ -1,0 +1,93 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [dev, stage, main]
+  pull_request:
+    branches: [dev, stage, main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --frozen
+      - run: uv run pytest -x -v
+
+  deploy-stage:
+    needs: [lint, test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/stage'
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_PATH: ${{ vars.STAGE_DEPLOY_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.STAGE_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p ${{ vars.STAGE_PORT }} ${{ vars.STAGE_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Sync sources to VM
+        run: |
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key -p ${{ vars.STAGE_PORT }}" \
+            --exclude '.git' \
+            --exclude '.venv' \
+            --exclude '__pycache__' \
+            --exclude '.env' \
+            --exclude 'data' \
+            --exclude '.ruff_cache' \
+            --exclude '.pytest_cache' \
+            --exclude 'mlruns' \
+            --exclude 'site' \
+            . ${{ vars.DEPLOY_USER }}@${{ vars.STAGE_HOST }}:${{ env.DEPLOY_PATH }}/
+      - name: Generate .env on VM
+        run: |
+          ssh -i ~/.ssh/deploy_key -p ${{ vars.STAGE_PORT }} \
+            ${{ vars.DEPLOY_USER }}@${{ vars.STAGE_HOST }} \
+            "cat > ${{ env.DEPLOY_PATH }}/.env << 'ENVEOF'
+          KADASTRA_HOST_PORT=${{ vars.STAGE_INTERNAL_PORT }}
+          SERVE_HOST=0.0.0.0
+          SERVE_PORT=15777
+          PULL_DATA_ON_START=${{ vars.STAGE_PULL_DATA_ON_START }}
+          PULL_DATA_ON_START_PREFIX=Kadatastr
+          PULL_DATA_ON_START_DST=data
+          S3_ENDPOINT_URL=${{ vars.STAGE_S3_ENDPOINT_URL }}
+          S3_BUCKET=${{ vars.STAGE_S3_BUCKET }}
+          S3_ACCESS_KEY=${{ secrets.STAGE_S3_ACCESS_KEY }}
+          S3_SECRET_KEY=${{ secrets.STAGE_S3_SECRET_KEY }}
+          S3_REGION=${{ vars.STAGE_S3_REGION }}
+          S3_ADDRESSING_STYLE=${{ vars.STAGE_S3_ADDRESSING_STYLE }}
+          MLFLOW_ENABLED=false
+          ENVEOF"
+      - name: Build and start stage stack
+        run: |
+          ssh -i ~/.ssh/deploy_key -p ${{ vars.STAGE_PORT }} \
+            ${{ vars.DEPLOY_USER }}@${{ vars.STAGE_HOST }} \
+            "cd ${{ env.DEPLOY_PATH }} && \
+             docker compose -p kadastra-stage -f docker-compose.stage.yml up -d --build --remove-orphans"
+      - name: Wait for healthcheck
+        run: |
+          ssh -i ~/.ssh/deploy_key -p ${{ vars.STAGE_PORT }} \
+            ${{ vars.DEPLOY_USER }}@${{ vars.STAGE_HOST }} \
+            "for i in \$(seq 1 30); do
+               if curl -fsS http://localhost:${{ vars.STAGE_INTERNAL_PORT }}/health > /dev/null 2>&1; then
+                 echo 'Healthcheck passed'
+                 exit 0
+               fi
+               sleep 5
+             done
+             echo 'Healthcheck did not pass after 150s' >&2
+             docker compose -p kadastra-stage -f ${{ env.DEPLOY_PATH }}/docker-compose.stage.yml logs --tail=200 >&2
+             exit 1"

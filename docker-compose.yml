@@ -1,0 +1,36 @@
+networks:
+  kadastra_net:
+    name: kadastra_net
+
+services:
+  kadastra:
+    build:
+      context: .
+      target: runtime
+    ports:
+      - "${KADASTRA_HOST_PORT:-15777}:15777"
+    env_file:
+      - .env
+    environment:
+      SERVE_HOST: 0.0.0.0
+      SERVE_PORT: 15777
+    volumes:
+      # Local dev mounts the host data tree directly so changes to
+      # parquets / models / raw files don't require a rebuild. Stage
+      # uses a named volume in docker-compose.stage.yml instead.
+      - ./data:/app/data
+    networks:
+      - kadastra_net
+    restart: unless-stopped
+
+  scripts:
+    profiles: [scripts]
+    build:
+      context: .
+      target: scripts
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    networks:
+      - kadastra_net

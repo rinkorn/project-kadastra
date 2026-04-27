@@ -64,9 +64,7 @@ class Container:
     def build_s3_raw_data(self) -> S3RawData:
         s = self._settings
         if not (s.s3_bucket and s.s3_access_key and s.s3_secret_key):
-            raise RuntimeError(
-                "S3 credentials not configured: set S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY in .env"
-            )
+            raise RuntimeError("S3 credentials not configured: set S3_BUCKET, S3_ACCESS_KEY, S3_SECRET_KEY in .env")
         return S3RawData(
             bucket=s.s3_bucket,
             access_key=s.s3_access_key,
@@ -125,9 +123,7 @@ class Container:
         s = self._settings
         if s.mlflow_enabled:
             if not s.mlflow_tracking_uri:
-                raise RuntimeError(
-                    "MLFLOW_TRACKING_URI is required when MLFLOW_ENABLED=True"
-                )
+                raise RuntimeError("MLFLOW_TRACKING_URI is required when MLFLOW_ENABLED=True")
             return MLflowModelRegistry(
                 tracking_uri=s.mlflow_tracking_uri,
                 experiment_name=s.mlflow_experiment_name,
@@ -155,9 +151,7 @@ class Container:
         s = self._settings
         if s.mlflow_enabled:
             if not s.mlflow_tracking_uri:
-                raise RuntimeError(
-                    "MLFLOW_TRACKING_URI is required when MLFLOW_ENABLED=True"
-                )
+                raise RuntimeError("MLFLOW_TRACKING_URI is required when MLFLOW_ENABLED=True")
             return MLflowModelLoader(
                 tracking_uri=s.mlflow_tracking_uri,
                 experiment_name=s.mlflow_experiment_name,
@@ -195,9 +189,7 @@ class Container:
         s = self._settings
         return AssembleNspdValuationObjects(
             silver_store=ParquetNspdSilverStore(s.nspd_silver_store_path),
-            valuation_object_store=ParquetValuationObjectStore(
-                s.valuation_object_store_path
-            ),
+            valuation_object_store=ParquetValuationObjectStore(s.valuation_object_store_path),
         )
 
     def build_road_graph(self) -> RoadGraphPort:
@@ -290,9 +282,7 @@ class Container:
         return InferObjectValuation(
             model_loader=self.build_model_loader(),
             reader=ParquetValuationObjectStore(s.valuation_object_store_path),
-            prediction_store=ParquetValuationObjectStore(
-                s.object_predictions_store_path
-            ),
+            prediction_store=ParquetValuationObjectStore(s.object_predictions_store_path),
             run_name_prefix=_OBJECT_RUN_NAME_PREFIX,
         )
 
@@ -317,6 +307,11 @@ def create_app(settings: Settings) -> FastAPI:
     templates_dir = Path(__file__).parent / "web" / "templates"
 
     app = FastAPI(title="kadastra")
+
+    @app.get("/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok"}
+
     app.include_router(
         make_api_router(
             region_code=settings.region_code,

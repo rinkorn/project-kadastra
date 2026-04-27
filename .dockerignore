@@ -1,0 +1,49 @@
+# Local virtualenv — uv recreates it inside the image via `uv sync`.
+.venv
+
+# Local checkout state.
+.git
+.gitignore
+
+# Caches and dev outputs.
+__pycache__
+*.pyc
+*.pyo
+.ruff_cache
+.pytest_cache
+.mypy_cache
+.pyright_cache
+.coverage
+htmlcov
+
+# Local secrets and editor state — must not leak into image.
+.env
+.env.*
+.vscode
+.idea
+*.swp
+
+# MLflow scratch and notebooks — not needed at runtime.
+mlruns
+notebooks
+*.ipynb
+
+# Big data tree. The container either ships with an empty data/ and
+# pulls from S3 on cold-start (PULL_DATA_ON_START=true), or mounts a
+# persistent volume into /app/data — in both modes we never want the
+# host's working copy embedded in the image. The region boundary file
+# is the one exception: it's tiny, version-controlled, and read at app
+# startup before any S3 pull could complete.
+data
+!data/raw/regions
+!data/raw/regions/**
+
+# Build / docs / logs.
+build
+dist
+site
+*.log
+
+# OS noise.
+.DS_Store
+Thumbs.db

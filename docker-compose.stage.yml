@@ -1,0 +1,35 @@
+networks:
+  kadastra_net:
+    name: kadastra_net
+
+services:
+  kadastra:
+    build:
+      context: .
+      target: runtime
+    ports:
+      # Host port comes from .env (KADASTRA_HOST_PORT — set to 15778
+      # for stage to leave 15777 free for a future prod instance on
+      # the same VM). Container always listens on 15777.
+      - "${KADASTRA_HOST_PORT:-15778}:15777"
+    env_file:
+      - .env
+    environment:
+      SERVE_HOST: 0.0.0.0
+      SERVE_PORT: 15777
+    volumes:
+      # Stage uses a named volume so data survives `docker compose
+      # down`. Cold-start pulls from S3 when PULL_DATA_ON_START=true.
+      - kadastra_data:/app/data
+    networks:
+      - kadastra_net
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:15777/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+
+volumes:
+  kadastra_data:
