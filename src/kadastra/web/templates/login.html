@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>kadastra — login</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #0e1116;
+            color: #e6edf3;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        form {
+            background: #161b22;
+            padding: 32px;
+            border-radius: 8px;
+            border: 1px solid #30363d;
+            width: 320px;
+            box-shadow: 0 8px 24px rgba(0,0,0,.4);
+        }
+        h1 {
+            margin: 0 0 18px;
+            font-size: 20px;
+            font-weight: 500;
+        }
+        input[type=password] {
+            width: 100%;
+            padding: 10px 12px;
+            font-size: 14px;
+            background: #0d1117;
+            color: #e6edf3;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            box-sizing: border-box;
+            margin-bottom: 14px;
+        }
+        input[type=password]:focus {
+            outline: none;
+            border-color: #58a6ff;
+        }
+        button {
+            width: 100%;
+            padding: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            background: #238636;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        button:hover { background: #2ea043; }
+        {% if error %}
+        .err {
+            color: #f85149;
+            font-size: 13px;
+            margin-top: 12px;
+            text-align: center;
+        }
+        {% endif %}
+    </style>
+</head>
+<body>
+    <form method="post" action="/login">
+        <h1>kadastra · access token</h1>
+        <input type="password" name="token" placeholder="bearer token" required autofocus>
+        <button type="submit">войти</button>
+        {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    </form>
+</body>
+</html>

@@ -15,6 +15,7 @@ from kadastra.adapters.parquet_gold_feature_store import ParquetGoldFeatureStore
 from kadastra.adapters.parquet_nspd_silver_store import ParquetNspdSilverStore
 from kadastra.adapters.parquet_valuation_object_store import ParquetValuationObjectStore
 from kadastra.adapters.s3_raw_data import S3RawData
+from kadastra.api.auth import BearerAuthMiddleware
 from kadastra.api.routes import make_api_router
 from kadastra.config import Settings
 from kadastra.ml.train import CatBoostParams
@@ -307,6 +308,9 @@ def create_app(settings: Settings) -> FastAPI:
     templates_dir = Path(__file__).parent / "web" / "templates"
 
     app = FastAPI(title="kadastra")
+
+    if settings.auth_token:
+        app.add_middleware(BearerAuthMiddleware, token=settings.auth_token)
 
     @app.get("/health")
     def health() -> dict[str, str]:

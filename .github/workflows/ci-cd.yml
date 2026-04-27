@@ -73,6 +73,7 @@ jobs:
           S3_SECRET_KEY=${{ secrets.STAGE_S3_SECRET_KEY }}
           S3_REGION=${{ vars.STAGE_S3_REGION }}
           S3_ADDRESSING_STYLE=${{ vars.STAGE_S3_ADDRESSING_STYLE }}
+          AUTH_TOKEN=${{ secrets.STAGE_AUTH_TOKEN }}
           MLFLOW_ENABLED=false
           ENVEOF"
       - name: Build and start stage stack

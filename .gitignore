@@ -12,6 +12,7 @@ wheels/
 # Secrets and local config
 .env
 .env.local
+.local/
 
 # Data and ML artifacts. The kazan-agglomeration region boundary
 # GeoJSON (3 KB) is the one whitelisted asset under data/ — it's a

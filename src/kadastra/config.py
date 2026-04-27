@@ -176,6 +176,11 @@ class Settings(BaseSettings):
     serve_host: str = "127.0.0.1"
     serve_port: int = 15777
 
+    # Single shared bearer token; when set, BearerAuthMiddleware locks
+    # everything except /health and /login/logout. None disables auth
+    # entirely (local dev default).
+    auth_token: str | None = None
+
     # Container entrypoint: when true, sync ``s3://{bucket}/{pull_data_on_start_prefix}/``
     # into the local data root before launching uvicorn. Lets the stage VM
     # cold-start without a manual data ship — local dev keeps it false so
