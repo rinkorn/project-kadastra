@@ -8,10 +8,11 @@ services:
       context: .
       target: runtime
     ports:
-      # Host port comes from .env (KADASTRA_HOST_PORT — set to 15778
-      # for stage to leave 15777 free for a future prod instance on
-      # the same VM). Container always listens on 15777.
-      - "${KADASTRA_HOST_PORT:-15778}:15777"
+      # Stage maps host port = container port = 15777. When prod gets
+      # added to the same VM later, one of them moves to a different
+      # host port (KADASTRA_HOST_PORT in .env) — for now keep it
+      # symmetric with local dev.
+      - "${KADASTRA_HOST_PORT:-15777}:15777"
     env_file:
       - .env
     environment:

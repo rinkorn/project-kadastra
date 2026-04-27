@@ -74,7 +74,7 @@ Variables:
 - `STAGE_PORT` = `2336`
 - `STAGE_DEPLOY_PATH` = `/opt/kadastra-stage`
 - `STAGE_INTERNAL_PORT` = `15778`
-- `STAGE_PULL_DATA_ON_START` = `true` (set to `false` after first cold-start to skip the ~10 GB S3 mirror)
+- `STAGE_PULL_DATA_ON_START` = `true` — keep on. The mirror is idempotent (size-match skip), so subsequent deploys only transfer files that actually changed in S3 since the last pull. Cold-start = ~10 GB / 10–15 min; code-only redeploy = ~30 s of HEAD requests.
 - `STAGE_S3_ENDPOINT_URL`, `STAGE_S3_BUCKET`, `STAGE_S3_REGION`, `STAGE_S3_ADDRESSING_STYLE`
 
 Secrets:
