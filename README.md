@@ -20,14 +20,14 @@ docker compose up --build
 ## Branches
 
 - `dev` — active development. CI runs lint + tests on every push; no auto-deploy.
-- `stage` — auto-deploys to VM 224 (`kadastra.ohnice.synology.me`) on every push to this branch.
+- `dev-stage` — auto-deploys to VM 224 (`kadastra.ohnice.synology.me`) on every push to this branch.
 - `main` — reserved for future prod. CI runs lint + tests; no auto-deploy yet.
 
-Workflow: feature → `dev` → PR/merge → `stage` (auto-deploy) → eventually `stage` → `main` (when prod env is set up).
+Workflow: feature → `dev` → PR/merge → `dev-stage` (auto-deploy) → eventually `dev-stage` → `main` (when prod env is set up).
 
 ## Deployment
 
-CI/CD: [.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml). Push to `stage` triggers `lint → test → deploy-stage`.
+CI/CD: [.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml). Push to `dev-stage` triggers `lint → test → deploy-dev-stage`.
 
 ### Topology
 
@@ -35,7 +35,7 @@ CI/CD: [.github/workflows/ci-cd.yml](.github/workflows/ci-cd.yml). Push to `stag
 Internet ──▶ Keenetic (port-forward 2336 → 22) ──▶ Proxmox VM 224 (10.0.0.152)
                                                           │
                                                           ▼
-                                                  Docker Compose (kadastra-stage project)
+                                                  Docker Compose (kadastra-dev-stage project)
                                                           │
                                                           ▼
                                                   kadastra:15777 (container)
@@ -94,7 +94,7 @@ rsync -az --delete --exclude='.git' --exclude='.venv' --exclude='data' \
 ssh kadastra
 cd /opt/kadastra-stage
 # Edit .env (see entrypoint env vars: PULL_DATA_ON_START, S3_*, KADASTRA_HOST_PORT, ...)
-docker compose -p kadastra-stage -f docker-compose.stage.yml up -d --build
+docker compose -p kadastra-dev-stage -f docker-compose.dev-stage.yml up -d --build
 curl http://localhost:15778/health
 ```
 

@@ -16,8 +16,8 @@ services:
       SERVE_PORT: 15777
     volumes:
       # Local dev mounts the host data tree directly so changes to
-      # parquets / models / raw files don't require a rebuild. Stage
-      # uses a named volume in docker-compose.stage.yml instead.
+      # parquets / models / raw files don't require a rebuild. Dev-Stage
+      # uses a named volume in docker-compose.dev-stage.yml instead.
       - ./data:/app/data
     networks:
       - kadastra_net

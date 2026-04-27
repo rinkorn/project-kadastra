@@ -2,9 +2,9 @@ name: CI/CD
 
 on:
   push:
-    branches: [dev, stage, main]
+    branches: [dev, dev-stage, main]
   pull_request:
-    branches: [dev, stage, main]
+    branches: [dev, dev-stage, main]
 
 jobs:
   lint:
@@ -24,9 +24,9 @@ jobs:
       - run: uv sync --frozen
       - run: uv run pytest -x -v
 
-  deploy-stage:
+  deploy-dev-stage:
     needs: [lint, test]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/stage'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev-stage'
     runs-on: ubuntu-latest
     env:
       DEPLOY_PATH: ${{ vars.STAGE_DEPLOY_PATH }}
@@ -76,12 +76,12 @@ jobs:
           AUTH_TOKEN=${{ secrets.STAGE_AUTH_TOKEN }}
           MLFLOW_ENABLED=false
           ENVEOF"
-      - name: Build and start stage stack
+      - name: Build and start dev-stage stack
         run: |
           ssh -i ~/.ssh/deploy_key -p ${{ vars.STAGE_PORT }} \
             ${{ vars.DEPLOY_USER }}@${{ vars.STAGE_HOST }} \
             "cd ${{ env.DEPLOY_PATH }} && \
-             docker compose -p kadastra-stage -f docker-compose.stage.yml up -d --build --remove-orphans"
+             docker compose -p kadastra-dev-stage -f docker-compose.dev-stage.yml up -d --build --remove-orphans"
       - name: Wait for healthcheck
         run: |
           ssh -i ~/.ssh/deploy_key -p ${{ vars.STAGE_PORT }} \
@@ -94,5 +94,5 @@ jobs:
                sleep 5
              done
              echo 'Healthcheck did not pass after 150s' >&2
-             docker compose -p kadastra-stage -f ${{ env.DEPLOY_PATH }}/docker-compose.stage.yml logs --tail=200 >&2
+             docker compose -p kadastra-dev-stage -f ${{ env.DEPLOY_PATH }}/docker-compose.dev-stage.yml logs --tail=200 >&2
              exit 1"

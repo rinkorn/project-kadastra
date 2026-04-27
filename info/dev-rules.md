@@ -2,7 +2,7 @@
 
 `info/` — общая база знаний для разработчика и AI-ассистента. Не проектная документация, а внутренние договорённости: правила, архитектурные принципы, процесс.
 
-Контекст проекта, доменный стек и архитектура — в [project.md](project.md). Здесь — общее по разработке.
+Контекст проекта, доменный стек и архитектура — в [project.md](project.md). Источники данных — в [data-sources.md](data-sources.md). Архитектурные решения — в [info/decisions/](decisions/) (ADR 0001+). Здесь — общее по разработке.
 
 ## Python
 
@@ -11,58 +11,101 @@
 ## Базовый стек
 
 | Инструмент | Назначение |
-|------------|------------|
-| **uv** | Пакетный менеджер, виртуальное окружение |
-| **ruff** | Линтер + форматтер (настройки в pyproject.toml) |
+| ---------- | ---------- |
+| **uv** | Пакетный менеджер, виртуальное окружение, lock-файл `uv.lock` |
+| **ruff** | Линтер + форматтер (настройки в `pyproject.toml`) |
 | **pyright** | Type checking (strict mode) |
-| **pytest** | Тесты (pytest-asyncio при появлении async кода) |
-| **pre-commit** | Хуки перед коммитом |
+| **pytest** | Тесты (`tests/unit/`, `tests/integration/`) |
+| **pre-commit** | Хуки перед коммитом (ruff, pyright, commitizen) |
 | **structlog** | Structured logging (JSON в проде, pretty в dev) |
-| **pydantic-settings** | Типизированная конфигурация из .env |
-| **MkDocs** | Документация (Material theme, mkdocstrings) |
+| **pydantic-settings** | Типизированная конфигурация из `.env` |
+| **FastAPI** | REST API (`/api/*`) + Web UI (Jinja2, без htmx — раскраска и работа с картой целиком на клиенте) |
 
-Доменный стек (геопространство, ML, сервинг) — в [project.md](project.md).
+Доменный стек (geo / ML / визуализация) — в [project.md](project.md).
 
 ## Архитектура — Hexagonal (Ports & Adapters)
 
-Изоляция домена и use case'ов от инфраструктуры через порты и адаптеры.
+Изоляция домена и use case'ов от инфраструктуры через порты и адаптеры. Зависимости только внутрь: `adapters → ports ← usecases ← api / web`.
 
-Зависимости только внутрь: `adapters → ports ← usecases ← api / web`.
+```text
+src/kadastra/
+  domain/             ← Entities: ValuationObject, AssetClass; чистые классификаторы
+  ports/              ← Интерфейсы (Protocol):
+                        RawDataPort, CoverageReader/Store, FeatureReader/Store,
+                        GoldFeatureReader/Store, NspdSilverStore,
+                        ValuationObjectReader/Store, OofPredictionsReader,
+                        QuartetModel, ModelLoader, ModelRegistry,
+                        RoadGraph, RegionBoundary
+  adapters/           ← Реализации портов (см. таблицу ниже)
+  etl/                ← Чистые трансформации: H3, расстояния/доли в буфере,
+                        relative ЦОФ, road graph builder, синтетика target
+  ml/                 ← Модели: train, spatial K-Fold по parent H3 (ADR-0012),
+                        feature columns, quartet metrics
+  usecases/           ← Бизнес-логика: BuildRegionCoverage, BuildObjectFeatures,
+                        BuildHexAggregates, TrainObjectValuationModel,
+                        TrainQuartet, InferObjectValuation, …
+  api/
+    routes.py         ← FastAPI REST (/api/*: hex_aggregates, objects, market_reference, …)
+    auth.py           ← BearerAuthMiddleware (cookie + bearer)
+  web/
+    routes.py         ← Web UI роуты (отдают карту map.html)
+    templates/        ← Jinja2 шаблоны
+    static/           ← Vendored CSS/JS (maplibre-gl, deck.gl)
+  config.py           ← Settings (pydantic-settings, feature flags)
+  composition_root.py ← Container, create_app, выбор адаптеров по флагам
+```
 
-- **Use case** знает про **Port** (интерфейс), не про **Adapter** (реализацию).
-- **Adapter** реализует Port и инкапсулирует работу с внешним сервисом (S3, БД, MLflow и т.п.).
-- **API/Web роуты** — тонкие: парсят запрос, вызывают use case, формируют ответ.
+### Адаптеры
 
-Конкретное наполнение портов и адаптеров под kadastra — в [project.md](project.md).
+| Порт | Адаптер | Когда используется |
+| ---- | ------- | ------------------ |
+| `RawDataPort` | `S3RawData` | Всегда — boto3 c `path` или `virtual` addressing |
+| `CoverageReader/Store` | `ParquetCoverageStore` | Всегда — гексы покрытия региона на res 7–11 |
+| `FeatureReader/Store` | `ParquetFeatureStore` | Всегда — per-hex признаки места (Слой 1) |
+| `GoldFeatureReader/Store` | `ParquetGoldFeatureStore` | Всегда — per-hex gold-таблица для синтетики target |
+| `NspdSilverStore` | `ParquetNspdSilverStore` | Всегда — отнормализованные NSPD-объекты |
+| `ValuationObjectReader/Store` | `ParquetValuationObjectStore` | Всегда — feature matrix объектов |
+| `OofPredictionsReader` | `LocalOofPredictionsReader` | Всегда — OOF-предсказания квартета |
+| `QuartetModel` | `CatBoostQuartetModel`, `EbmQuartetModel`, `GreyTreeQuartetModel`, `NaiveLinearQuartetModel` | Один экземпляр на модель в квартете (ADR-0016) |
+| `ModelRegistry` | `MlflowModelRegistry` | `mlflow_enabled=True` |
+| `ModelRegistry` | `LocalModelRegistry` | `mlflow_enabled=False` (дефолт) |
+| `ModelLoader` | `MlflowModelLoader` / `LocalModelLoader` | По тому же флагу |
+| `RoadGraph` | `NetworkxRoadGraph` | Всегда (по pre-built `silver/road_graph/edges.parquet`) |
+| `RegionBoundary` | `LocalGeoJsonRegionBoundary` | Всегда (boundary GeoJSON в `data/raw/regions/`) |
+
+API-роуты тонкие: парсят запрос, вызывают use case, формируют ответ. Никакой бизнес-логики в `routes.py`.
 
 ### Feature flags
 
-Включение/выключение компонентов через `Settings` (pydantic-settings).
-При отключённом компоненте его настройки не обязательны (Optional).
-`Container` в `composition_root.py` выбирает адаптеры на основе флагов.
-Дефолт флага — `True` для backward compatibility, `False` для новых опциональных интеграций.
+Включение/выключение компонентов через `Settings` ([src/kadastra/config.py](../src/kadastra/config.py)). При отключённом компоненте его настройки не обязательны. `Container` в [composition_root.py](../src/kadastra/composition_root.py) выбирает адаптеры на основе флагов.
+
+| Флаг / поле | По умолчанию | Что контролирует |
+| ----------- | ------------ | ---------------- |
+| `auth_token` | `None` | `None` — auth выключен; задан — `BearerAuthMiddleware` ставится поверх всего, кроме `/health`, `/login`, `/logout`, `/favicon.ico` |
+| `mlflow_enabled` | `False` | MLflow vs локальный реестр моделей (диск) |
+| `pull_data_on_start` | `False` | На старте контейнера фоном пуллить `s3://$S3_BUCKET/Kadatastr/{gold,models,silver}/` в `/app/data` |
+| `quartet_parallel_folds` | `True` | Спатиальные фолды квартета фитятся параллельно (joblib) |
+| `quartet_skip_final_simplifier_fits` | `True` | Пропускать full-data refit EBM/Grey/Naive (никто их `*_model.pkl` не читает; OOF достаточно) |
 
 ## Dependency Injection
 
 Без фреймворка. Constructor injection + composition root.
 
 - Use case получает порты через `__init__`.
-- Сборка всех зависимостей — в одном месте (`composition_root.py`, класс `Container`).
+- Сборка всех зависимостей — в одном месте ([composition_root.py](../src/kadastra/composition_root.py), класс `Container`).
 - FastAPI роутеры создаются фабричными функциями, принимающими use cases.
 
 ## Конфигурация
 
-- **pydantic-settings** — все настройки типизированы.
-- Обязательные поля — для компонентов, которые включены всегда.
-- Optional — для компонентов под feature flag (обязательны когда флаг `=True`).
+- **pydantic-settings** — все настройки типизированы в [Settings](../src/kadastra/config.py).
+- Обязательные поля — для компонентов, которые включены всегда (S3, пути к store'ам, region settings).
+- Optional — для компонентов под флаг (MLflow, auth).
 - **.env** обязателен для запуска (даже локально).
 - **.env.example** — в репозитории, **.env** — в `.gitignore`.
 
 ## Type Hints
 
-Обязательны. Проверяются pyright в strict mode.
-Все функции, методы, аргументы, возвращаемые значения — с типами.
-Для DataFrame'ов на границах модулей — типизация через схемы (pandera) или явные dataclass-обёртки.
+Обязательны. Проверяются pyright в strict mode. Все функции, методы, аргументы, возвращаемые значения — с типами. На границах модулей DataFrame'ы — типизированные обёртки или явные схемы (контракты Слой1↔Слой2 в `etl/hex_aggregation.py`, например).
 
 ## Качество кода — SOLID и best practices
 
@@ -70,8 +113,8 @@
 
 - Соблюдать SOLID. Никаких хаков, обходных путей и «быстрых» решений.
 - Если есть правильный способ и простой способ — выбирать правильный, даже если он сложнее.
-- Не срезать углы: типизированные API, явные контракты портов, корректные async/spatial-паттерны.
-- Каждое архитектурное решение должно быть обоснованным, а не «так проще написать».
+- Не срезать углы: типизированные API, явные контракты портов, корректные spatial-паттерны (UTM-перепроекция для площадных операций; haversine только для радиальных дистанций).
+- Каждое архитектурное решение должно быть обоснованным, а не «так проще написать». Существенные решения — отдельным ADR в [info/decisions/](decisions/).
 
 ## TDD
 
@@ -84,14 +127,14 @@
 3. **Реализация** — заменить `raise NotImplementedError` на рабочий код.
 4. **Коммит** — `feat: implement Foo`.
 5. **Повторять** — следующая единица.
-6. **Docs** — обновить `docs/`, `info/`.
-7. **Чистка** — pyright, pytest, mkdocs build — всё зелёное.
+6. **Docs** — обновить `info/`, при существенных решениях — новый ADR в `info/decisions/`.
+7. **Чистка** — pyright, pytest — всё зелёное.
 
 **Порядок строго соблюдать.** Стаб ≠ реализация. Реализация никогда не идёт в одном коммите с тестом.
 
 - **Unit-тесты** — бизнес-логика (use cases), domain entities, чистые трансформации на маленьких фикстурах. Fake-порты вместо реальных адаптеров.
-- **Integration-тесты** — адаптеры с реальными сервисами через testcontainers / docker compose.
-- **Data-тесты** — проверка контрактов схем (диапазоны, NaN, типы) на синтетических батчах.
+- **Integration-тесты** — адаптеры с реальными сервисами (S3, MLflow, Postgres) через testcontainers / docker compose.
+- **Data-тесты** — проверка контрактов схем (диапазоны, NaN, типы) на синтетических батчах (см. `tests/unit/test_*_features.py`).
 
 Код без тестов не мержится.
 
@@ -100,15 +143,13 @@
 ### Branching
 
 ```text
-main ← stage ← dev ← feature/xxx
+main ← dev-stage ← dev ← feature/xxx
 ```
 
-- **main** — production. Прямые коммиты запрещены. Мерж только через PR из stage.
-- **stage** — staging. Прямые коммиты запрещены. Мерж только через PR из dev.
-- **dev** — интеграционная. Прямые коммиты запрещены. Мерж только из feature-веток.
+- **main** — production. Прямые коммиты запрещены. Мерж только через PR из dev-stage. Push в main → CI (lint+test). Автодеплой prod ещё не подключён — сейчас только dev-stage задеплоен на VM.
+- **dev-stage** — staging. Прямые коммиты допускаются для инфра-фиксов; для feature-работы — мерж из dev. **Push в dev-stage → deploy-dev-stage** (rsync + .env + `docker compose up -d --build` на VM).
+- **dev** — интеграционная. Прямые коммиты запрещены. Мерж только из feature-веток. Push в dev → CI (lint+test).
 - **feature/xxx** — ветки под задачу, создаются от dev. **НЕ удаляются после merge** без явной просьбы.
-
-> На MVP пока живём в `main` локально. Полный flow поднимаем когда появится удалёнка и CI.
 
 **Именование веток:** название должно конкретно описывать задачу.
 
@@ -121,7 +162,7 @@ main ← stage ← dev ← feature/xxx
 
 Ветка = одна конкретная задача. Если название можно применить к десятку разных задач — оно слишком абстрактное.
 
-**Одна ветка = фича целиком.** Тесты, код, обновления docs/ и info/ — всё в одной feature-ветке.
+**Одна ветка = фича целиком.** Тесты, код, обновления `info/` и ADR — всё в одной feature-ветке.
 
 **Коммитить постоянно.** Написал файл → сразу коммит. Не писать 2+ файла перед коммитом. Не стэшить и откладывать.
 
@@ -163,28 +204,84 @@ Breaking changes: `feat!:` или `BREAKING CHANGE:` в footer → MAJOR.
 
 ## CI/CD
 
-> **TBD** — пока нет удалённого репо и сервера. Поднимаем когда будут готовы окружения.
+GitHub Actions, GitHub-hosted runner (`ubuntu-latest`). Workflow: [.github/workflows/ci-cd.yml](../.github/workflows/ci-cd.yml).
 
-Ориентир: GitHub Actions, push в `dev`/`stage`/`main` → CI; push в `stage`/`main` → деплой по rsync + `docker compose up -d --build`. `.env` генерируется на сервере из GitHub Variables (не секретные) и Secrets (секретные).
+### Триггеры
+
+| Событие | CI (lint + test) | Deploy |
+| ------- | ---------------- | ------ |
+| push в `dev` | да | — |
+| push в `dev-stage` | да | **deploy-dev-stage** |
+| push в `main` | да | — (prod не подключён) |
+| PR в `dev` / `dev-stage` / `main` | да | — |
+
+> Feature-ветки сами CI не триггерят. Локальные проверки — через pre-commit hooks.
+
+### Pipeline деплоя
+
+```text
+feature/xxx → merge в dev → push в dev-stage → CI (lint+test) → deploy-dev-stage
+```
+
+Сейчас feature-ветки чаще мержат напрямую в `dev-stage` для интеграционной проверки на VM, потом — в `main` через PR. После подключения prod-деплоя поток будет строже: feature → dev → PR в dev-stage → PR в main.
+
+### Деплой механизм (deploy-dev-stage)
+
+```text
+checkout → SSH setup → rsync → generate .env on VM → docker compose up -d --build → healthcheck /health
+```
+
+1. **SSH setup** — `STAGE_SSH_KEY` записывается в `~/.ssh/deploy_key`, `ssh-keyscan` в `known_hosts`.
+2. **rsync** — синхронизация исходников на VM (исключаются `.git`, `.venv`, кэши, `mlruns`, `site`, `.env`). `data/` НЕ исключается целиком: внутри есть whitelist'нутый region-boundary GeoJSON, нужный для билда образа.
+3. **Генерация `.env`** — собирается из GitHub Variables (не секретные) и Secrets (секретные) heredoc'ом на VM.
+4. **`docker compose up -d --build --remove-orphans`** на `docker-compose.dev-stage.yml` (project name `kadastra-dev-stage`).
+5. **Healthcheck** — 30 попыток с 5-секундным интервалом до `http://localhost:$STAGE_INTERNAL_PORT/health`. При фейле — выгружает `docker compose logs --tail=200` в stderr GHA.
+
+### Окружения
+
+| Параметр | Local | Dev-Stage | Production |
+| -------- | ----- | --------- | ---------- |
+| Хост | `127.0.0.1` | внутренняя сеть | TBD |
+| Compose | `docker-compose.yml` | `docker-compose.dev-stage.yml` (project `kadastra-dev-stage`) | TBD |
+| Том `data/` | bind mount хоста | named volume `kadastra_data` | — |
+| Cold-start data sync | вручную | `PULL_DATA_ON_START=true` (фоновый рsync с S3) | — |
+| Auth | `auth_token=None` (выключен) | `STAGE_AUTH_TOKEN` | — |
+| MLflow | opt-in (`docker-compose.mlflow.yml`) | выключен (`MLFLOW_ENABLED=false`) | — |
+
+### GitHub Variables и Secrets
+
+Префикс окружения — `STAGE_` (после подключения prod добавится `PROD_`).
+
+**Variables** (не секретные):
+`DEPLOY_USER`, `STAGE_HOST`, `STAGE_PORT` (SSH), `STAGE_DEPLOY_PATH`, `STAGE_INTERNAL_PORT`, `STAGE_PULL_DATA_ON_START`, `STAGE_S3_ENDPOINT_URL`, `STAGE_S3_BUCKET`, `STAGE_S3_REGION`, `STAGE_S3_ADDRESSING_STYLE`.
+
+**Secrets**: `STAGE_SSH_KEY`, `STAGE_S3_ACCESS_KEY`, `STAGE_S3_SECRET_KEY`, `STAGE_AUTH_TOKEN`.
 
 ## Docker
 
-> **TBD** — поднимаем когда появится сервинг или нужна локальная инфра (MinIO, PostGIS, MLflow).
+| Файл | Назначение |
+| ---- | ---------- |
+| [Dockerfile](../Dockerfile) | Multi-stage: `base` (Python 3.13-slim + system geo-libs: GDAL, GEOS, PROJ, spatialindex, osmium-tool) → `deps` (uv sync без проектного кода) → `runtime` (исходники + entrypoint) → `scripts` (тот же образ, но `ENTRYPOINT=uv run python` для запуска одиночных скриптов через профиль) |
+| [docker-compose.yml](../docker-compose.yml) | Локальная разработка. `./data` — bind mount, изменения parquet'ов / моделей видны без ребилда. Профиль `scripts` для разовых ETL-скриптов |
+| [docker-compose.dev-stage.yml](../docker-compose.dev-stage.yml) | Dev-Stage VM. `kadastra_data` — named volume (переживает `compose down`). Healthcheck на `/health` (30s/5s/5retries) |
+| [docker-compose.mlflow.yml](../docker-compose.mlflow.yml) | Опциональный стек: `mlflow-postgres` (бэкенд-стор) + MLflow tracking server. Артефакты — в `s3://$S3_BUCKET/mlflow-artifacts/`. Поднимается отдельной командой |
+| [entrypoint.sh](../entrypoint.sh) | На старте опционально (`PULL_DATA_ON_START=true`) фоном пуллит `s3://$S3_BUCKET/Kadatastr/{gold,models,silver}/` в `/app/data` (раскладка с восстановлением `gold/`/`models/`/`silver/` префиксов), затем — `scripts/serve.py`. Pull идёт фоном, чтобы `/health` отвечал в первые ~150 секунд healthcheck'а CI |
 
-Ожидаемый набор:
+## Аутентификация
 
-- `Dockerfile` — multi-stage (base → deps → runtime), uv.
-- `docker-compose.yml` — локальная dev-инфра, опциональные сервисы через profiles.
-- `docker-compose.prod.yml` — staging/prod (внешние сервисы из `.env`).
-- `docker-compose.test.yml` — интеграционные тесты (tmpfs, отдельные порты).
+`BearerAuthMiddleware` ([src/kadastra/api/auth.py](../src/kadastra/api/auth.py)) ставится поверх всего приложения, если задан `auth_token` в `Settings`.
+
+- **Bearer**: `Authorization: Bearer <token>` для API-клиентов.
+- **Cookie**: после `/login` ставится cookie с тем же токеном — браузер ходит без заголовков.
+- **Public-endpoints** (без проверки): `/health`, `/login`, `/logout`, `/favicon.ico`. Запрос на закрытый ресурс без cookie/header — редирект `302 → /login`.
+- **Локально**: `auth_token=None` (дефолт) → middleware не подключается, никакой авторизации не нужно.
+- **Dev-Stage**: токен из `STAGE_AUTH_TOKEN` инжектируется в `.env` при деплое.
 
 ## Документация
 
-MkDocs + Material for MkDocs.
-
-- Проектная документация в `docs/`.
-- Автогенерация API из docstrings (mkdocstrings).
-- Архитектурные решения — в `info/decisions/` (ADR-стиль): что решили, почему, какие альтернативы рассматривали.
+- **`info/`** — внутренняя база знаний (этот файл, [project.md](project.md), [grid-rationale.md](grid-rationale.md), [h3-primer.md](h3-primer.md), [hex-feature-layers.md](hex-feature-layers.md), [data-sources.md](data-sources.md), [nspd-api.md](nspd-api.md)).
+- **`info/decisions/`** — Architectural Decision Records (ADR), нумерованные `0001+`. Что решили, почему, какие альтернативы рассматривали. На текущий момент 0001–0025; новые добавляются для существенных архитектурных шагов.
+- **MkDocs** — пока не подключён (нет `mkdocs.yml`/`docs/`). Если когда-то понадобится наружная документация — поднимаем mkdocs Material с mkdocstrings.
 
 ---
 
@@ -195,13 +292,13 @@ MkDocs + Material for MkDocs.
 1. `uv sync`
 2. `uv run pre-commit install`
 3. `uv run pre-commit install --hook-type commit-msg`
-4. `cp .env.example .env` — заполнить (когда появится)
-5. (опц.) `docker compose up -d` — поднять инфраструктуру
+4. `cp .env.example .env` — заполнить S3-ключи (минимум для локальной разработки)
+5. (опц.) `docker compose -f docker-compose.mlflow.yml up -d` — поднять MLflow, если нужен
 6. Проверить: `uv run ruff check .`, `uv run pyright .`, `uv run pytest`
 
 ### 1. Взять задачу
 
-1. `git checkout dev && git pull` (когда появится dev)
+1. `git checkout dev && git pull`
 2. `git checkout -b feature/описание-задачи`
 
 ### 2. Цикл разработки (повторять пока задача не готова)
@@ -216,6 +313,7 @@ MkDocs + Material for MkDocs.
 
 1. Реализация чтобы тест прошёл.
 2. Новая зависимость: `uv add пакет`.
+3. Существенное архитектурное решение → добавить ADR в `info/decisions/`.
 
 **2c.** Проверить всё
 
@@ -235,17 +333,21 @@ MkDocs + Material for MkDocs.
 ### 3. Завершить задачу
 
 1. `uv run pytest` — все тесты проходят.
-2. `uv run mkdocs build --strict` — документация собирается.
-3. **Ждать подтверждения** перед мержем.
-4. `git checkout dev && git pull && git merge feature/xxx --no-ff && git push`.
+2. **Ждать подтверждения** перед мержем.
+3. `git checkout dev && git pull && git merge feature/xxx --no-ff && git push`.
 
 ### 4. Релиз
 
 ```text
-dev → PR → stage (deploy-stage) → PR → main (deploy-prod)
+dev → merge в dev-stage → push в dev-stage → CI → deploy-dev-stage → проверка на VM
+                        ↓
+                      (после prod-подключения) PR dev-stage → main → deploy-prod
 ```
 
-(когда появится CI/CD)
+1. Слить feature-ветку в `dev` (через PR или локальный `merge --no-ff`).
+2. Влить `dev → dev-stage`, запушить — CI прогонит lint+test, при успехе deploy-dev-stage задеплоит на VM.
+3. Проверить вручную на dev-stage.
+4. (когда подключим prod) PR `dev-stage → main` — deploy-prod бампит версию через PSR, генерирует tag.
 
 ---
 
@@ -268,29 +370,31 @@ dev → PR → stage (deploy-stage) → PR → main (deploy-prod)
 - `uv add --group dev пакет` — dev
 - Коммитить и `pyproject.toml`, и `uv.lock`
 
-### MkDocs
+### Docker (команды)
 
-- `uv run mkdocs serve` — предпросмотр на <http://127.0.0.1:8000>
-- `uv run mkdocs build --strict`
+- `docker compose up -d` — локальное приложение
+- `docker compose --profile scripts run scripts <script.py>` — одноразовый ETL-скрипт
+- `docker compose -f docker-compose.mlflow.yml up -d` — MLflow стек
+- `docker compose -f docker-compose.dev-stage.yml up -d --build` — dev-stage стек локально (отладка деплоя)
+- `docker compose down` — остановить
 
-### Docker (когда появится)
+### CI
 
-- `docker compose up -d` — минимальный режим
-- `docker compose --profile postgis --profile mlflow up -d` — полная dev-инфраструктура
-- `docker compose -f docker-compose.test.yml up -d` — тестовая инфраструктура
-- `docker compose down`
+- `gh run list --branch dev-stage --limit 5` — последние раны на dev-stage
+- `gh run watch <run_id> --exit-status` — следить за раном до завершения
 
 ---
 
 ## Чего НЕ делать
 
-- Не коммитить напрямую в main, stage или dev (когда появятся — защищены).
+- Не коммитить напрямую в `main` (защищён). В `dev-stage` — только инфра-фиксы, для feature-работы мерж из `dev`.
 - Не использовать `git add .` или `git add -A`.
 - Не добавлять Co-Authored-By в коммиты.
 - Не удалять feature-ветки после merge (`git branch -d` запрещён без явной просьбы).
 - Не пропускать хуки (`--no-verify`).
-- Не добавлять пакеты без версий в pyproject.toml (только через `uv add`).
+- Не добавлять пакеты без версий в `pyproject.toml` (только через `uv add`).
 - Не мержить feature-ветку в dev без явного подтверждения.
 - Не вносить изменения в файлы пока идёт обсуждение — ждать явного подтверждения.
+- Не пушить в `dev-stage` без необходимости — каждый push триггерит реальный деплой на VM с rebuild и `--remove-orphans`.
 
 Доменно-специфичные «нельзя» — в [project.md](project.md).
