@@ -53,10 +53,10 @@ The VM listens only on the LAN; public access is exclusively through the Synolog
 
 ```sh
 # As rinkorn:
-sudo mkdir -p /opt/kadastra-stage
-sudo chown rinkorn:rinkorn /opt/kadastra-stage
+sudo mkdir -p /opt/kadastra-dev-stage
+sudo chown rinkorn:rinkorn /opt/kadastra-dev-stage
 
-# Add the public half of STAGE_SSH_KEY (see GitHub Secrets) to:
+# Add the public half of DEV_STAGE_SSH_KEY (see GitHub Secrets) to:
 ~/.ssh/authorized_keys
 ```
 
@@ -70,17 +70,17 @@ On Synology, add a reverse-proxy entry:
 Variables:
 
 - `DEPLOY_USER` = `rinkorn`
-- `STAGE_HOST` = public hostname or IP (whatever resolves Keenetic's WAN IP)
-- `STAGE_PORT` = `2336`
-- `STAGE_DEPLOY_PATH` = `/opt/kadastra-stage`
-- `STAGE_INTERNAL_PORT` = `15778`
-- `STAGE_PULL_DATA_ON_START` = `true` — keep on. The mirror is idempotent (size-match skip), so subsequent deploys only transfer files that actually changed in S3 since the last pull. Cold-start = ~10 GB / 10–15 min; code-only redeploy = ~30 s of HEAD requests.
-- `STAGE_S3_ENDPOINT_URL`, `STAGE_S3_BUCKET`, `STAGE_S3_REGION`, `STAGE_S3_ADDRESSING_STYLE`
+- `DEV_STAGE_HOST` = public hostname or IP (whatever resolves Keenetic's WAN IP)
+- `DEV_STAGE_PORT` = `2336`
+- `DEV_STAGE_DEPLOY_PATH` = `/opt/kadastra-dev-stage`
+- `DEV_STAGE_INTERNAL_PORT` = `15777`
+- `DEV_STAGE_PULL_DATA_ON_START` = `true` — keep on. The mirror is idempotent (size-match skip), so subsequent deploys only transfer files that actually changed in S3 since the last pull. Cold-start = ~10 GB / 10–15 min; code-only redeploy = ~30 s of HEAD requests.
+- `DEV_STAGE_S3_ENDPOINT_URL`, `DEV_STAGE_S3_BUCKET`, `DEV_STAGE_S3_REGION`, `DEV_STAGE_S3_ADDRESSING_STYLE`
 
 Secrets:
 
-- `STAGE_SSH_KEY` — private key whose public counterpart sits in `rinkorn@VM224:~/.ssh/authorized_keys`
-- `STAGE_S3_ACCESS_KEY`, `STAGE_S3_SECRET_KEY`
+- `DEV_STAGE_SSH_KEY` — private key whose public counterpart sits in `rinkorn@VM224:~/.ssh/authorized_keys`
+- `DEV_STAGE_S3_ACCESS_KEY`, `DEV_STAGE_S3_SECRET_KEY`
 
 ### Manual deploy (without GitHub Actions)
 
@@ -88,11 +88,11 @@ Secrets:
 # On dev machine:
 rsync -az --delete --exclude='.git' --exclude='.venv' --exclude='data' \
     --exclude='.env' --exclude='__pycache__' \
-    -e "ssh -p 2336" ./ rinkorn@<host>:/opt/kadastra-stage/
+    -e "ssh -p 2336" ./ rinkorn@<host>:/opt/kadastra-dev-stage/
 
 # On VM:
 ssh kadastra
-cd /opt/kadastra-stage
+cd /opt/kadastra-dev-stage
 # Edit .env (see entrypoint env vars: PULL_DATA_ON_START, S3_*, KADASTRA_HOST_PORT, ...)
 docker compose -p kadastra-dev-stage -f docker-compose.dev-stage.yml up -d --build
 curl http://localhost:15778/health

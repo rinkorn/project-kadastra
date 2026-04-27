@@ -231,11 +231,11 @@ feature/xxx → merge в dev → push в dev-stage → CI (lint+test) → deploy
 checkout → SSH setup → rsync → generate .env on VM → docker compose up -d --build → healthcheck /health
 ```
 
-1. **SSH setup** — `STAGE_SSH_KEY` записывается в `~/.ssh/deploy_key`, `ssh-keyscan` в `known_hosts`.
+1. **SSH setup** — `DEV_STAGE_SSH_KEY` записывается в `~/.ssh/deploy_key`, `ssh-keyscan` в `known_hosts`.
 2. **rsync** — синхронизация исходников на VM (исключаются `.git`, `.venv`, кэши, `mlruns`, `site`, `.env`). `data/` НЕ исключается целиком: внутри есть whitelist'нутый region-boundary GeoJSON, нужный для билда образа.
 3. **Генерация `.env`** — собирается из GitHub Variables (не секретные) и Secrets (секретные) heredoc'ом на VM.
 4. **`docker compose up -d --build --remove-orphans`** на `docker-compose.dev-stage.yml` (project name `kadastra-dev-stage`).
-5. **Healthcheck** — 30 попыток с 5-секундным интервалом до `http://localhost:$STAGE_INTERNAL_PORT/health`. При фейле — выгружает `docker compose logs --tail=200` в stderr GHA.
+5. **Healthcheck** — 30 попыток с 5-секундным интервалом до `http://localhost:$DEV_STAGE_INTERNAL_PORT/health`. При фейле — выгружает `docker compose logs --tail=200` в stderr GHA.
 
 ### Окружения
 
@@ -245,17 +245,17 @@ checkout → SSH setup → rsync → generate .env on VM → docker compose up -
 | Compose | `docker-compose.yml` | `docker-compose.dev-stage.yml` (project `kadastra-dev-stage`) | TBD |
 | Том `data/` | bind mount хоста | named volume `kadastra_data` | — |
 | Cold-start data sync | вручную | `PULL_DATA_ON_START=true` (фоновый рsync с S3) | — |
-| Auth | `auth_token=None` (выключен) | `STAGE_AUTH_TOKEN` | — |
+| Auth | `auth_token=None` (выключен) | `DEV_STAGE_AUTH_TOKEN` | — |
 | MLflow | opt-in (`docker-compose.mlflow.yml`) | выключен (`MLFLOW_ENABLED=false`) | — |
 
 ### GitHub Variables и Secrets
 
-Префикс окружения — `STAGE_` (после подключения prod добавится `PROD_`).
+Префикс окружения — `DEV_STAGE_` (после подключения prod добавится `PROD_`).
 
 **Variables** (не секретные):
-`DEPLOY_USER`, `STAGE_HOST`, `STAGE_PORT` (SSH), `STAGE_DEPLOY_PATH`, `STAGE_INTERNAL_PORT`, `STAGE_PULL_DATA_ON_START`, `STAGE_S3_ENDPOINT_URL`, `STAGE_S3_BUCKET`, `STAGE_S3_REGION`, `STAGE_S3_ADDRESSING_STYLE`.
+`DEPLOY_USER`, `DEV_STAGE_HOST`, `DEV_STAGE_PORT` (SSH), `DEV_STAGE_DEPLOY_PATH`, `DEV_STAGE_INTERNAL_PORT`, `DEV_STAGE_PULL_DATA_ON_START`, `DEV_STAGE_S3_ENDPOINT_URL`, `DEV_STAGE_S3_BUCKET`, `DEV_STAGE_S3_REGION`, `DEV_STAGE_S3_ADDRESSING_STYLE`.
 
-**Secrets**: `STAGE_SSH_KEY`, `STAGE_S3_ACCESS_KEY`, `STAGE_S3_SECRET_KEY`, `STAGE_AUTH_TOKEN`.
+**Secrets**: `DEV_STAGE_SSH_KEY`, `DEV_STAGE_S3_ACCESS_KEY`, `DEV_STAGE_S3_SECRET_KEY`, `DEV_STAGE_AUTH_TOKEN`.
 
 ## Docker
 
@@ -275,7 +275,7 @@ checkout → SSH setup → rsync → generate .env on VM → docker compose up -
 - **Cookie**: после `/login` ставится cookie с тем же токеном — браузер ходит без заголовков.
 - **Public-endpoints** (без проверки): `/health`, `/login`, `/logout`, `/favicon.ico`. Запрос на закрытый ресурс без cookie/header — редирект `302 → /login`.
 - **Локально**: `auth_token=None` (дефолт) → middleware не подключается, никакой авторизации не нужно.
-- **Dev-Stage**: токен из `STAGE_AUTH_TOKEN` инжектируется в `.env` при деплое.
+- **Dev-Stage**: токен из `DEV_STAGE_AUTH_TOKEN` инжектируется в `.env` при деплое.
 
 ## Документация
 
