@@ -25,9 +25,19 @@ if [ "${PULL_DATA_ON_START:-false}" = "true" ]; then
     echo "[entrypoint] PULL_DATA_ON_START=true → background mirror s3://${S3_BUCKET}/{${PREFIXES}} → ${DATA_DST}/" >&2
     (
         for prefix in $(echo "$PREFIXES" | tr ',' ' '); do
-            echo "[entrypoint] pulling $prefix" >&2
+            # The downloader strips its `--prefix` from each S3 key when
+            # forming the local path. So if --prefix=Kadatastr/gold, key
+            # `Kadatastr/gold/hex_aggregates/...` becomes `hex_aggregates/...`
+            # under --dst — losing the `gold/` level. Restore it by mapping
+            # each prefix to its matching local subdirectory:
+            #   Kadatastr/gold → data/gold
+            #   Kadatastr/models → data/models
+            #   Kadatastr/silver → data/silver
+            relpath=${prefix#Kadatastr/}
+            sub_dst="$DATA_DST/$relpath"
+            echo "[entrypoint] pulling $prefix → $sub_dst" >&2
             .venv/bin/python scripts/download_dir_from_s3.py \
-                --prefix "$prefix" --dst "$DATA_DST" \
+                --prefix "$prefix" --dst "$sub_dst" \
                 || { echo "[entrypoint] pull FAILED for $prefix" >&2; exit 1; }
         done
         echo "[entrypoint] background data pull done" >&2
