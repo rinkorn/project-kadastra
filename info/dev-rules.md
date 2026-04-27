@@ -29,7 +29,7 @@
 
 ```text
 src/kadastra/
-  domain/             ← Entities: ValuationObject, AssetClass; чистые классификаторы
+  domain/             ← Entity AssetClass + чистые классификаторы и описания фич
   ports/              ← Интерфейсы (Protocol):
                         RawDataPort, CoverageReader/Store, FeatureReader/Store,
                         GoldFeatureReader/Store, NspdSilverStore,
