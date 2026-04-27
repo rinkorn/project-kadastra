@@ -38,11 +38,11 @@ from pathlib import Path
 import httpx
 import numpy as np
 import rasterio
+from pyproj import Transformer
 from rasterio.features import shapes as raster_shapes
 from rasterio.windows import from_bounds
 from shapely.geometry import box, mapping, shape
 from shapely.ops import transform as shapely_transform
-from pyproj import Transformer
 
 # Single 3°×3° ESA tile covers the Kazan agglomeration in full.
 # Tile naming: ``N{lat}E{lon}`` = SW corner. N54E048 → 54-57°N × 48-51°E.
@@ -122,9 +122,7 @@ def _polygonize_class(
         binary = mask.astype(np.uint8)
 
         polygons: list = []
-        for geom_dict, value in raster_shapes(
-            binary, mask=binary.astype(bool), transform=win_transform
-        ):
+        for geom_dict, value in raster_shapes(binary, mask=binary.astype(bool), transform=win_transform):
             if value != 1:
                 continue
             polygons.append(shape(geom_dict))
@@ -132,20 +130,14 @@ def _polygonize_class(
     return polygons
 
 
-def _filter_and_clip(
-    polygons: list, bbox: tuple[float, float, float, float], min_area_m2: float
-) -> list:
+def _filter_and_clip(polygons: list, bbox: tuple[float, float, float, float], min_area_m2: float) -> list:
     clip_box = box(*bbox)
     kept = []
     for poly in polygons:
         clipped = poly.intersection(clip_box)
         if clipped.is_empty:
             continue
-        for part in (
-            list(clipped.geoms)
-            if clipped.geom_type in ("MultiPolygon", "GeometryCollection")
-            else [clipped]
-        ):
+        for part in list(clipped.geoms) if clipped.geom_type in ("MultiPolygon", "GeometryCollection") else [clipped]:
             if part.geom_type != "Polygon":
                 continue
             area_m2 = _project_lonlat_to_utm(part).area
@@ -202,9 +194,7 @@ def _write_geojsonseq(polygons: list, out_path: Path, layer: str) -> int:
     return len(polygons)
 
 
-def _augment_osm(
-    osm_path: Path, esa_polygons: list, layer: str
-) -> tuple[int, int]:
+def _augment_osm(osm_path: Path, esa_polygons: list, layer: str) -> tuple[int, int]:
     """OSM smart-extract ∪ ESA. The downstream geom-distance pipeline does
     ``unary_union`` of all input geometries before building the STRtree,
     so overlapping polygons collapse naturally — no spatial dedup here.
@@ -213,8 +203,7 @@ def _augment_osm(
     of this script on the same layer) are stripped before re-writing,
     so running twice doesn't double-count."""
     osm_features = [
-        f for f in _read_geojsonseq(osm_path)
-        if not str(f.get("properties", {}).get("source", "")).startswith("esa_")
+        f for f in _read_geojsonseq(osm_path) if not str(f.get("properties", {}).get("source", "")).startswith("esa_")
     ]
     base_props = {
         **_osm_property_for_layer(layer),
@@ -244,11 +233,15 @@ def _augment_osm(
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
-        "--class-id", type=int, default=80,
+        "--class-id",
+        type=int,
+        default=80,
         help=f"ESA WorldCover class id. Common: {_KNOWN_CLASSES} (default 80=water)",
     )
     p.add_argument(
-        "--layer", type=str, default="water",
+        "--layer",
+        type=str,
+        default="water",
         help="Layer name (matches kazan-agg-{layer}.geojsonseq); default 'water'",
     )
     p.add_argument("--out-dir", type=Path, default=Path("data/raw/osm"))
@@ -273,11 +266,7 @@ def main() -> None:
     tile_path = args.cache_dir / _ESA_TILE
     _download_tile(tile_path, force=args.force)
 
-    print(
-        f"Polygonising ESA class={args.class_id} "
-        f"({_KNOWN_CLASSES.get(args.class_id, '?')}) "
-        f"bbox={_AGG_BBOX} …"
-    )
+    print(f"Polygonising ESA class={args.class_id} ({_KNOWN_CLASSES.get(args.class_id, '?')}) bbox={_AGG_BBOX} …")
     polygons = _polygonize_class(tile_path, args.class_id, _AGG_BBOX)
     print(f"  raw class polygons: {len(polygons)}")
 
@@ -291,10 +280,7 @@ def main() -> None:
 
     n_osm, n_esa = _augment_osm(osm_path, polygons, args.layer)
     size_mb = osm_path.stat().st_size / 1024 / 1024
-    print(
-        f"Overwrote {osm_path} ({size_mb:.2f} MB, "
-        f"{n_osm} OSM + {n_esa} ESA = {n_osm + n_esa} features)"
-    )
+    print(f"Overwrote {osm_path} ({size_mb:.2f} MB, {n_osm} OSM + {n_esa} ESA = {n_osm + n_esa} features)")
 
 
 if __name__ == "__main__":

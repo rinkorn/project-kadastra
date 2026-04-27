@@ -89,9 +89,7 @@ def make_api_router(
             )
         _validate_model(model)
         try:
-            data = get_hex_aggregates.execute(
-                region_code, resolution, asset_class, feature, model=model
-            )
+            data = get_hex_aggregates.execute(region_code, resolution, asset_class, feature, model=model)
         except KeyError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except FileNotFoundError as exc:
@@ -156,9 +154,7 @@ def make_api_router(
     ) -> dict[str, Any]:
         ac = _parse_asset_class(asset_class)
         _validate_model(model)
-        detail = load_inspection.get_detail(
-            region_code, ac, object_id, model=model
-        )
+        detail = load_inspection.get_detail(region_code, ac, object_id, model=model)
         if detail is None:
             raise HTTPException(
                 status_code=404,
@@ -187,7 +183,9 @@ def make_api_router(
         ac = _parse_asset_class(asset_class)
         ref_year = year if year is not None else market_reference_year
         data = get_market_reference.execute(
-            region_code=region_code, asset_class=ac.value, year=ref_year,
+            region_code=region_code,
+            asset_class=ac.value,
+            year=ref_year,
         )
         return {
             "region": region_code,
@@ -213,9 +211,7 @@ def _parse_asset_class(asset_class: str) -> AssetClass:
     try:
         return AssetClass(asset_class)
     except ValueError as exc:
-        raise HTTPException(
-            status_code=400, detail=f"unknown asset_class: {asset_class!r}"
-        ) from exc
+        raise HTTPException(status_code=400, detail=f"unknown asset_class: {asset_class!r}") from exc
 
 
 def _validate_model(model: str) -> None:

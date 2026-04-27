@@ -29,9 +29,7 @@ def test_numeric_nulls_become_nan_not_zero() -> None:
         schema={"year_built": pl.Int64, "levels": pl.Int64},
     )
 
-    X = build_object_feature_matrix(
-        df, numeric_cols=["year_built", "levels"], categorical_cols=[]
-    )
+    X = build_object_feature_matrix(df, numeric_cols=["year_built", "levels"], categorical_cols=[])
 
     # X is a (3, 2) numpy array; nulls -> NaN, not 0
     assert X.shape == (3, 2)
@@ -47,9 +45,7 @@ def test_categorical_nulls_become_sentinel_string() -> None:
         schema={"materials": pl.Utf8},
     )
 
-    X = build_object_feature_matrix(
-        df, numeric_cols=[], categorical_cols=["materials"]
-    )
+    X = build_object_feature_matrix(df, numeric_cols=[], categorical_cols=["materials"])
 
     assert X.shape == (3, 1)
     assert X[0, 0] == "Кирпичные"

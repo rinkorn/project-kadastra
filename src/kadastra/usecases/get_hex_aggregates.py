@@ -89,7 +89,11 @@ CATEGORICAL_FEATURES: tuple[str, ...] = (
     "dominant_settlement_name",
 )
 ASSET_CLASS_VALUES: tuple[str, ...] = (
-    "all", "apartment", "house", "commercial", "landplot",
+    "all",
+    "apartment",
+    "house",
+    "commercial",
+    "landplot",
 )
 
 
@@ -107,30 +111,17 @@ class GetHexAggregates:
         model: str = "catboost",
     ) -> list[dict[str, object]]:
         path = (
-            self._base_path
-            / f"region={region_code}"
-            / f"resolution={resolution}"
-            / f"model={model}"
-            / "data.parquet"
+            self._base_path / f"region={region_code}" / f"resolution={resolution}" / f"model={model}" / "data.parquet"
         )
         if not path.is_file():
             raise FileNotFoundError(
-                f"hex aggregates not built for region={region_code} "
-                f"resolution={resolution}: {path}"
+                f"hex aggregates not built for region={region_code} resolution={resolution}: {path}"
             )
         df = pl.read_parquet(path)
         if feature not in df.columns:
-            available = sorted(
-                c for c in df.columns
-                if c not in {"h3_index", "resolution", "asset_class"}
-            )
+            available = sorted(c for c in df.columns if c not in {"h3_index", "resolution", "asset_class"})
             raise KeyError(f"feature {feature!r} not in hex_aggregates; available: {available}")
 
         filtered = df.filter(pl.col("asset_class") == asset_class)
-        slim = filtered.select(
-            ["h3_index", pl.col(feature).alias("value")]
-        ).drop_nulls("value")
-        return [
-            {"hex": row["h3_index"], "value": row["value"]}
-            for row in slim.iter_rows(named=True)
-        ]
+        slim = filtered.select(["h3_index", pl.col(feature).alias("value")]).drop_nulls("value")
+        return [{"hex": row["h3_index"], "value": row["value"]} for row in slim.iter_rows(named=True)]

@@ -55,16 +55,20 @@ def _seed_hex_aggregates(settings: Settings) -> None:
     df = pl.DataFrame(
         [
             {
-                "h3_index": "8810a81015fffff", "resolution": 8,
-                "asset_class": "apartment", "count": 3,
+                "h3_index": "8810a81015fffff",
+                "resolution": 8,
+                "asset_class": "apartment",
+                "count": 3,
                 "median_target_rub_per_m2": 100_000.0,
                 "median_pred_oof_rub_per_m2": 95_000.0,
                 "median_residual_rub_per_m2": -5_000.0,
                 "dominant_intra_city_raion": "Советский",
             },
             {
-                "h3_index": "8810a81017fffff", "resolution": 8,
-                "asset_class": "apartment", "count": 1,
+                "h3_index": "8810a81017fffff",
+                "resolution": 8,
+                "asset_class": "apartment",
+                "count": 1,
                 "median_target_rub_per_m2": 80_000.0,
                 "median_pred_oof_rub_per_m2": 75_000.0,
                 "median_residual_rub_per_m2": -5_000.0,
@@ -72,8 +76,10 @@ def _seed_hex_aggregates(settings: Settings) -> None:
             },
         ],
         schema={
-            "h3_index": pl.Utf8, "resolution": pl.Int32,
-            "asset_class": pl.Utf8, "count": pl.UInt32,
+            "h3_index": pl.Utf8,
+            "resolution": pl.Int32,
+            "asset_class": pl.Utf8,
+            "count": pl.UInt32,
             "median_target_rub_per_m2": pl.Float64,
             "median_pred_oof_rub_per_m2": pl.Float64,
             "median_residual_rub_per_m2": pl.Float64,
@@ -88,15 +94,14 @@ def _seed_valuation_objects(settings: Settings) -> None:
     # WKT below is a tiny square in EPSG:3857 around lon≈49.12, lat≈55.78
     # (Kazan). After reprojection to WGS84 it must land in lon[48..50]
     # lat[55..56].
-    wkt_way1 = (
-        "POLYGON ((5468000 7530000, 5468100 7530000, "
-        "5468100 7530100, 5468000 7530100, 5468000 7530000))"
-    )
+    wkt_way1 = "POLYGON ((5468000 7530000, 5468100 7530000, 5468100 7530100, 5468000 7530100, 5468000 7530000))"
     df = pl.DataFrame(
         [
             {
-                "object_id": "way/1", "asset_class": "apartment",
-                "lat": 55.78, "lon": 49.12,
+                "object_id": "way/1",
+                "asset_class": "apartment",
+                "lat": 55.78,
+                "lon": 49.12,
                 "synthetic_target_rub_per_m2": 100_000.0,
                 "intra_city_raion": "Советский",
                 "polygon_wkt_3857": wkt_way1,
@@ -110,8 +115,10 @@ def _seed_valuation_objects(settings: Settings) -> None:
                 "polygon_n_vertices": 4,
             },
             {
-                "object_id": "way/2", "asset_class": "apartment",
-                "lat": 55.79, "lon": 49.13,
+                "object_id": "way/2",
+                "asset_class": "apartment",
+                "lat": 55.79,
+                "lon": 49.13,
                 "synthetic_target_rub_per_m2": 110_000.0,
                 "intra_city_raion": "Вахитовский",
                 "polygon_wkt_3857": None,
@@ -125,8 +132,10 @@ def _seed_valuation_objects(settings: Settings) -> None:
             },
         ],
         schema={
-            "object_id": pl.Utf8, "asset_class": pl.Utf8,
-            "lat": pl.Float64, "lon": pl.Float64,
+            "object_id": pl.Utf8,
+            "asset_class": pl.Utf8,
+            "lat": pl.Float64,
+            "lon": pl.Float64,
             "synthetic_target_rub_per_m2": pl.Float64,
             "intra_city_raion": pl.Utf8,
             "polygon_wkt_3857": pl.Utf8,
@@ -151,17 +160,29 @@ def _seed_oof_predictions(settings: Settings) -> None:
     pl.DataFrame(
         [
             {
-                "object_id": "way/1", "lat": 55.78, "lon": 49.12,
-                "fold_id": 0, "y_true": 100_000.0, "y_pred_oof": 95_000.0,
+                "object_id": "way/1",
+                "lat": 55.78,
+                "lon": 49.12,
+                "fold_id": 0,
+                "y_true": 100_000.0,
+                "y_pred_oof": 95_000.0,
             },
             {
-                "object_id": "way/2", "lat": 55.79, "lon": 49.13,
-                "fold_id": 1, "y_true": 110_000.0, "y_pred_oof": 105_000.0,
+                "object_id": "way/2",
+                "lat": 55.79,
+                "lon": 49.13,
+                "fold_id": 1,
+                "y_true": 110_000.0,
+                "y_pred_oof": 105_000.0,
             },
         ],
         schema={
-            "object_id": pl.Utf8, "lat": pl.Float64, "lon": pl.Float64,
-            "fold_id": pl.Int64, "y_true": pl.Float64, "y_pred_oof": pl.Float64,
+            "object_id": pl.Utf8,
+            "lat": pl.Float64,
+            "lon": pl.Float64,
+            "fold_id": pl.Int64,
+            "y_true": pl.Float64,
+            "y_pred_oof": pl.Float64,
         },
     ).write_parquet(run_dir / "oof_predictions.parquet")
 
@@ -173,39 +194,63 @@ def _seed_emiss(settings: Settings) -> None:
     base.mkdir(parents=True, exist_ok=True)
     rows = [
         {
-            "indicator_id": "61781", "region_okato": "92000000000",
-            "region_name": "Татарстан", "mestdom_code": "2",
-            "mestdom_name": "Центр субъекта РФ", "unit_code": "rub",
-            "unit_name": "руб/м²", "period_code": "q1", "period_name": "Q1",
-            "period_quarter": 1, "rynzhel_code": "3",
+            "indicator_id": "61781",
+            "region_okato": "92000000000",
+            "region_name": "Татарстан",
+            "mestdom_code": "2",
+            "mestdom_name": "Центр субъекта РФ",
+            "unit_code": "rub",
+            "unit_name": "руб/м²",
+            "period_code": "q1",
+            "period_name": "Q1",
+            "period_quarter": 1,
+            "rynzhel_code": "3",
             "rynzhel_name": "Вторичный рынок жилья",
-            "tipkvartir_code": "1", "tipkvartir_name": "Все типы квартир",
-            "year": 2025, "period_label": "2025-Q1",
+            "tipkvartir_code": "1",
+            "tipkvartir_name": "Все типы квартир",
+            "year": 2025,
+            "period_label": "2025-Q1",
             "value_rub_per_m2": 156_000.0,
         },
         {
-            "indicator_id": "61781", "region_okato": "92000000000",
-            "region_name": "Татарстан", "mestdom_code": "2",
-            "mestdom_name": "Центр субъекта РФ", "unit_code": "rub",
-            "unit_name": "руб/м²", "period_code": "q1", "period_name": "Q1",
-            "period_quarter": 1, "rynzhel_code": "1",
+            "indicator_id": "61781",
+            "region_okato": "92000000000",
+            "region_name": "Татарстан",
+            "mestdom_code": "2",
+            "mestdom_name": "Центр субъекта РФ",
+            "unit_code": "rub",
+            "unit_name": "руб/м²",
+            "period_code": "q1",
+            "period_name": "Q1",
+            "period_quarter": 1,
+            "rynzhel_code": "1",
             "rynzhel_name": "Первичный рынок жилья",
-            "tipkvartir_code": "1", "tipkvartir_name": "Все типы квартир",
-            "year": 2025, "period_label": "2025-Q1",
+            "tipkvartir_code": "1",
+            "tipkvartir_name": "Все типы квартир",
+            "year": 2025,
+            "period_label": "2025-Q1",
             "value_rub_per_m2": 240_000.0,
         },
     ]
     pl.DataFrame(
         rows,
         schema={
-            "indicator_id": pl.Utf8, "region_okato": pl.Utf8,
-            "region_name": pl.Utf8, "mestdom_code": pl.Utf8,
-            "mestdom_name": pl.Utf8, "unit_code": pl.Utf8,
-            "unit_name": pl.Utf8, "period_code": pl.Utf8,
-            "period_name": pl.Utf8, "period_quarter": pl.Int64,
-            "rynzhel_code": pl.Utf8, "rynzhel_name": pl.Utf8,
-            "tipkvartir_code": pl.Utf8, "tipkvartir_name": pl.Utf8,
-            "year": pl.Int64, "period_label": pl.Utf8,
+            "indicator_id": pl.Utf8,
+            "region_okato": pl.Utf8,
+            "region_name": pl.Utf8,
+            "mestdom_code": pl.Utf8,
+            "mestdom_name": pl.Utf8,
+            "unit_code": pl.Utf8,
+            "unit_name": pl.Utf8,
+            "period_code": pl.Utf8,
+            "period_name": pl.Utf8,
+            "period_quarter": pl.Int64,
+            "rynzhel_code": pl.Utf8,
+            "rynzhel_name": pl.Utf8,
+            "tipkvartir_code": pl.Utf8,
+            "tipkvartir_name": pl.Utf8,
+            "year": pl.Int64,
+            "period_label": pl.Utf8,
             "value_rub_per_m2": pl.Float64,
         },
     ).write_parquet(base / "data.parquet")
@@ -245,7 +290,8 @@ def test_hex_aggregates_categorical_feature(client: TestClient) -> None:
     response = client.get(
         "/api/hex_aggregates",
         params={
-            "resolution": 8, "asset_class": "apartment",
+            "resolution": 8,
+            "asset_class": "apartment",
             "feature": "dominant_intra_city_raion",
         },
     )
@@ -299,8 +345,10 @@ def test_hex_aggregates_rejects_unknown_model(client: TestClient) -> None:
     response = client.get(
         "/api/hex_aggregates",
         params={
-            "resolution": 8, "asset_class": "apartment",
-            "feature": "count", "model": "magic",
+            "resolution": 8,
+            "asset_class": "apartment",
+            "feature": "count",
+            "model": "magic",
         },
     )
     assert response.status_code == 400
@@ -314,8 +362,10 @@ def test_hex_aggregates_returns_404_for_missing_model_partition(
     response = client.get(
         "/api/hex_aggregates",
         params={
-            "resolution": 8, "asset_class": "apartment",
-            "feature": "count", "model": "ebm",
+            "resolution": 8,
+            "asset_class": "apartment",
+            "feature": "count",
+            "model": "ebm",
         },
     )
     assert response.status_code == 404
@@ -363,9 +413,7 @@ def test_inspection_list_emits_geometry_per_row(client: TestClient) -> None:
 
 
 def test_inspection_detail_returns_full_dict(client: TestClient) -> None:
-    response = client.get(
-        "/api/inspection/way/1", params={"asset_class": "apartment"}
-    )
+    response = client.get("/api/inspection/way/1", params={"asset_class": "apartment"})
     assert response.status_code == 200
     payload = response.json()
     detail = payload["data"]
@@ -382,9 +430,7 @@ def test_inspection_detail_emits_geometry_as_geojson_wgs84(
     feeds this directly to deck.gl PolygonLayer which expects
     [lon, lat] in degrees. The raw WKT is stripped (no need to
     ship to the browser)."""
-    response = client.get(
-        "/api/inspection/way/1", params={"asset_class": "apartment"}
-    )
+    response = client.get("/api/inspection/way/1", params={"asset_class": "apartment"})
     assert response.status_code == 200
     detail = response.json()["data"]
     geometry = detail["geometry"]
@@ -407,9 +453,7 @@ def test_inspection_detail_carries_geometry_features(
     perimeter, compactness, convexity, bbox_aspect_ratio, orientation,
     n_vertices) must reach the inspector — they are gold columns and
     surface in the side panel as a dedicated section."""
-    response = client.get(
-        "/api/inspection/way/1", params={"asset_class": "apartment"}
-    )
+    response = client.get("/api/inspection/way/1", params={"asset_class": "apartment"})
     assert response.status_code == 200
     detail = response.json()["data"]
     assert detail["polygon_area_m2"] == 10_000.0
@@ -427,9 +471,7 @@ def test_inspection_detail_geometry_features_null_when_no_polygon(
     """When the underlying object has no polygon (way/2 in fixture has
     polygon_wkt_3857=None), the 7 geometry features must surface as
     null — the UI shows '—' but doesn't crash."""
-    response = client.get(
-        "/api/inspection/way/2", params={"asset_class": "apartment"}
-    )
+    response = client.get("/api/inspection/way/2", params={"asset_class": "apartment"})
     assert response.status_code == 200
     detail = response.json()["data"]
     for field in (
@@ -450,9 +492,7 @@ def test_inspection_detail_geometry_null_when_wkt_missing(
     """When ``polygon_wkt_3857`` is null in gold (e.g. silver row had
     no geometry), the API still returns the detail card with
     ``geometry: null`` — UI must tolerate this."""
-    response = client.get(
-        "/api/inspection/way/2", params={"asset_class": "apartment"}
-    )
+    response = client.get("/api/inspection/way/2", params={"asset_class": "apartment"})
     assert response.status_code == 200
     detail = response.json()["data"]
     assert detail["geometry"] is None
@@ -461,9 +501,7 @@ def test_inspection_detail_geometry_null_when_wkt_missing(
 def test_inspection_detail_returns_404_for_unknown_object(
     client: TestClient,
 ) -> None:
-    response = client.get(
-        "/api/inspection/way/missing", params={"asset_class": "apartment"}
-    )
+    response = client.get("/api/inspection/way/missing", params={"asset_class": "apartment"})
     assert response.status_code == 404
 
 
@@ -475,9 +513,7 @@ def test_inspection_detail_quartet_returns_per_model_breakdown(
     ADR-0016 model. Test fixture seeds only catboost OOF, so ebm /
     grey_tree / naive_linear must come back as null entries — the
     UI relies on the column existing to render an empty cell."""
-    response = client.get(
-        "/api/inspection/way/1/quartet", params={"asset_class": "apartment"}
-    )
+    response = client.get("/api/inspection/way/1/quartet", params={"asset_class": "apartment"})
     assert response.status_code == 200
     payload = response.json()
     detail = payload["data"]

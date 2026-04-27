@@ -61,9 +61,7 @@ def iter_files(src: Path) -> Iterator[Path]:
             yield path
 
 
-def upload(
-    src: Path, prefix: str, *, dry_run: bool = False, content_type: str | None = None
-) -> tuple[int, int, int]:
+def upload(src: Path, prefix: str, *, dry_run: bool = False, content_type: str | None = None) -> tuple[int, int, int]:
     """Returns (uploaded, skipped, failed)."""
     settings = Settings()
     client = make_client(settings)
@@ -74,8 +72,7 @@ def upload(
     uploaded = skipped = failed = 0
     files = list(iter_files(src))
     print(
-        f"Uploading {len(files)} files from {src} → "
-        f"s3://{bucket}/{prefix}/  (endpoint={settings.s3_endpoint_url})",
+        f"Uploading {len(files)} files from {src} → s3://{bucket}/{prefix}/  (endpoint={settings.s3_endpoint_url})",
         flush=True,
     )
 
@@ -136,9 +133,7 @@ def main() -> None:
     if not args.src.is_dir():
         sys.exit(f"--src must be an existing directory; got {args.src}")
 
-    uploaded, skipped, failed = upload(
-        args.src, args.prefix, dry_run=args.dry_run, content_type=args.content_type
-    )
+    uploaded, skipped, failed = upload(args.src, args.prefix, dry_run=args.dry_run, content_type=args.content_type)
     print(
         f"\nDone. uploaded={uploaded} skipped={skipped} failed={failed}",
         flush=True,

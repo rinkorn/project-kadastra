@@ -43,16 +43,25 @@ def test_filters_to_whitelisted_typeids(tmp_path: Path) -> None:
     xml = _write(
         tmp_path,
         _param(
-            OBJECTID="100", TYPEID="8", VALUE="16:50:050701:1",
-            STARTDATE="2020-01-01", ENDDATE="2079-06-06",
+            OBJECTID="100",
+            TYPEID="8",
+            VALUE="16:50:050701:1",
+            STARTDATE="2020-01-01",
+            ENDDATE="2079-06-06",
         )
         + _param(
-            OBJECTID="100", TYPEID="5", VALUE="420011",
-            STARTDATE="2020-01-01", ENDDATE="2079-06-06",
+            OBJECTID="100",
+            TYPEID="5",
+            VALUE="420011",
+            STARTDATE="2020-01-01",
+            ENDDATE="2079-06-06",
         )
         + _param(
-            OBJECTID="200", TYPEID="8", VALUE="16:50:050701:2",
-            STARTDATE="2020-01-01", ENDDATE="2079-06-06",
+            OBJECTID="200",
+            TYPEID="8",
+            VALUE="16:50:050701:2",
+            STARTDATE="2020-01-01",
+            ENDDATE="2079-06-06",
         ),
     )
 
@@ -70,12 +79,18 @@ def test_filters_out_expired_rows(tmp_path: Path) -> None:
     xml = _write(
         tmp_path,
         _param(
-            OBJECTID="100", TYPEID="8", VALUE="OLD",
-            STARTDATE="2010-01-01", ENDDATE="2018-01-01",
+            OBJECTID="100",
+            TYPEID="8",
+            VALUE="OLD",
+            STARTDATE="2010-01-01",
+            ENDDATE="2018-01-01",
         )
         + _param(
-            OBJECTID="100", TYPEID="8", VALUE="NEW",
-            STARTDATE="2018-01-02", ENDDATE="2079-06-06",
+            OBJECTID="100",
+            TYPEID="8",
+            VALUE="NEW",
+            STARTDATE="2018-01-02",
+            ENDDATE="2079-06-06",
         ),
     )
 
@@ -91,12 +106,18 @@ def test_keeps_multiple_typeids_per_objectid(tmp_path: Path) -> None:
     xml = _write(
         tmp_path,
         _param(
-            OBJECTID="100", TYPEID="8", VALUE="16:50:050701:1",
-            STARTDATE="2020-01-01", ENDDATE="2079-06-06",
+            OBJECTID="100",
+            TYPEID="8",
+            VALUE="16:50:050701:1",
+            STARTDATE="2020-01-01",
+            ENDDATE="2079-06-06",
         )
         + _param(
-            OBJECTID="100", TYPEID="21", VALUE="92701000",
-            STARTDATE="2020-01-01", ENDDATE="2079-06-06",
+            OBJECTID="100",
+            TYPEID="21",
+            VALUE="92701000",
+            STARTDATE="2020-01-01",
+            ENDDATE="2079-06-06",
         ),
     )
 
@@ -111,8 +132,11 @@ def test_returns_typed_schema(tmp_path: Path) -> None:
     xml = _write(
         tmp_path,
         _param(
-            OBJECTID="42", TYPEID="8", VALUE="x",
-            STARTDATE="2020-01-01", ENDDATE="2079-06-06",
+            OBJECTID="42",
+            TYPEID="8",
+            VALUE="x",
+            STARTDATE="2020-01-01",
+            ENDDATE="2079-06-06",
         ),
     )
     df = parse_object_params_xml(xml, typeids={8})
@@ -139,8 +163,11 @@ def test_handles_missing_required_attrs(tmp_path: Path) -> None:
         '<PARAM TYPEID="8" VALUE="x" ENDDATE="2079-06-06"/>'
         + '<PARAM OBJECTID="100" VALUE="x" ENDDATE="2079-06-06"/>'
         + _param(
-            OBJECTID="100", TYPEID="8", VALUE="GOOD",
-            STARTDATE="2020-01-01", ENDDATE="2079-06-06",
+            OBJECTID="100",
+            TYPEID="8",
+            VALUE="GOOD",
+            STARTDATE="2020-01-01",
+            ENDDATE="2079-06-06",
         ),
     )
     df = parse_object_params_xml(xml, typeids={8})

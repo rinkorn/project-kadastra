@@ -53,12 +53,8 @@ def test_log_run_writes_params_metrics_and_model_files(tmp_path: Path, trained_m
 def test_log_run_returns_unique_id_for_consecutive_calls(tmp_path: Path, trained_model: CatBoostRegressor) -> None:
     registry = LocalModelRegistry(tmp_path / "models")
 
-    run_id_1 = registry.log_run(
-        run_name="baseline", params={}, metrics={}, model=trained_model
-    )
-    run_id_2 = registry.log_run(
-        run_name="baseline", params={}, metrics={}, model=trained_model
-    )
+    run_id_1 = registry.log_run(run_name="baseline", params={}, metrics={}, model=trained_model)
+    run_id_2 = registry.log_run(run_name="baseline", params={}, metrics={}, model=trained_model)
 
     assert run_id_1 != run_id_2
 
@@ -66,8 +62,6 @@ def test_log_run_returns_unique_id_for_consecutive_calls(tmp_path: Path, trained
 def test_log_run_id_starts_with_run_name(tmp_path: Path, trained_model: CatBoostRegressor) -> None:
     registry = LocalModelRegistry(tmp_path / "models")
 
-    run_id = registry.log_run(
-        run_name="catboost-v1", params={}, metrics={}, model=trained_model
-    )
+    run_id = registry.log_run(run_name="catboost-v1", params={}, metrics={}, model=trained_model)
 
     assert run_id.startswith("catboost-v1")

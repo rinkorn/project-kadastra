@@ -7,12 +7,16 @@ KAZAN_LAT, KAZAN_LON = 55.7887, 49.1221
 
 
 def _stations_csv() -> bytes:
-    return pl.DataFrame(
-        {
-            "lat": [KAZAN_LAT, KAZAN_LAT + 0.001],
-            "lon": [KAZAN_LON, KAZAN_LON],
-        }
-    ).write_csv().encode("utf-8")
+    return (
+        pl.DataFrame(
+            {
+                "lat": [KAZAN_LAT, KAZAN_LAT + 0.001],
+                "lon": [KAZAN_LON, KAZAN_LON],
+            }
+        )
+        .write_csv()
+        .encode("utf-8")
+    )
 
 
 def _entrances_csv() -> bytes:
@@ -68,9 +72,7 @@ def _make_usecase(
 
 
 def test_execute_reads_stations_and_entrances_from_raw_data() -> None:
-    raw_data = FakeRawData(
-        {"metro/stations.csv": _stations_csv(), "metro/entrances.csv": _entrances_csv()}
-    )
+    raw_data = FakeRawData({"metro/stations.csv": _stations_csv(), "metro/entrances.csv": _entrances_csv()})
     coverage_reader = FakeCoverageReader({8: _coverage_for_kazan(8)})
     feature_store = FakeFeatureStore()
     usecase = _make_usecase(raw_data, coverage_reader, feature_store)
@@ -82,12 +84,8 @@ def test_execute_reads_stations_and_entrances_from_raw_data() -> None:
 
 
 def test_execute_saves_one_feature_set_per_resolution() -> None:
-    raw_data = FakeRawData(
-        {"metro/stations.csv": _stations_csv(), "metro/entrances.csv": _entrances_csv()}
-    )
-    coverage_reader = FakeCoverageReader(
-        {7: _coverage_for_kazan(7), 8: _coverage_for_kazan(8)}
-    )
+    raw_data = FakeRawData({"metro/stations.csv": _stations_csv(), "metro/entrances.csv": _entrances_csv()})
+    coverage_reader = FakeCoverageReader({7: _coverage_for_kazan(7), 8: _coverage_for_kazan(8)})
     feature_store = FakeFeatureStore()
     usecase = _make_usecase(raw_data, coverage_reader, feature_store)
 
@@ -101,9 +99,7 @@ def test_execute_saves_one_feature_set_per_resolution() -> None:
 
 
 def test_execute_produces_features_with_expected_columns() -> None:
-    raw_data = FakeRawData(
-        {"metro/stations.csv": _stations_csv(), "metro/entrances.csv": _entrances_csv()}
-    )
+    raw_data = FakeRawData({"metro/stations.csv": _stations_csv(), "metro/entrances.csv": _entrances_csv()})
     coverage_reader = FakeCoverageReader({8: _coverage_for_kazan(8)})
     feature_store = FakeFeatureStore()
     usecase = _make_usecase(raw_data, coverage_reader, feature_store)
@@ -123,12 +119,8 @@ def test_execute_produces_features_with_expected_columns() -> None:
 
 
 def test_execute_does_not_re_read_csv_per_resolution() -> None:
-    raw_data = FakeRawData(
-        {"metro/stations.csv": _stations_csv(), "metro/entrances.csv": _entrances_csv()}
-    )
-    coverage_reader = FakeCoverageReader(
-        {7: _coverage_for_kazan(7), 8: _coverage_for_kazan(8)}
-    )
+    raw_data = FakeRawData({"metro/stations.csv": _stations_csv(), "metro/entrances.csv": _entrances_csv()})
+    coverage_reader = FakeCoverageReader({7: _coverage_for_kazan(7), 8: _coverage_for_kazan(8)})
     feature_store = FakeFeatureStore()
     usecase = _make_usecase(raw_data, coverage_reader, feature_store)
 

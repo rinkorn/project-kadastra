@@ -22,16 +22,12 @@ class InferValuation:
         self._run_name_prefix = run_name_prefix
 
     def execute(self, region_code: str, resolution: int, *, run_id: str | None = None) -> str:
-        resolved_run_id = run_id or self._model_loader.find_latest_run_id(
-            f"{self._run_name_prefix}{resolution}"
-        )
+        resolved_run_id = run_id or self._model_loader.find_latest_run_id(f"{self._run_name_prefix}{resolution}")
         model = self._model_loader.load(resolved_run_id)
 
         gold = self._gold_reader.load(region_code, resolution)
         feature_cols = [c for c in gold.columns if c not in _KEY_COLUMNS]
-        gold = gold.with_columns(
-            [pl.col(c).fill_null(0).cast(pl.Float64) for c in feature_cols]
-        )
+        gold = gold.with_columns([pl.col(c).fill_null(0).cast(pl.Float64) for c in feature_cols])
 
         X = gold.select(feature_cols).to_numpy().astype(np.float64)
         preds = np.asarray(model.predict(X), dtype=np.float64)

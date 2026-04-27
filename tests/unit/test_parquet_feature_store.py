@@ -30,9 +30,7 @@ def test_save_preserves_dataframe_schema_and_values(tmp_path: Path) -> None:
 
     store.save("RU-TA", 8, "metro", _features_df())
 
-    df = pl.read_parquet(
-        tmp_path / "region=RU-TA" / "feature_set=metro" / "resolution=8" / "data.parquet"
-    )
+    df = pl.read_parquet(tmp_path / "region=RU-TA" / "feature_set=metro" / "resolution=8" / "data.parquet")
     assert df.columns == ["h3_index", "resolution", "dist_metro_m", "count_stations_1km"]
     assert df["dist_metro_m"].to_list() == [10.0, 100.0]
     assert df["count_stations_1km"].to_list() == [1, 0]
@@ -46,9 +44,7 @@ def test_save_overwrites_previous_partition(tmp_path: Path) -> None:
     store.save("RU-TA", 8, "metro", df1)
     store.save("RU-TA", 8, "metro", df2)
 
-    df = pl.read_parquet(
-        tmp_path / "region=RU-TA" / "feature_set=metro" / "resolution=8" / "data.parquet"
-    )
+    df = pl.read_parquet(tmp_path / "region=RU-TA" / "feature_set=metro" / "resolution=8" / "data.parquet")
     assert df["h3_index"].to_list() == ["h_b"]
 
 

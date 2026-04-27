@@ -33,17 +33,12 @@ def main() -> None:
         "--out",
         type=Path,
         default=settings.road_graph_edges_path,
-        help=(
-            "Output parquet path (default: Settings.road_graph_edges_path)"
-        ),
+        help=("Output parquet path (default: Settings.road_graph_edges_path)"),
     )
     args = p.parse_args()
 
     if not args.src.is_file():
-        raise SystemExit(
-            f"--src does not exist: {args.src}. "
-            "Run scripts/download_walking_network.py first."
-        )
+        raise SystemExit(f"--src does not exist: {args.src}. Run scripts/download_walking_network.py first.")
 
     print(f"Reading {args.src} ...", flush=True)
     payload = json.loads(args.src.read_text(encoding="utf-8"))

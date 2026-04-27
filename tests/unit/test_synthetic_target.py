@@ -23,12 +23,8 @@ def _gold(
             "building_count_apartments": (
                 building_count_apartments if building_count_apartments is not None else [0] * n
             ),
-            "count_stations_1km": (
-                count_stations_1km if count_stations_1km is not None else [0] * n
-            ),
-            "road_length_m": (
-                road_length_m if road_length_m is not None else [0.0] * n
-            ),
+            "count_stations_1km": (count_stations_1km if count_stations_1km is not None else [0] * n),
+            "road_length_m": (road_length_m if road_length_m is not None else [0.0] * n),
         }
     )
 

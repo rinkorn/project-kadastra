@@ -22,10 +22,7 @@ def build_object_feature_matrix(
 ) -> np.ndarray:
     prepared = df.with_columns(
         [pl.col(c).cast(pl.Float64) for c in numeric_cols]
-        + [
-            pl.col(c).fill_null(MISSING_CATEGORY).cast(pl.Utf8)
-            for c in categorical_cols
-        ]
+        + [pl.col(c).fill_null(MISSING_CATEGORY).cast(pl.Utf8) for c in categorical_cols]
     )
     feature_cols = numeric_cols + categorical_cols
     if not feature_cols:

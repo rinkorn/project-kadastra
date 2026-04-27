@@ -39,9 +39,7 @@ def assemble_valuation_objects(buildings: pl.DataFrame) -> pl.DataFrame:
         ]
     ).with_columns(
         [
-            pl.col("_building_norm")
-            .replace_strict(_TAG_TO_CLASS, default=None)
-            .alias("asset_class"),
+            pl.col("_building_norm").replace_strict(_TAG_TO_CLASS, default=None).alias("asset_class"),
             (pl.col("osm_type") + "/" + pl.col("osm_id")).alias("object_id"),
             pl.col("levels").cast(pl.Int64, strict=False).alias("levels"),
             pl.col("flats").cast(pl.Int64, strict=False).alias("flats"),

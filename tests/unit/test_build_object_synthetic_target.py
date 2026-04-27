@@ -60,14 +60,10 @@ class _FakeStore:
         self._initial = dict(initial)
         self.calls: list[_StoreCall] = []
 
-    def save(
-        self, region_code: str, asset_class: AssetClass, df: pl.DataFrame
-    ) -> None:
+    def save(self, region_code: str, asset_class: AssetClass, df: pl.DataFrame) -> None:
         self.calls.append(_StoreCall(region_code, asset_class, df))
 
-    def load(
-        self, region_code: str, asset_class: AssetClass
-    ) -> pl.DataFrame:
+    def load(self, region_code: str, asset_class: AssetClass) -> pl.DataFrame:
         assert region_code == "RU-KAZAN-AGG"
         return self._initial[asset_class]
 

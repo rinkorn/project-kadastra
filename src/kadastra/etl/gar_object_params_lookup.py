@@ -30,15 +30,11 @@ _PIVOT_COLUMNS: dict[int, str] = {
 }
 
 
-def build_object_params_lookup(
-    *, houses: pl.DataFrame, steads: pl.DataFrame
-) -> pl.DataFrame:
+def build_object_params_lookup(*, houses: pl.DataFrame, steads: pl.DataFrame) -> pl.DataFrame:
     wanted_typeids = list(_PIVOT_COLUMNS.keys())
 
     def _trim(df: pl.DataFrame) -> pl.DataFrame:
-        return df.filter(pl.col("typeid").is_in(wanted_typeids)).select(
-            "objectid", "typeid", "value"
-        )
+        return df.filter(pl.col("typeid").is_in(wanted_typeids)).select("objectid", "typeid", "value")
 
     combined = pl.concat([_trim(houses), _trim(steads)], how="vertical")
     if combined.is_empty():
@@ -51,9 +47,7 @@ def build_object_params_lookup(
                 **{name: pl.Utf8 for name in _PIVOT_COLUMNS.values()},
             }
         )
-    deduped = combined.unique(
-        subset=["objectid", "typeid"], keep="first", maintain_order=True
-    )
+    deduped = combined.unique(subset=["objectid", "typeid"], keep="first", maintain_order=True)
     pivoted = deduped.pivot(
         on="typeid",
         index="objectid",
@@ -64,9 +58,7 @@ def build_object_params_lookup(
     pivoted = pivoted.rename({k: v for k, v in rename_map.items() if k in pivoted.columns})
     # Ensure all expected columns exist even if no row had that TYPEID.
     missing_columns = [
-        pl.lit(None, dtype=pl.Utf8).alias(name)
-        for name in _PIVOT_COLUMNS.values()
-        if name not in pivoted.columns
+        pl.lit(None, dtype=pl.Utf8).alias(name) for name in _PIVOT_COLUMNS.values() if name not in pivoted.columns
     ]
     if missing_columns:
         pivoted = pivoted.with_columns(missing_columns)

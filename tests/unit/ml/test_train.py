@@ -42,9 +42,7 @@ def test_train_catboost_is_deterministic_given_seed() -> None:
 def test_cross_validate_returns_per_fold_and_aggregate_metrics() -> None:
     X, y, cells = _toy_dataset(60)
 
-    result = cross_validate(
-        X, y, cells, params=_FAST_PARAMS, n_splits=3, parent_resolution=6
-    )
+    result = cross_validate(X, y, cells, params=_FAST_PARAMS, n_splits=3, parent_resolution=6)
 
     assert "fold_mae" in result and isinstance(result["fold_mae"], list)
     assert len(result["fold_mae"]) == 3  # type: ignore[arg-type]

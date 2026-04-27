@@ -43,14 +43,10 @@ def compute_relative_features(
         else:
             parents = [
                 h3.latlng_to_cell(float(la), float(lo), r)
-                for la, lo in zip(
-                    out["lat"].to_list(), out["lon"].to_list(), strict=True
-                )
+                for la, lo in zip(out["lat"].to_list(), out["lon"].to_list(), strict=True)
             ]
             out = out.with_columns(pl.Series(parent_col, parents, dtype=pl.Utf8))
-            out = out.with_columns(
-                pl.len().over(parent_col).cast(pl.UInt32).alias(count_col)
-            )
+            out = out.with_columns(pl.len().over(parent_col).cast(pl.UInt32).alias(count_col))
 
         for f in feature_columns:
             diff_col = f"{f}__rel_p{r}_diff_med"
@@ -76,14 +72,8 @@ def compute_relative_features(
             out = out.with_columns(
                 [
                     (f_expr - median_expr).alias(diff_col),
-                    pl.when(median_expr == 0)
-                    .then(None)
-                    .otherwise(f_expr / median_expr)
-                    .alias(ratio_col),
-                    pl.when(iqr_expr == 0)
-                    .then(None)
-                    .otherwise((f_expr - median_expr) / iqr_expr)
-                    .alias(z_col),
+                    pl.when(median_expr == 0).then(None).otherwise(f_expr / median_expr).alias(ratio_col),
+                    pl.when(iqr_expr == 0).then(None).otherwise((f_expr - median_expr) / iqr_expr).alias(z_col),
                 ]
             )
 

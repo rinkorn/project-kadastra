@@ -24,9 +24,7 @@ def spearman_corr(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     return float(getattr(result, "statistic"))  # noqa: B009
 
 
-def percentile_asymmetry(
-    y_true: np.ndarray, y_pred: np.ndarray
-) -> dict[str, float]:
+def percentile_asymmetry(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
     """Per-decile bias + tail-redistribution shares.
 
     Returns a dict with:
@@ -41,9 +39,7 @@ def percentile_asymmetry(
     """
     out: dict[str, float] = {}
     for p in (10, 25, 50, 75, 90):
-        out[f"p{p}_pred_minus_true"] = float(
-            np.percentile(y_pred, p) - np.percentile(y_true, p)
-        )
+        out[f"p{p}_pred_minus_true"] = float(np.percentile(y_pred, p) - np.percentile(y_true, p))
 
     bottom_threshold = float(np.percentile(y_true, 10))
     top_threshold = float(np.percentile(y_true, 90))
@@ -51,16 +47,12 @@ def percentile_asymmetry(
     top_mask = y_true >= top_threshold
 
     if bottom_mask.any():
-        out["frac_overpredicted_in_bottom_decile"] = float(
-            np.mean(y_pred[bottom_mask] > y_true[bottom_mask])
-        )
+        out["frac_overpredicted_in_bottom_decile"] = float(np.mean(y_pred[bottom_mask] > y_true[bottom_mask]))
     else:
         out["frac_overpredicted_in_bottom_decile"] = 0.0
 
     if top_mask.any():
-        out["frac_underpredicted_in_top_decile"] = float(
-            np.mean(y_pred[top_mask] < y_true[top_mask])
-        )
+        out["frac_underpredicted_in_top_decile"] = float(np.mean(y_pred[top_mask] < y_true[top_mask]))
     else:
         out["frac_underpredicted_in_top_decile"] = 0.0
 

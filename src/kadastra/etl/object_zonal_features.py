@@ -24,19 +24,14 @@ from kadastra.etl.haversine import EARTH_RADIUS_METERS
 _DEG_PER_METER_LAT = 1.0 / 111_000.0
 
 
-def _haversine_one_to_many(
-    lat: float, lon: float, lats: np.ndarray, lons: np.ndarray
-) -> np.ndarray:
+def _haversine_one_to_many(lat: float, lon: float, lats: np.ndarray, lons: np.ndarray) -> np.ndarray:
     rlat1 = math.radians(lat)
     rlon1 = math.radians(lon)
     rlat2 = np.radians(lats)
     rlon2 = np.radians(lons)
     dlat = rlat2 - rlat1
     dlon = rlon2 - rlon1
-    a = (
-        np.sin(dlat / 2) ** 2
-        + math.cos(rlat1) * np.cos(rlat2) * np.sin(dlon / 2) ** 2
-    )
+    a = np.sin(dlat / 2) ** 2 + math.cos(rlat1) * np.cos(rlat2) * np.sin(dlon / 2) ** 2
     return 2 * EARTH_RADIUS_METERS * np.arcsin(np.sqrt(a))
 
 
@@ -62,19 +57,13 @@ def compute_object_zonal_features(
 
     if n == 0:
         return objects.with_columns(
-            [
-                pl.lit(None, dtype=pl.Int64).alias(f"{layer}_within_{r}m")
-                for layer in layers
-                for r in radii_sorted
-            ]
+            [pl.lit(None, dtype=pl.Int64).alias(f"{layer}_within_{r}m") for layer in layers for r in radii_sorted]
         )
 
     obj_lats = objects["lat"].to_numpy()
     obj_lons = objects["lon"].to_numpy()
     obj_xy = np.column_stack([obj_lats, obj_lons])
-    obj_ids = (
-        objects["object_id"].to_list() if "object_id" in objects.columns else None
-    )
+    obj_ids = objects["object_id"].to_list() if "object_id" in objects.columns else None
 
     max_r = max(radii_sorted)
     ref_lat = float(obj_lats.mean())
@@ -96,11 +85,7 @@ def compute_object_zonal_features(
         layer_lats = layer_df["lat"].to_numpy()
         layer_lons = layer_df["lon"].to_numpy()
         layer_xy = np.column_stack([layer_lats, layer_lons])
-        layer_ids = (
-            layer_df["object_id"].to_list()
-            if "object_id" in layer_df.columns
-            else None
-        )
+        layer_ids = layer_df["object_id"].to_list() if "object_id" in layer_df.columns else None
 
         tree = cKDTree(layer_xy)
         candidate_idx = tree.query_ball_point(obj_xy, bbox_r)
@@ -114,9 +99,7 @@ def compute_object_zonal_features(
             cand_arr = np.asarray(cand, dtype=np.int64)
             if layer_ids is not None and obj_ids is not None:
                 cur_id = obj_ids[i]
-                keep = np.array(
-                    [layer_ids[j] != cur_id for j in cand_arr], dtype=bool
-                )
+                keep = np.array([layer_ids[j] != cur_id for j in cand_arr], dtype=bool)
                 cand_arr = cand_arr[keep]
                 if cand_arr.size == 0:
                     continue
@@ -130,8 +113,6 @@ def compute_object_zonal_features(
                 per_radius[r][i] = int((dists < r).sum())
 
         for r in radii_sorted:
-            new_columns.append(
-                pl.Series(f"{layer_name}_within_{r}m", per_radius[r])
-            )
+            new_columns.append(pl.Series(f"{layer_name}_within_{r}m", per_radius[r]))
 
     return objects.with_columns(new_columns)

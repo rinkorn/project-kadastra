@@ -124,9 +124,7 @@ def test_parse_building_centroid_is_in_kazan() -> None:
 
 
 def test_parse_building_with_apartment_purpose() -> None:
-    row = parse_nspd_building_feature(
-        _building_feature(purpose="Многоквартирный дом")
-    )
+    row = parse_nspd_building_feature(_building_feature(purpose="Многоквартирный дом"))
     assert row["asset_class"] == "apartment"
 
 

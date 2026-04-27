@@ -140,9 +140,7 @@ def test_predictions_match_direct_model_predict() -> None:
     expected = model.predict(gold.select(feature_cols).to_numpy().astype(np.float64))
 
     saved_df = store.saved[0][2].sort("h3_index")
-    expected_df = (
-        gold.select(["h3_index"]).with_columns(pl.Series("predicted_value", expected)).sort("h3_index")
-    )
+    expected_df = gold.select(["h3_index"]).with_columns(pl.Series("predicted_value", expected)).sort("h3_index")
     np.testing.assert_allclose(
         saved_df["predicted_value"].to_numpy(),
         expected_df["predicted_value"].to_numpy(),

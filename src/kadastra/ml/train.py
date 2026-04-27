@@ -64,9 +64,7 @@ def cross_validate(
     every row is in exactly one validation fold (the standard k-fold
     case for ``spatial_kfold_split``).
     """
-    folds = spatial_kfold_split(
-        h3_indices, n_splits=n_splits, parent_resolution=parent_resolution, seed=params.seed
-    )
+    folds = spatial_kfold_split(h3_indices, n_splits=n_splits, parent_resolution=parent_resolution, seed=params.seed)
 
     fold_mae: list[float] = []
     fold_rmse: list[float] = []
@@ -76,9 +74,7 @@ def cross_validate(
     oof_y_pred: list[float] = []
 
     for fold_id, (train_idx, val_idx) in enumerate(folds):
-        model = train_catboost(
-            X[train_idx], y[train_idx], params, cat_features=cat_features
-        )
+        model = train_catboost(X[train_idx], y[train_idx], params, cat_features=cat_features)
         preds = np.asarray(model.predict(X[val_idx]), dtype=np.float64)
         m = regression_metrics(y[val_idx], preds)
         fold_mae.append(m["mae"])

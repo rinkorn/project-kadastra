@@ -120,9 +120,7 @@ def test_run_name_includes_asset_class() -> None:
 
 
 def test_logs_metrics_and_feature_columns_in_params() -> None:
-    reader = _FakeReader(
-        {AssetClass.COMMERCIAL: _featured(AssetClass.COMMERCIAL, 60)}
-    )
+    reader = _FakeReader({AssetClass.COMMERCIAL: _featured(AssetClass.COMMERCIAL, 60)})
     registry = _FakeRegistry()
 
     _usecase(reader, registry).execute("RU-KAZAN-AGG", AssetClass.COMMERCIAL)
@@ -183,9 +181,7 @@ def test_excludes_cost_value_rub_as_target_leak() -> None:
     is derived; passing it as a feature would let the model trivially recover the
     target. Must be excluded even though it's numeric.
     """
-    df = _featured(AssetClass.APARTMENT, 60).with_columns(
-        pl.lit(5_000_000.0).alias("cost_value_rub")
-    )
+    df = _featured(AssetClass.APARTMENT, 60).with_columns(pl.lit(5_000_000.0).alias("cost_value_rub"))
     reader = _FakeReader({AssetClass.APARTMENT: df})
     registry = _FakeRegistry()
 

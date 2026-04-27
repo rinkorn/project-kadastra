@@ -24,10 +24,7 @@ from kadastra.etl.gar_xml_addr_obj import parse_addr_obj_xml
 
 def _write_xml(tmp_path: Path, body: str) -> Path:
     out = tmp_path / "addr_obj.xml"
-    xml = (
-        '<?xml version="1.0" encoding="utf-8"?>'
-        f"<ADDRESSOBJECTS>{body}</ADDRESSOBJECTS>"
-    )
+    xml = f'<?xml version="1.0" encoding="utf-8"?><ADDRESSOBJECTS>{body}</ADDRESSOBJECTS>'
     out.write_text(xml, encoding="utf-8")
     return out
 
@@ -67,16 +64,34 @@ def test_filters_out_inactive_and_unactual(tmp_path: Path) -> None:
     xml = _write_xml(
         tmp_path,
         _obj(
-            ID="1", OBJECTID="100", OBJECTGUID="g1", NAME="Старая", TYPENAME="ул.",
-            LEVEL="8", ISACTUAL="0", ISACTIVE="0",
+            ID="1",
+            OBJECTID="100",
+            OBJECTGUID="g1",
+            NAME="Старая",
+            TYPENAME="ул.",
+            LEVEL="8",
+            ISACTUAL="0",
+            ISACTIVE="0",
         )
         + _obj(
-            ID="2", OBJECTID="100", OBJECTGUID="g1", NAME="Новая", TYPENAME="ул.",
-            LEVEL="8", ISACTUAL="1", ISACTIVE="1",
+            ID="2",
+            OBJECTID="100",
+            OBJECTGUID="g1",
+            NAME="Новая",
+            TYPENAME="ул.",
+            LEVEL="8",
+            ISACTUAL="1",
+            ISACTIVE="1",
         )
         + _obj(
-            ID="3", OBJECTID="200", OBJECTGUID="g2", NAME="Текущая, но неактивная",
-            TYPENAME="ул.", LEVEL="8", ISACTUAL="1", ISACTIVE="0",
+            ID="3",
+            OBJECTID="200",
+            OBJECTGUID="g2",
+            NAME="Текущая, но неактивная",
+            TYPENAME="ул.",
+            LEVEL="8",
+            ISACTUAL="1",
+            ISACTIVE="0",
         ),
     )
 
@@ -91,8 +106,14 @@ def test_schema_is_typed(tmp_path: Path) -> None:
     xml = _write_xml(
         tmp_path,
         _obj(
-            ID="1", OBJECTID="42", OBJECTGUID="g", NAME="x", TYPENAME="ул.",
-            LEVEL="8", ISACTUAL="1", ISACTIVE="1",
+            ID="1",
+            OBJECTID="42",
+            OBJECTGUID="g",
+            NAME="x",
+            TYPENAME="ул.",
+            LEVEL="8",
+            ISACTUAL="1",
+            ISACTIVE="1",
         ),
     )
     df = parse_addr_obj_xml(xml)

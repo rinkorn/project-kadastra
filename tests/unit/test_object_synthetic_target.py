@@ -117,12 +117,8 @@ def test_house_class_average_below_apartment_at_same_features() -> None:
     df = _frame(rows)
 
     out = compute_object_synthetic_target(df, seed=42)
-    apt_mean = out.filter(pl.col("asset_class") == "apartment")[
-        "synthetic_target_rub_per_m2"
-    ].mean()
-    house_mean = out.filter(pl.col("asset_class") == "house")[
-        "synthetic_target_rub_per_m2"
-    ].mean()
+    apt_mean = out.filter(pl.col("asset_class") == "apartment")["synthetic_target_rub_per_m2"].mean()
+    house_mean = out.filter(pl.col("asset_class") == "house")["synthetic_target_rub_per_m2"].mean()
 
     assert isinstance(apt_mean, float) and isinstance(house_mean, float)
     assert apt_mean > house_mean

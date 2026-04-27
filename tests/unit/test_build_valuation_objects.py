@@ -39,9 +39,7 @@ class _FakeStore:
     def __init__(self) -> None:
         self.calls: list[_StoreCall] = []
 
-    def save(
-        self, region_code: str, asset_class: AssetClass, df: pl.DataFrame
-    ) -> None:
+    def save(self, region_code: str, asset_class: AssetClass, df: pl.DataFrame) -> None:
         self.calls.append(_StoreCall(region_code, asset_class, df))
 
 
@@ -58,9 +56,7 @@ def _build_csv_payload() -> bytes:
 def test_writes_one_partition_per_asset_class() -> None:
     raw = _FakeRawData(_build_csv_payload())
     store = _FakeStore()
-    usecase = BuildValuationObjects(
-        raw_data=raw, store=store, buildings_key="buildings.csv"
-    )
+    usecase = BuildValuationObjects(raw_data=raw, store=store, buildings_key="buildings.csv")
 
     usecase.execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT, AssetClass.HOUSE, AssetClass.COMMERCIAL])
 
@@ -76,9 +72,7 @@ def test_writes_one_partition_per_asset_class() -> None:
 def test_each_partition_only_contains_objects_of_that_class() -> None:
     raw = _FakeRawData(_build_csv_payload())
     store = _FakeStore()
-    usecase = BuildValuationObjects(
-        raw_data=raw, store=store, buildings_key="buildings.csv"
-    )
+    usecase = BuildValuationObjects(raw_data=raw, store=store, buildings_key="buildings.csv")
 
     usecase.execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT, AssetClass.HOUSE, AssetClass.COMMERCIAL])
 
@@ -91,9 +85,7 @@ def test_each_partition_only_contains_objects_of_that_class() -> None:
 def test_skips_classes_not_requested() -> None:
     raw = _FakeRawData(_build_csv_payload())
     store = _FakeStore()
-    usecase = BuildValuationObjects(
-        raw_data=raw, store=store, buildings_key="buildings.csv"
-    )
+    usecase = BuildValuationObjects(raw_data=raw, store=store, buildings_key="buildings.csv")
 
     usecase.execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
 
@@ -105,9 +97,7 @@ def test_writes_empty_partition_when_no_objects_match() -> None:
     payload = (_CSV_HEADER + _csv_row("1", "way", 55.78, 49.12, "apartments")).encode()
     raw = _FakeRawData(payload)
     store = _FakeStore()
-    usecase = BuildValuationObjects(
-        raw_data=raw, store=store, buildings_key="buildings.csv"
-    )
+    usecase = BuildValuationObjects(raw_data=raw, store=store, buildings_key="buildings.csv")
 
     usecase.execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT, AssetClass.HOUSE])
 
@@ -119,9 +109,7 @@ def test_writes_empty_partition_when_no_objects_match() -> None:
 def test_buildings_csv_columns_consistent_across_partitions() -> None:
     raw = _FakeRawData(_build_csv_payload())
     store = _FakeStore()
-    usecase = BuildValuationObjects(
-        raw_data=raw, store=store, buildings_key="buildings.csv"
-    )
+    usecase = BuildValuationObjects(raw_data=raw, store=store, buildings_key="buildings.csv")
 
     usecase.execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT, AssetClass.HOUSE, AssetClass.COMMERCIAL])
 
@@ -138,9 +126,7 @@ def test_reads_buildings_csv_through_raw_data_port() -> None:
     payload = _emit([_csv_row("1", "way", 55.78, 49.12, "apartments")])
     raw = _FakeRawData(payload)
     store = _FakeStore()
-    usecase = BuildValuationObjects(
-        raw_data=raw, store=store, buildings_key="buildings.csv"
-    )
+    usecase = BuildValuationObjects(raw_data=raw, store=store, buildings_key="buildings.csv")
 
     usecase.execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
 

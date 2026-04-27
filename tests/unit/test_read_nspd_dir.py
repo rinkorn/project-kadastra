@@ -103,9 +103,7 @@ def _landplot_feature(idx: int) -> dict[str, Any]:
 
 def test_read_buildings_dir_loads_all_pages(tmp_path: Path) -> None:
     page0 = _building_payload([_building_feature(i) for i in range(3)])
-    page1 = _building_payload(
-        [_building_feature(i, purpose="Многоквартирный дом") for i in range(3, 5)]
-    )
+    page1 = _building_payload([_building_feature(i, purpose="Многоквартирный дом") for i in range(3, 5)])
     (tmp_path / "page-0000.json").write_text(json.dumps(page0))
     (tmp_path / "page-0001.json").write_text(json.dumps(page1))
     (tmp_path / "_state.json").write_text(json.dumps({"layer_id": 36049}))

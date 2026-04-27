@@ -65,11 +65,7 @@ class NspdWafBlocked(RuntimeError):
 
 
 def build_address_filter(address_contains: str) -> dict[str, Any]:
-    return {
-        "textQueryAttrib": [
-            {"keyName": "options.readable_address", "value": address_contains}
-        ]
-    }
+    return {"textQueryAttrib": [{"keyName": "options.readable_address", "value": address_contains}]}
 
 
 def page_path(out_dir: Path, page: int) -> Path:
@@ -88,14 +84,10 @@ def load_state(out_dir: Path) -> dict[str, Any] | None:
 
 
 def save_state(out_dir: Path, state: dict[str, Any]) -> None:
-    state_path(out_dir).write_text(
-        json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    state_path(out_dir).write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def fetch_page(
-    client: httpx.Client, layer_id: int, body: dict[str, Any], page: int, count: int
-) -> dict[str, Any]:
+def fetch_page(client: httpx.Client, layer_id: int, body: dict[str, Any], page: int, count: int) -> dict[str, Any]:
     url = NSPD_BASE + ATTRIB_SEARCH_PATH.format(layer_id=layer_id)
     params = {"page": page, "count": count, "withTotalCount": "true"}
 
@@ -116,8 +108,7 @@ def fetch_page(
         if r.status_code == 403:
             rule_hdr = "Rule:" in r.text
             raise NspdWafBlocked(
-                f"WAF 403 on page={page}; "
-                f"likely IP-level block. Body: {r.text[:200]!r} (rule_hint={rule_hdr})"
+                f"WAF 403 on page={page}; likely IP-level block. Body: {r.text[:200]!r} (rule_hint={rule_hdr})"
             )
 
         if r.status_code in (429, 502, 503, 504):
@@ -169,9 +160,7 @@ def run(plan: FetchPlan) -> None:
                 page += 1
                 continue
 
-            payload = fetch_page(
-                client, plan.layer_id, plan.body, page=page, count=plan.count_per_page
-            )
+            payload = fetch_page(client, plan.layer_id, plan.body, page=page, count=plan.count_per_page)
 
             features = payload.get("data", {}).get("features", [])
             meta = payload.get("meta") or [{}]
@@ -180,9 +169,7 @@ def run(plan: FetchPlan) -> None:
                 total = page_total
                 last_total = page_total
 
-            existing.write_text(
-                json.dumps(payload, ensure_ascii=False), encoding="utf-8"
-            )
+            existing.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
             pages_fetched += 1
             elapsed = time.time() - started_at

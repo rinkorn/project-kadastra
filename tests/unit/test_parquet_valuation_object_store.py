@@ -25,12 +25,7 @@ def test_save_writes_parquet_under_partitioned_path(tmp_path: Path) -> None:
 
     store.save("RU-KAZAN-AGG", AssetClass.APARTMENT, _objects())
 
-    expected = (
-        tmp_path
-        / "region=RU-KAZAN-AGG"
-        / "asset_class=apartment"
-        / "data.parquet"
-    )
+    expected = tmp_path / "region=RU-KAZAN-AGG" / "asset_class=apartment" / "data.parquet"
     assert expected.is_file()
 
 

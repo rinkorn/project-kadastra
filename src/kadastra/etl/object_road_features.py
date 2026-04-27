@@ -9,19 +9,14 @@ from kadastra.etl.haversine import EARTH_RADIUS_METERS, haversine_meters
 _BUCKET_RES = 9
 
 
-def _haversine_one_to_many(
-    lat: float, lon: float, lats: np.ndarray, lons: np.ndarray
-) -> np.ndarray:
+def _haversine_one_to_many(lat: float, lon: float, lats: np.ndarray, lons: np.ndarray) -> np.ndarray:
     rlat1 = np.radians(lat)
     rlon1 = np.radians(lon)
     rlat2 = np.radians(lats)
     rlon2 = np.radians(lons)
     dlat = rlat2 - rlat1
     dlon = rlon2 - rlon1
-    a = (
-        np.sin(dlat / 2) ** 2
-        + np.cos(rlat1) * np.cos(rlat2) * np.sin(dlon / 2) ** 2
-    )
+    a = np.sin(dlat / 2) ** 2 + np.cos(rlat1) * np.cos(rlat2) * np.sin(dlon / 2) ** 2
     return 2 * EARTH_RADIUS_METERS * np.arcsin(np.sqrt(a))
 
 

@@ -1,9 +1,7 @@
 from kadastra.domain.asset_class import AssetClass
 
 _APARTMENT_TAGS = frozenset({"apartments"})
-_HOUSE_TAGS = frozenset(
-    {"house", "detached", "semidetached_house", "terrace", "bungalow"}
-)
+_HOUSE_TAGS = frozenset({"house", "detached", "semidetached_house", "terrace", "bungalow"})
 _COMMERCIAL_TAGS = frozenset(
     {
         "retail",

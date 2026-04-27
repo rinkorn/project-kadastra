@@ -30,12 +30,7 @@ def test_save_writes_parquet_under_partitioned_path(tmp_path: Path) -> None:
 
     store.save("RU-KAZAN-AGG", "buildings", _frame())
 
-    expected = (
-        tmp_path
-        / "region=RU-KAZAN-AGG"
-        / "source=buildings"
-        / "data.parquet"
-    )
+    expected = tmp_path / "region=RU-KAZAN-AGG" / "source=buildings" / "data.parquet"
     assert expected.is_file()
 
 

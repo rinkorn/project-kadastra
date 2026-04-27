@@ -7,9 +7,7 @@ import pytest
 from kadastra.adapters.local_geojson_region_boundary import LocalGeoJsonRegionBoundary
 
 
-def _square_polygon(
-    min_lon: float, min_lat: float, max_lon: float, max_lat: float
-) -> dict[str, Any]:
+def _square_polygon(min_lon: float, min_lat: float, max_lon: float, max_lat: float) -> dict[str, Any]:
     return {
         "type": "Polygon",
         "coordinates": [

@@ -23,9 +23,7 @@ import polars as pl
 _TYPEID_CADNUM = 8
 
 
-def build_cadnum_index(
-    *, houses: pl.DataFrame, steads: pl.DataFrame
-) -> pl.DataFrame:
+def build_cadnum_index(*, houses: pl.DataFrame, steads: pl.DataFrame) -> pl.DataFrame:
     def _tag(df: pl.DataFrame, source: str) -> pl.DataFrame:
         return (
             df.lazy()

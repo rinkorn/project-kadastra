@@ -53,13 +53,13 @@ def test_adds_derived_columns_per_feature_and_resolution() -> None:
         ]
     )
 
-    out = compute_relative_features(
-        objects, parent_resolutions=[7, 8], feature_columns=["dist_metro_m"]
-    )
+    out = compute_relative_features(objects, parent_resolutions=[7, 8], feature_columns=["dist_metro_m"])
 
     expected_extra = {
-        "parent_h3_p7", "count_p7",
-        "parent_h3_p8", "count_p8",
+        "parent_h3_p7",
+        "count_p7",
+        "parent_h3_p8",
+        "count_p8",
         "dist_metro_m__rel_p7_diff_med",
         "dist_metro_m__rel_p7_ratio_med",
         "dist_metro_m__rel_p7_z_iqr",
@@ -85,9 +85,7 @@ def test_three_objects_in_same_parent_yield_correct_relatives() -> None:
         ]
     )
 
-    out = compute_relative_features(
-        objects, parent_resolutions=[7], feature_columns=["dist_metro_m"]
-    ).sort("object_id")
+    out = compute_relative_features(objects, parent_resolutions=[7], feature_columns=["dist_metro_m"]).sort("object_id")
 
     # Sanity: all three share the res=7 parent.
     parents = out["parent_h3_p7"].to_list()
@@ -118,9 +116,7 @@ def test_isolated_object_yields_self_relative_and_count_one() -> None:
         ]
     )
 
-    out = compute_relative_features(
-        objects, parent_resolutions=[7], feature_columns=["dist_metro_m"]
-    ).sort("object_id")
+    out = compute_relative_features(objects, parent_resolutions=[7], feature_columns=["dist_metro_m"]).sort("object_id")
 
     lonely = out.filter(pl.col("object_id") == "lonely").to_dicts()[0]
     assert lonely["count_p7"] == 1
@@ -141,33 +137,35 @@ def test_zero_median_yields_nan_ratio_not_inf() -> None:
         ]
     )
 
-    out = compute_relative_features(
-        objects, parent_resolutions=[7], feature_columns=["dist_metro_m"]
-    ).sort("object_id")
+    out = compute_relative_features(objects, parent_resolutions=[7], feature_columns=["dist_metro_m"]).sort("object_id")
 
     ratios = out["dist_metro_m__rel_p7_ratio_med"].to_list()
     # Median of [0,0,50] = 0 → all ratios are missing (None or NaN), none inf.
     for r in ratios:
         assert r is None or (isinstance(r, float) and math.isnan(r)), ratios
     # And no infinite values leaked through.
-    assert not any(
-        isinstance(r, float) and math.isinf(r) for r in ratios if r is not None
-    )
+    assert not any(isinstance(r, float) and math.isinf(r) for r in ratios if r is not None)
 
 
 def test_multiple_features_each_get_independent_relatives() -> None:
     objects = pl.DataFrame(
         [
-            {"object_id": "a", "lat": _KAZAN_CENTER[0], "lon": _KAZAN_CENTER[1],
-             "dist_metro_m": 100.0, "year_built": 1980},
-            {"object_id": "b", "lat": _NEARBY[0], "lon": _NEARBY[1],
-             "dist_metro_m": 200.0, "year_built": 2000},
-            {"object_id": "c", "lat": _NEARBY2[0], "lon": _NEARBY2[1],
-             "dist_metro_m": 300.0, "year_built": 2020},
+            {
+                "object_id": "a",
+                "lat": _KAZAN_CENTER[0],
+                "lon": _KAZAN_CENTER[1],
+                "dist_metro_m": 100.0,
+                "year_built": 1980,
+            },
+            {"object_id": "b", "lat": _NEARBY[0], "lon": _NEARBY[1], "dist_metro_m": 200.0, "year_built": 2000},
+            {"object_id": "c", "lat": _NEARBY2[0], "lon": _NEARBY2[1], "dist_metro_m": 300.0, "year_built": 2020},
         ],
         schema={
-            "object_id": pl.Utf8, "lat": pl.Float64, "lon": pl.Float64,
-            "dist_metro_m": pl.Float64, "year_built": pl.Int64,
+            "object_id": pl.Utf8,
+            "lat": pl.Float64,
+            "lon": pl.Float64,
+            "dist_metro_m": pl.Float64,
+            "year_built": pl.Int64,
         },
     )
 
@@ -178,8 +176,12 @@ def test_multiple_features_each_get_independent_relatives() -> None:
     )
 
     for col in (
-        "dist_metro_m__rel_p7_diff_med", "dist_metro_m__rel_p7_ratio_med", "dist_metro_m__rel_p7_z_iqr",
-        "year_built__rel_p7_diff_med", "year_built__rel_p7_ratio_med", "year_built__rel_p7_z_iqr",
+        "dist_metro_m__rel_p7_diff_med",
+        "dist_metro_m__rel_p7_ratio_med",
+        "dist_metro_m__rel_p7_z_iqr",
+        "year_built__rel_p7_diff_med",
+        "year_built__rel_p7_ratio_med",
+        "year_built__rel_p7_z_iqr",
     ):
         assert col in out.columns
 
@@ -187,13 +189,12 @@ def test_multiple_features_each_get_independent_relatives() -> None:
 def test_empty_objects_returns_empty_with_correct_schema() -> None:
     objects = _df([])
 
-    out = compute_relative_features(
-        objects, parent_resolutions=[7], feature_columns=["dist_metro_m"]
-    )
+    out = compute_relative_features(objects, parent_resolutions=[7], feature_columns=["dist_metro_m"])
 
     assert out.is_empty()
     for col in (
-        "parent_h3_p7", "count_p7",
+        "parent_h3_p7",
+        "count_p7",
         "dist_metro_m__rel_p7_diff_med",
         "dist_metro_m__rel_p7_ratio_med",
         "dist_metro_m__rel_p7_z_iqr",
@@ -212,21 +213,20 @@ def test_null_in_source_feature_propagates_only_to_that_rows_relatives() -> None
             {"object_id": "c", "lat": _NEARBY2[0], "lon": _NEARBY2[1], "dist_metro_m": 300.0},
         ],
         schema={
-            "object_id": pl.Utf8, "lat": pl.Float64, "lon": pl.Float64, "dist_metro_m": pl.Float64,
+            "object_id": pl.Utf8,
+            "lat": pl.Float64,
+            "lon": pl.Float64,
+            "dist_metro_m": pl.Float64,
         },
     )
 
-    out = compute_relative_features(
-        objects, parent_resolutions=[7], feature_columns=["dist_metro_m"]
-    ).sort("object_id")
+    out = compute_relative_features(objects, parent_resolutions=[7], feature_columns=["dist_metro_m"]).sort("object_id")
 
     diffs = out["dist_metro_m__rel_p7_diff_med"].to_list()
     # Median of [100, 300] (ignoring None) = 200. So a → -100, c → +100.
     # The None row keeps its derivatives as None/NaN.
     assert diffs[0] == -100.0
-    assert diffs[1] is None or (
-        isinstance(diffs[1], float) and math.isnan(diffs[1])
-    )
+    assert diffs[1] is None or (isinstance(diffs[1], float) and math.isnan(diffs[1]))
     assert diffs[2] == 100.0
 
 
@@ -236,9 +236,7 @@ def test_parent_h3_index_matches_h3_library() -> None:
     lat, lon = _KAZAN_CENTER
     objects = _df([{"object_id": "a", "lat": lat, "lon": lon, "dist_metro_m": 100.0}])
 
-    out = compute_relative_features(
-        objects, parent_resolutions=[7, 8], feature_columns=["dist_metro_m"]
-    )
+    out = compute_relative_features(objects, parent_resolutions=[7, 8], feature_columns=["dist_metro_m"])
 
     expected_p7 = h3.latlng_to_cell(lat, lon, 7)
     expected_p8 = h3.latlng_to_cell(lat, lon, 8)
@@ -252,12 +250,22 @@ def test_count_p_is_per_resolution_not_per_feature() -> None:
     many feature columns are processed."""
     objects = pl.DataFrame(
         [
-            {"object_id": "a", "lat": _KAZAN_CENTER[0], "lon": _KAZAN_CENTER[1],
-             "dist_metro_m": 100.0, "year_built": 1980, "levels": 9},
+            {
+                "object_id": "a",
+                "lat": _KAZAN_CENTER[0],
+                "lon": _KAZAN_CENTER[1],
+                "dist_metro_m": 100.0,
+                "year_built": 1980,
+                "levels": 9,
+            },
         ],
         schema={
-            "object_id": pl.Utf8, "lat": pl.Float64, "lon": pl.Float64,
-            "dist_metro_m": pl.Float64, "year_built": pl.Int64, "levels": pl.Int64,
+            "object_id": pl.Utf8,
+            "lat": pl.Float64,
+            "lon": pl.Float64,
+            "dist_metro_m": pl.Float64,
+            "year_built": pl.Int64,
+            "levels": pl.Int64,
         },
     )
 
@@ -282,9 +290,7 @@ def test_all_relatives_are_finite_or_nan_never_inf() -> None:
         ]
     )
 
-    out = compute_relative_features(
-        objects, parent_resolutions=[7], feature_columns=["dist_metro_m"]
-    )
+    out = compute_relative_features(objects, parent_resolutions=[7], feature_columns=["dist_metro_m"])
 
     for col in (
         "dist_metro_m__rel_p7_diff_med",

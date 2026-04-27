@@ -17,9 +17,7 @@ def _objects(rows: list[dict[str, object]]) -> pl.DataFrame:
     return pl.DataFrame(rows, schema=schema)
 
 
-def _row(
-    oid: str, ac: str, lat: float, lon: float
-) -> dict[str, object]:
+def _row(oid: str, ac: str, lat: float, lon: float) -> dict[str, object]:
     return {
         "object_id": oid,
         "asset_class": ac,
@@ -66,9 +64,7 @@ def test_counts_only_within_radius_and_per_class() -> None:
         ]
     )
 
-    result = compute_object_neighbor_features(objects, radius_m=500).filter(
-        pl.col("object_id") == "way/1"
-    )
+    result = compute_object_neighbor_features(objects, radius_m=500).filter(pl.col("object_id") == "way/1")
 
     assert result["count_apartments_500m"][0] == 1  # way/2 only
     assert result["count_houses_500m"][0] == 1  # way/3
@@ -83,12 +79,8 @@ def test_radius_controls_inclusion() -> None:
         ]
     )
 
-    inside = compute_object_neighbor_features(objects, radius_m=500).filter(
-        pl.col("object_id") == "way/1"
-    )
-    outside = compute_object_neighbor_features(objects, radius_m=100).filter(
-        pl.col("object_id") == "way/1"
-    )
+    inside = compute_object_neighbor_features(objects, radius_m=500).filter(pl.col("object_id") == "way/1")
+    outside = compute_object_neighbor_features(objects, radius_m=100).filter(pl.col("object_id") == "way/1")
 
     assert inside["count_apartments_500m"][0] == 1
     assert outside["count_apartments_500m"][0] == 0
@@ -114,9 +106,7 @@ def test_unknown_asset_class_does_not_break_counting() -> None:
         ]
     )
 
-    result = compute_object_neighbor_features(objects, radius_m=500).filter(
-        pl.col("object_id") == "way/1"
-    )
+    result = compute_object_neighbor_features(objects, radius_m=500).filter(pl.col("object_id") == "way/1")
 
     assert result["count_apartments_500m"][0] == 0
     assert result["count_houses_500m"][0] == 0

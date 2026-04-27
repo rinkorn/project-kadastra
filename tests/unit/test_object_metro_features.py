@@ -131,9 +131,7 @@ def test_preserves_object_columns_and_row_order() -> None:
     result = compute_object_metro_features(objects, stations, entrances, road_graph=_FAKE_GRAPH)
 
     assert result["object_id"].to_list() == ["way/1", "way/2"]
-    assert {"object_id", "asset_class", "lat", "lon", "levels", "flats"}.issubset(
-        set(result.columns)
-    )
+    assert {"object_id", "asset_class", "lat", "lon", "levels", "flats"}.issubset(set(result.columns))
 
 
 def test_empty_objects_returns_empty_with_feature_columns() -> None:
@@ -196,21 +194,17 @@ def test_uses_graph_distance_not_euclidean_when_graph_routing_is_longer() -> Non
     )
     stations = _points([{"lat": station_coord[0], "lon": station_coord[1]}])
 
-    result = compute_object_metro_features(
-        objects, stations, _points([]), road_graph=graph
-    )
+    result = compute_object_metro_features(objects, stations, _points([]), road_graph=graph)
 
     euclidean = haversine_meters(*object_coord, *station_coord)
-    expected_graph = haversine_meters(*object_coord, *detour_coord) + haversine_meters(
-        *detour_coord, *station_coord
-    )
+    expected_graph = haversine_meters(*object_coord, *detour_coord) + haversine_meters(*detour_coord, *station_coord)
 
     # Graph routing detours through node B → must be > euclidean.
     assert result["dist_metro_m"][0] > euclidean + 1.0
     # And matches the explicit graph path length.
-    assert result["dist_metro_m"][0] == np.float64(expected_graph) or abs(
-        result["dist_metro_m"][0] - expected_graph
-    ) < 1.0
+    assert (
+        result["dist_metro_m"][0] == np.float64(expected_graph) or abs(result["dist_metro_m"][0] - expected_graph) < 1.0
+    )
     # Station is ~313 m euclidean (under 1 km) but graph distance is
     # ~890 m which is also under 1 km — so the graph-based count
     # still includes it. We check the count is computed from graph
@@ -253,9 +247,7 @@ def test_count_stations_1km_uses_graph_threshold_not_euclidean() -> None:
     )
     stations = _points([{"lat": station_coord[0], "lon": station_coord[1]}])
 
-    result = compute_object_metro_features(
-        objects, stations, _points([]), road_graph=graph
-    )
+    result = compute_object_metro_features(objects, stations, _points([]), road_graph=graph)
 
     euclidean = haversine_meters(*object_coord, *station_coord)
     assert euclidean < 1000.0  # sanity: euclidean would have counted it
@@ -307,9 +299,7 @@ def test_disconnected_object_yields_far_sentinel_not_inf() -> None:
             from_coords: list[tuple[float, float]],
             to_coords: list[tuple[float, float]],
         ) -> np.ndarray:
-            return np.full(
-                (len(from_coords), len(to_coords)), np.inf, dtype=np.float64
-            )
+            return np.full((len(from_coords), len(to_coords)), np.inf, dtype=np.float64)
 
     objects = _objects(
         [
@@ -326,9 +316,7 @@ def test_disconnected_object_yields_far_sentinel_not_inf() -> None:
     stations = _points([{"lat": KAZAN_LAT + 0.5, "lon": KAZAN_LON + 0.5}])
     entrances = _points([{"lat": KAZAN_LAT + 0.5, "lon": KAZAN_LON + 0.5}])
 
-    result = compute_object_metro_features(
-        objects, stations, entrances, road_graph=_DisconnectedGraph()
-    )
+    result = compute_object_metro_features(objects, stations, entrances, road_graph=_DisconnectedGraph())
 
     assert np.isfinite(result["dist_metro_m"][0])
     assert np.isfinite(result["dist_entrance_m"][0])

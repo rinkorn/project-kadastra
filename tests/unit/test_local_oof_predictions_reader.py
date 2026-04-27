@@ -36,12 +36,8 @@ def _write_oof(run_dir: Path, rows: list[dict[str, object]]) -> None:
 def test_load_latest_returns_data_from_newest_run(tmp_path: Path) -> None:
     older = tmp_path / "catboost-object-apartment_20260101T120000000000Z"
     newer = tmp_path / "catboost-object-apartment_20260201T120000000000Z"
-    _write_oof(older, [
-        {"object_id": "old", "lat": 0.0, "lon": 0.0, "fold_id": 0, "y_true": 1.0, "y_pred_oof": 1.1}
-    ])
-    _write_oof(newer, [
-        {"object_id": "new", "lat": 0.0, "lon": 0.0, "fold_id": 0, "y_true": 2.0, "y_pred_oof": 2.2}
-    ])
+    _write_oof(older, [{"object_id": "old", "lat": 0.0, "lon": 0.0, "fold_id": 0, "y_true": 1.0, "y_pred_oof": 1.1}])
+    _write_oof(newer, [{"object_id": "new", "lat": 0.0, "lon": 0.0, "fold_id": 0, "y_true": 2.0, "y_pred_oof": 2.2}])
 
     df = LocalOofPredictionsReader(tmp_path).load_latest(AssetClass.APARTMENT)
 
@@ -52,12 +48,10 @@ def test_load_latest_returns_data_from_newest_run(tmp_path: Path) -> None:
 def test_load_latest_filters_by_class_prefix(tmp_path: Path) -> None:
     apartment_run = tmp_path / "catboost-object-apartment_20260101T120000Z"
     house_run = tmp_path / "catboost-object-house_20260201T120000Z"
-    _write_oof(apartment_run, [
-        {"object_id": "a", "lat": 0.0, "lon": 0.0, "fold_id": 0, "y_true": 1.0, "y_pred_oof": 1.0}
-    ])
-    _write_oof(house_run, [
-        {"object_id": "h", "lat": 0.0, "lon": 0.0, "fold_id": 0, "y_true": 2.0, "y_pred_oof": 2.0}
-    ])
+    _write_oof(
+        apartment_run, [{"object_id": "a", "lat": 0.0, "lon": 0.0, "fold_id": 0, "y_true": 1.0, "y_pred_oof": 1.0}]
+    )
+    _write_oof(house_run, [{"object_id": "h", "lat": 0.0, "lon": 0.0, "fold_id": 0, "y_true": 2.0, "y_pred_oof": 2.0}])
 
     df = LocalOofPredictionsReader(tmp_path).load_latest(AssetClass.APARTMENT)
 
@@ -85,18 +79,14 @@ def test_load_latest_returns_empty_when_artifact_missing(tmp_path: Path) -> None
 
 
 def test_load_latest_returns_empty_when_base_path_missing(tmp_path: Path) -> None:
-    df = LocalOofPredictionsReader(tmp_path / "does-not-exist").load_latest(
-        AssetClass.APARTMENT
-    )
+    df = LocalOofPredictionsReader(tmp_path / "does-not-exist").load_latest(AssetClass.APARTMENT)
     assert df.is_empty()
 
 
 # --- ADR-0016 quartet support: per-model OOF reading ----------------
 
 
-def _write_quartet_run(
-    run_dir: Path, model_to_rows: dict[str, list[dict[str, object]]]
-) -> None:
+def _write_quartet_run(run_dir: Path, model_to_rows: dict[str, list[dict[str, object]]]) -> None:
     """Write per-model oof parquets the way TrainQuartet emits them:
     one file per model named ``{model}_oof_predictions.parquet``."""
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -119,22 +109,17 @@ def test_load_latest_catboost_picks_quartet_run_when_newer(tmp_path: Path) -> No
     OOF should come from the quartet's catboost_oof_predictions.parquet."""
     _write_oof(
         tmp_path / "catboost-object-apartment_20260101T120000000000Z",
-        [{"object_id": "old-cb", "lat": 0.0, "lon": 0.0, "fold_id": 0,
-          "y_true": 1.0, "y_pred_oof": 1.0}],
+        [{"object_id": "old-cb", "lat": 0.0, "lon": 0.0, "fold_id": 0, "y_true": 1.0, "y_pred_oof": 1.0}],
     )
     _write_quartet_run(
         tmp_path / "quartet-object-apartment_20260601T120000000000Z",
         {
-            "catboost": [{"object_id": "q-cb", "lat": 0.0, "lon": 0.0,
-                          "fold_id": 0, "y_true": 5.0, "y_pred_oof": 5.5}],
-            "ebm": [{"object_id": "q-ebm", "lat": 0.0, "lon": 0.0,
-                     "fold_id": 0, "y_true": 5.0, "y_pred_oof": 5.7}],
+            "catboost": [{"object_id": "q-cb", "lat": 0.0, "lon": 0.0, "fold_id": 0, "y_true": 5.0, "y_pred_oof": 5.5}],
+            "ebm": [{"object_id": "q-ebm", "lat": 0.0, "lon": 0.0, "fold_id": 0, "y_true": 5.0, "y_pred_oof": 5.7}],
         },
     )
 
-    df = LocalOofPredictionsReader(tmp_path).load_latest(
-        AssetClass.APARTMENT, model="catboost"
-    )
+    df = LocalOofPredictionsReader(tmp_path).load_latest(AssetClass.APARTMENT, model="catboost")
     assert df.height == 1
     assert df["object_id"][0] == "q-cb"
 
@@ -144,12 +129,9 @@ def test_load_latest_catboost_falls_back_to_legacy_run(tmp_path: Path) -> None:
     legacy oof_predictions.parquet path must still work."""
     _write_oof(
         tmp_path / "catboost-object-apartment_20260101T120000000000Z",
-        [{"object_id": "legacy", "lat": 0.0, "lon": 0.0, "fold_id": 0,
-          "y_true": 1.0, "y_pred_oof": 1.1}],
+        [{"object_id": "legacy", "lat": 0.0, "lon": 0.0, "fold_id": 0, "y_true": 1.0, "y_pred_oof": 1.1}],
     )
-    df = LocalOofPredictionsReader(tmp_path).load_latest(
-        AssetClass.APARTMENT, model="catboost"
-    )
+    df = LocalOofPredictionsReader(tmp_path).load_latest(AssetClass.APARTMENT, model="catboost")
     assert df.height == 1
     assert df["object_id"][0] == "legacy"
 
@@ -159,12 +141,11 @@ def test_load_latest_ebm_reads_quartet_run(tmp_path: Path) -> None:
         tmp_path / "quartet-object-apartment_20260601T120000000000Z",
         {
             "catboost": [],
-            "ebm": [{"object_id": "ebm-1", "lat": 0.0, "lon": 0.0,
-                     "fold_id": 0, "y_true": 5.0, "y_pred_oof": 5.7}],
-            "grey_tree": [{"object_id": "g-1", "lat": 0.0, "lon": 0.0,
-                           "fold_id": 0, "y_true": 5.0, "y_pred_oof": 5.6}],
-            "naive_linear": [{"object_id": "n-1", "lat": 0.0, "lon": 0.0,
-                              "fold_id": 0, "y_true": 5.0, "y_pred_oof": 5.0}],
+            "ebm": [{"object_id": "ebm-1", "lat": 0.0, "lon": 0.0, "fold_id": 0, "y_true": 5.0, "y_pred_oof": 5.7}],
+            "grey_tree": [{"object_id": "g-1", "lat": 0.0, "lon": 0.0, "fold_id": 0, "y_true": 5.0, "y_pred_oof": 5.6}],
+            "naive_linear": [
+                {"object_id": "n-1", "lat": 0.0, "lon": 0.0, "fold_id": 0, "y_true": 5.0, "y_pred_oof": 5.0}
+            ],
         },
     )
     reader = LocalOofPredictionsReader(tmp_path)
@@ -180,11 +161,8 @@ def test_load_latest_ebm_returns_empty_when_only_legacy_catboost_run(
     DataFrame; the UI treats this as 'predictions unavailable'."""
     _write_oof(
         tmp_path / "catboost-object-apartment_20260101T120000000000Z",
-        [{"object_id": "x", "lat": 0.0, "lon": 0.0, "fold_id": 0,
-          "y_true": 1.0, "y_pred_oof": 1.0}],
+        [{"object_id": "x", "lat": 0.0, "lon": 0.0, "fold_id": 0, "y_true": 1.0, "y_pred_oof": 1.0}],
     )
-    df = LocalOofPredictionsReader(tmp_path).load_latest(
-        AssetClass.APARTMENT, model="ebm"
-    )
+    df = LocalOofPredictionsReader(tmp_path).load_latest(AssetClass.APARTMENT, model="ebm")
     assert df.is_empty()
     assert set(df.columns) >= {"object_id", "y_true", "y_pred_oof"}

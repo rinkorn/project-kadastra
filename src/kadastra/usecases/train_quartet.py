@@ -83,9 +83,7 @@ class TrainQuartet:
         self._skip_final_simplifier_fits = skip_final_simplifier_fits
 
     def execute(self, region_code: str, asset_class: AssetClass) -> str:
-        df = self._reader.load(region_code, asset_class).drop_nulls(
-            subset=[_TARGET_COLUMN]
-        )
+        df = self._reader.load(region_code, asset_class).drop_nulls(subset=[_TARGET_COLUMN])
         n = df.height
         y = df[_TARGET_COLUMN].to_numpy().astype(np.float64)
 
@@ -115,9 +113,7 @@ class TrainQuartet:
         cell_resolution = max(self._parent_resolution + 1, 10)
         h3_indices = [
             h3.latlng_to_cell(float(lat), float(lon), cell_resolution)
-            for lat, lon in zip(
-                df["lat"].to_list(), df["lon"].to_list(), strict=True
-            )
+            for lat, lon in zip(df["lat"].to_list(), df["lon"].to_list(), strict=True)
         ]
         folds = spatial_kfold_split(
             h3_indices,
@@ -135,8 +131,7 @@ class TrainQuartet:
         }
         fold_ids = np.full(n, -1, dtype=np.int64)
         per_fold: dict[str, dict[str, list[float]]] = {
-            m: {"mae": [], "rmse": [], "mape": []}
-            for m in ("catboost", "ebm", "naive_linear", "grey_tree")
+            m: {"mae": [], "rmse": [], "mape": []} for m in ("catboost", "ebm", "naive_linear", "grey_tree")
         }
 
         # When folds run in parallel, divide the available core budget
@@ -173,9 +168,7 @@ class TrainQuartet:
         if self._parallel_folds:
             pass1_results = cast(
                 "list[dict[str, Any]]",
-                Parallel(n_jobs=self._n_splits, backend="loky")(
-                    delayed(_fit_pass1_fold)(*args) for args in pass1_args
-                ),
+                Parallel(n_jobs=self._n_splits, backend="loky")(delayed(_fit_pass1_fold)(*args) for args in pass1_args),
             )
         else:
             pass1_results = [_fit_pass1_fold(*args) for args in pass1_args]
@@ -216,9 +209,7 @@ class TrainQuartet:
                 ),
             )
         else:
-            pass2_results = [
-                _fit_pass2_grey_fold(*args) for args in pass2_args
-            ]
+            pass2_results = [_fit_pass2_grey_fold(*args) for args in pass2_args]
 
         for r in pass2_results:
             val_idx = r["val_idx"]
@@ -252,9 +243,7 @@ class TrainQuartet:
             wb_final.fit(X_full, y, cat_feature_indices=full_cat_idx or None)
 
             nl_final = NaiveLinearQuartetModel()
-            nl_final.fit(
-                X_naive, y, cat_feature_indices=naive_cat_idx or None
-            )
+            nl_final.fit(X_naive, y, cat_feature_indices=naive_cat_idx or None)
 
             grey_final = GreyTreeQuartetModel(
                 max_depth=self._grey_tree_max_depth,
@@ -280,24 +269,16 @@ class TrainQuartet:
 
         # Grey fidelity to Black — R² on (catboost_oof, grey_oof).
         ss_res = float(np.sum((oof["grey_tree"] - oof["catboost"]) ** 2))
-        ss_tot = float(
-            np.sum((oof["catboost"] - np.mean(oof["catboost"])) ** 2)
-        )
-        models_payload["grey_tree"]["fidelity_r2_to_catboost"] = (
-            float(1.0 - ss_res / ss_tot) if ss_tot > 0 else 0.0
-        )
+        ss_tot = float(np.sum((oof["catboost"] - np.mean(oof["catboost"])) ** 2))
+        models_payload["grey_tree"]["fidelity_r2_to_catboost"] = float(1.0 - ss_res / ss_tot) if ss_tot > 0 else 0.0
 
         # Loss on simplification (in percentage points).
         black_mape = models_payload["catboost"]["mean_mape"]
         ebm_mape = models_payload["ebm"]["mean_mape"]
         naive_mape = models_payload["naive_linear"]["mean_mape"]
         loss_payload = {
-            "ebm_minus_catboost_mape_pp": simplification_loss_pp(
-                black_mape, ebm_mape
-            ),
-            "naive_minus_catboost_mape_pp": simplification_loss_pp(
-                black_mape, naive_mape
-            ),
+            "ebm_minus_catboost_mape_pp": simplification_loss_pp(black_mape, ebm_mape),
+            "naive_minus_catboost_mape_pp": simplification_loss_pp(black_mape, naive_mape),
         }
 
         quartet_metrics = {
@@ -310,21 +291,11 @@ class TrainQuartet:
         }
 
         artifacts: dict[str, bytes] = {
-            "quartet_metrics.json": json.dumps(
-                quartet_metrics, ensure_ascii=False, indent=2
-            ).encode("utf-8"),
-            "catboost_oof_predictions.parquet": _build_oof_parquet(
-                df, fold_ids, y, oof["catboost"]
-            ),
-            "ebm_oof_predictions.parquet": _build_oof_parquet(
-                df, fold_ids, y, oof["ebm"]
-            ),
-            "grey_tree_oof_predictions.parquet": _build_oof_parquet(
-                df, fold_ids, y, oof["grey_tree"]
-            ),
-            "naive_linear_oof_predictions.parquet": _build_oof_parquet(
-                df, fold_ids, y, oof["naive_linear"]
-            ),
+            "quartet_metrics.json": json.dumps(quartet_metrics, ensure_ascii=False, indent=2).encode("utf-8"),
+            "catboost_oof_predictions.parquet": _build_oof_parquet(df, fold_ids, y, oof["catboost"]),
+            "ebm_oof_predictions.parquet": _build_oof_parquet(df, fold_ids, y, oof["ebm"]),
+            "grey_tree_oof_predictions.parquet": _build_oof_parquet(df, fold_ids, y, oof["grey_tree"]),
+            "naive_linear_oof_predictions.parquet": _build_oof_parquet(df, fold_ids, y, oof["naive_linear"]),
         }
         if wb_final is not None:
             artifacts["ebm_model.pkl"] = wb_final.serialize()

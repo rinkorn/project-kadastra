@@ -28,17 +28,13 @@ _EDGES_SCHEMA = ("from_lat", "from_lon", "to_lat", "to_lon", "length_m")
 class NetworkxRoadGraph(RoadGraphPort):
     def __init__(self, graph: nx.Graph[int], node_coords: np.ndarray) -> None:
         if node_coords.ndim != 2 or node_coords.shape[1] != 2:
-            raise ValueError(
-                f"node_coords must have shape (n, 2); got {node_coords.shape}"
-            )
+            raise ValueError(f"node_coords must have shape (n, 2); got {node_coords.shape}")
         self._graph = graph
         self._node_coords = node_coords
         self._kdtree = cKDTree(node_coords) if len(node_coords) else None
 
     @classmethod
-    def from_edges(
-        cls, edges: Iterable[tuple[_Coord, _Coord, float]]
-    ) -> NetworkxRoadGraph:
+    def from_edges(cls, edges: Iterable[tuple[_Coord, _Coord, float]]) -> NetworkxRoadGraph:
         coord_to_id: dict[_Coord, int] = {}
         node_coords: list[_Coord] = []
         graph: nx.Graph[int] = nx.Graph()
@@ -60,9 +56,7 @@ class NetworkxRoadGraph(RoadGraphPort):
         df = pl.read_parquet(path)
         missing = [c for c in _EDGES_SCHEMA if c not in df.columns]
         if missing:
-            raise ValueError(
-                f"road graph parquet at {path} missing columns: {missing}"
-            )
+            raise ValueError(f"road graph parquet at {path} missing columns: {missing}")
         edges = [
             (
                 (float(row[0]), float(row[1])),
@@ -100,14 +94,10 @@ class NetworkxRoadGraph(RoadGraphPort):
 
         for j, (to_node, to_snap_m) in enumerate(to_snaps):
             try:
-                dist_map = nx.single_source_dijkstra_path_length(
-                    self._graph, to_node, weight="length_m"
-                )
+                dist_map = nx.single_source_dijkstra_path_length(self._graph, to_node, weight="length_m")
             except nx.NodeNotFound:
                 continue
             for i, (from_node, from_snap_m) in enumerate(from_snaps):
                 if from_node in dist_map:
-                    out[i, j] = float(
-                        from_snap_m + dist_map[from_node] + to_snap_m
-                    )
+                    out[i, j] = float(from_snap_m + dist_map[from_node] + to_snap_m)
         return out

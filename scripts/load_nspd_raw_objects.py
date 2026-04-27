@@ -22,13 +22,8 @@ def main() -> None:
         if not raw_dir.is_dir():
             print(f"skip {source}: raw dir does not exist ({raw_dir})")
             continue
-        print(
-            f"Loading NSPD {source}: region={settings.region_code} "
-            f"raw_dir={raw_dir}"
-        )
-        n = usecase.execute(
-            region_code=settings.region_code, source=source, raw_dir=raw_dir
-        )
+        print(f"Loading NSPD {source}: region={settings.region_code} raw_dir={raw_dir}")
+        n = usecase.execute(region_code=settings.region_code, source=source, raw_dir=raw_dir)
         print(f"  wrote {n:,} rows to silver")
     print("done")
 

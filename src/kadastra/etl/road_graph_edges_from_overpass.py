@@ -48,9 +48,7 @@ def build_road_graph_edges_from_overpass(
                     "from_lon": from_lon,
                     "to_lat": to_lat,
                     "to_lon": to_lon,
-                    "length_m": haversine_meters(
-                        from_lat, from_lon, to_lat, to_lon
-                    ),
+                    "length_m": haversine_meters(from_lat, from_lon, to_lat, to_lon),
                 }
             )
 

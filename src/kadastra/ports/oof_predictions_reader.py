@@ -18,9 +18,7 @@ from kadastra.domain.asset_class import AssetClass
 
 
 class OofPredictionsReaderPort(Protocol):
-    def load_latest(
-        self, asset_class: AssetClass, *, model: str = "catboost"
-    ) -> pl.DataFrame:
+    def load_latest(self, asset_class: AssetClass, *, model: str = "catboost") -> pl.DataFrame:
         """Return the most recent OOF parquet for the asset class.
 
         ``model`` selects which adapter-recognized model produced the

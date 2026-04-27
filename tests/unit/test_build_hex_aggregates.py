@@ -36,9 +36,7 @@ class _FakeOofReader:
         self._by_model = by_model or {}
         self.calls: list[tuple[AssetClass, str]] = []
 
-    def load_latest(
-        self, asset_class: AssetClass, *, model: str = "catboost"
-    ) -> pl.DataFrame:
+    def load_latest(self, asset_class: AssetClass, *, model: str = "catboost") -> pl.DataFrame:
         self.calls.append((asset_class, model))
         if (asset_class, model) in self._by_model:
             return self._by_model[(asset_class, model)]
@@ -88,8 +86,10 @@ def test_writes_one_parquet_per_resolution(tmp_path: Path) -> None:
     apt = _objects(
         [
             {
-                "object_id": "a1", "asset_class": "apartment",
-                "lat": KAZAN_LAT, "lon": KAZAN_LON,
+                "object_id": "a1",
+                "asset_class": "apartment",
+                "lat": KAZAN_LAT,
+                "lon": KAZAN_LON,
                 "synthetic_target_rub_per_m2": 100_000.0,
                 "intra_city_raion": "Советский",
             }
@@ -98,8 +98,12 @@ def test_writes_one_parquet_per_resolution(tmp_path: Path) -> None:
     apt_oof = _oof(
         [
             {
-                "object_id": "a1", "lat": KAZAN_LAT, "lon": KAZAN_LON,
-                "fold_id": 0, "y_true": 100_000.0, "y_pred_oof": 95_000.0,
+                "object_id": "a1",
+                "lat": KAZAN_LAT,
+                "lon": KAZAN_LON,
+                "fold_id": 0,
+                "y_true": 100_000.0,
+                "y_pred_oof": 95_000.0,
             }
         ]
     )
@@ -135,8 +139,10 @@ def test_runs_without_oof_artifact_for_some_classes(tmp_path: Path) -> None:
     apt = _objects(
         [
             {
-                "object_id": "a1", "asset_class": "apartment",
-                "lat": KAZAN_LAT, "lon": KAZAN_LON,
+                "object_id": "a1",
+                "asset_class": "apartment",
+                "lat": KAZAN_LAT,
+                "lon": KAZAN_LON,
                 "synthetic_target_rub_per_m2": 100_000.0,
                 "intra_city_raion": "Советский",
             }
@@ -181,20 +187,38 @@ def test_writes_per_model_partition_and_threads_model_to_oof_reader(
     apt = _objects(
         [
             {
-                "object_id": "a1", "asset_class": "apartment",
-                "lat": KAZAN_LAT, "lon": KAZAN_LON,
+                "object_id": "a1",
+                "asset_class": "apartment",
+                "lat": KAZAN_LAT,
+                "lon": KAZAN_LON,
                 "synthetic_target_rub_per_m2": 100_000.0,
                 "intra_city_raion": "Советский",
             }
         ]
     )
     cb_oof = _oof(
-        [{"object_id": "a1", "lat": KAZAN_LAT, "lon": KAZAN_LON,
-          "fold_id": 0, "y_true": 100_000.0, "y_pred_oof": 95_000.0}]
+        [
+            {
+                "object_id": "a1",
+                "lat": KAZAN_LAT,
+                "lon": KAZAN_LON,
+                "fold_id": 0,
+                "y_true": 100_000.0,
+                "y_pred_oof": 95_000.0,
+            }
+        ]
     )
     ebm_oof = _oof(
-        [{"object_id": "a1", "lat": KAZAN_LAT, "lon": KAZAN_LON,
-          "fold_id": 0, "y_true": 100_000.0, "y_pred_oof": 80_000.0}]
+        [
+            {
+                "object_id": "a1",
+                "lat": KAZAN_LAT,
+                "lon": KAZAN_LON,
+                "fold_id": 0,
+                "y_true": 100_000.0,
+                "y_pred_oof": 80_000.0,
+            }
+        ]
     )
     fake_oof = _FakeOofReader(
         by_model={
@@ -211,12 +235,8 @@ def test_writes_per_model_partition_and_threads_model_to_oof_reader(
     )
     usecase.execute("RU-KAZAN-AGG", [AssetClass.APARTMENT], model="ebm")
 
-    cb_path = (
-        tmp_path / "region=RU-KAZAN-AGG" / "resolution=8" / "model=catboost" / "data.parquet"
-    )
-    ebm_path = (
-        tmp_path / "region=RU-KAZAN-AGG" / "resolution=8" / "model=ebm" / "data.parquet"
-    )
+    cb_path = tmp_path / "region=RU-KAZAN-AGG" / "resolution=8" / "model=catboost" / "data.parquet"
+    ebm_path = tmp_path / "region=RU-KAZAN-AGG" / "resolution=8" / "model=ebm" / "data.parquet"
     # Only ``ebm`` partition was requested → only that path written.
     assert ebm_path.is_file()
     assert not cb_path.is_file()
@@ -234,8 +254,10 @@ def test_concats_multiple_classes(tmp_path: Path) -> None:
     apt = _objects(
         [
             {
-                "object_id": "a1", "asset_class": "apartment",
-                "lat": KAZAN_LAT, "lon": KAZAN_LON,
+                "object_id": "a1",
+                "asset_class": "apartment",
+                "lat": KAZAN_LAT,
+                "lon": KAZAN_LON,
                 "synthetic_target_rub_per_m2": 100_000.0,
                 "intra_city_raion": "Советский",
             }
@@ -244,8 +266,10 @@ def test_concats_multiple_classes(tmp_path: Path) -> None:
     house = _objects(
         [
             {
-                "object_id": "h1", "asset_class": "house",
-                "lat": KAZAN_LAT + 1e-5, "lon": KAZAN_LON + 1e-5,
+                "object_id": "h1",
+                "asset_class": "house",
+                "lat": KAZAN_LAT + 1e-5,
+                "lon": KAZAN_LON + 1e-5,
                 "synthetic_target_rub_per_m2": 50_000.0,
                 "intra_city_raion": "Советский",
             }
@@ -260,9 +284,7 @@ def test_concats_multiple_classes(tmp_path: Path) -> None:
     )
     usecase.execute("RU-KAZAN-AGG", [AssetClass.APARTMENT, AssetClass.HOUSE])
 
-    df = pl.read_parquet(
-        tmp_path / "region=RU-KAZAN-AGG" / "resolution=10" / "model=catboost" / "data.parquet"
-    )
+    df = pl.read_parquet(tmp_path / "region=RU-KAZAN-AGG" / "resolution=10" / "model=catboost" / "data.parquet")
     classes = sorted(df["asset_class"].unique().to_list())
     assert classes == ["all", "apartment", "house"]
     all_row = df.filter(pl.col("asset_class") == "all").row(0, named=True)

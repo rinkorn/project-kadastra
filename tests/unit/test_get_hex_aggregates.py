@@ -26,32 +26,44 @@ def _write_aggregates(
     model: str = "catboost",
     pred_8a: float | None = 95_000.0,
 ) -> None:
-    path = (
-        tmp_path
-        / f"region={region}"
-        / f"resolution={resolution}"
-        / f"model={model}"
-        / "data.parquet"
-    )
+    path = tmp_path / f"region={region}" / f"resolution={resolution}" / f"model={model}" / "data.parquet"
     path.parent.mkdir(parents=True, exist_ok=True)
     df = pl.DataFrame(
         [
-            {"h3_index": "8a", "resolution": resolution, "asset_class": "apartment",
-             "count": 10, "median_target_rub_per_m2": 100_000.0,
-             "median_pred_oof_rub_per_m2": pred_8a,
-             "dominant_intra_city_raion": "Советский"},
-            {"h3_index": "8b", "resolution": resolution, "asset_class": "apartment",
-             "count": 5, "median_target_rub_per_m2": 80_000.0,
-             "median_pred_oof_rub_per_m2": None,
-             "dominant_intra_city_raion": "Вахитовский"},
-            {"h3_index": "8a", "resolution": resolution, "asset_class": "all",
-             "count": 30, "median_target_rub_per_m2": 50_000.0,
-             "median_pred_oof_rub_per_m2": 50_000.0,
-             "dominant_intra_city_raion": "Советский"},
+            {
+                "h3_index": "8a",
+                "resolution": resolution,
+                "asset_class": "apartment",
+                "count": 10,
+                "median_target_rub_per_m2": 100_000.0,
+                "median_pred_oof_rub_per_m2": pred_8a,
+                "dominant_intra_city_raion": "Советский",
+            },
+            {
+                "h3_index": "8b",
+                "resolution": resolution,
+                "asset_class": "apartment",
+                "count": 5,
+                "median_target_rub_per_m2": 80_000.0,
+                "median_pred_oof_rub_per_m2": None,
+                "dominant_intra_city_raion": "Вахитовский",
+            },
+            {
+                "h3_index": "8a",
+                "resolution": resolution,
+                "asset_class": "all",
+                "count": 30,
+                "median_target_rub_per_m2": 50_000.0,
+                "median_pred_oof_rub_per_m2": 50_000.0,
+                "dominant_intra_city_raion": "Советский",
+            },
         ],
         schema={
-            "h3_index": pl.Utf8, "resolution": pl.Int32, "asset_class": pl.Utf8,
-            "count": pl.UInt32, "median_target_rub_per_m2": pl.Float64,
+            "h3_index": pl.Utf8,
+            "resolution": pl.Int32,
+            "asset_class": pl.Utf8,
+            "count": pl.UInt32,
+            "median_target_rub_per_m2": pl.Float64,
             "median_pred_oof_rub_per_m2": pl.Float64,
             "dominant_intra_city_raion": pl.Utf8,
         },
@@ -61,9 +73,7 @@ def _write_aggregates(
 
 def test_filters_by_asset_class(tmp_path: Path) -> None:
     _write_aggregates(tmp_path, "RU-KAZAN-AGG", 8)
-    out = GetHexAggregates(tmp_path).execute(
-        "RU-KAZAN-AGG", 8, asset_class="apartment", feature="count"
-    )
+    out = GetHexAggregates(tmp_path).execute("RU-KAZAN-AGG", 8, asset_class="apartment", feature="count")
     hexes = sorted(str(r["hex"]) for r in out)
     assert hexes == ["8a", "8b"]
 
@@ -81,7 +91,9 @@ def test_returns_numeric_value_for_numeric_feature(tmp_path: Path) -> None:
 def test_drops_null_values(tmp_path: Path) -> None:
     _write_aggregates(tmp_path, "RU-KAZAN-AGG", 8)
     out = GetHexAggregates(tmp_path).execute(
-        "RU-KAZAN-AGG", 8, asset_class="apartment",
+        "RU-KAZAN-AGG",
+        8,
+        asset_class="apartment",
         feature="median_pred_oof_rub_per_m2",
     )
     # 8b has null median_pred → must be filtered out
@@ -92,7 +104,9 @@ def test_drops_null_values(tmp_path: Path) -> None:
 def test_categorical_feature_returns_string_value(tmp_path: Path) -> None:
     _write_aggregates(tmp_path, "RU-KAZAN-AGG", 8)
     out = GetHexAggregates(tmp_path).execute(
-        "RU-KAZAN-AGG", 8, asset_class="apartment",
+        "RU-KAZAN-AGG",
+        8,
+        asset_class="apartment",
         feature="dominant_intra_city_raion",
     )
     by_hex = {r["hex"]: r["value"] for r in out}
@@ -103,16 +117,12 @@ def test_categorical_feature_returns_string_value(tmp_path: Path) -> None:
 def test_unknown_feature_raises_keyerror(tmp_path: Path) -> None:
     _write_aggregates(tmp_path, "RU-KAZAN-AGG", 8)
     with pytest.raises(KeyError, match="not in hex_aggregates"):
-        GetHexAggregates(tmp_path).execute(
-            "RU-KAZAN-AGG", 8, asset_class="apartment", feature="bogus"
-        )
+        GetHexAggregates(tmp_path).execute("RU-KAZAN-AGG", 8, asset_class="apartment", feature="bogus")
 
 
 def test_missing_parquet_raises_filenotfound(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
-        GetHexAggregates(tmp_path).execute(
-            "RU-KAZAN-AGG", 8, asset_class="apartment", feature="count"
-        )
+        GetHexAggregates(tmp_path).execute("RU-KAZAN-AGG", 8, asset_class="apartment", feature="count")
 
 
 def test_model_param_routes_to_correct_partition(tmp_path: Path) -> None:
@@ -123,12 +133,18 @@ def test_model_param_routes_to_correct_partition(tmp_path: Path) -> None:
     _write_aggregates(tmp_path, "RU-KAZAN-AGG", 8, model="ebm", pred_8a=80_000.0)
 
     cb_out = GetHexAggregates(tmp_path).execute(
-        "RU-KAZAN-AGG", 8, asset_class="apartment",
-        feature="median_pred_oof_rub_per_m2", model="catboost",
+        "RU-KAZAN-AGG",
+        8,
+        asset_class="apartment",
+        feature="median_pred_oof_rub_per_m2",
+        model="catboost",
     )
     ebm_out = GetHexAggregates(tmp_path).execute(
-        "RU-KAZAN-AGG", 8, asset_class="apartment",
-        feature="median_pred_oof_rub_per_m2", model="ebm",
+        "RU-KAZAN-AGG",
+        8,
+        asset_class="apartment",
+        feature="median_pred_oof_rub_per_m2",
+        model="ebm",
     )
     cb_by_hex = {r["hex"]: r["value"] for r in cb_out}
     ebm_by_hex = {r["hex"]: r["value"] for r in ebm_out}
@@ -142,7 +158,9 @@ def test_default_model_is_catboost(tmp_path: Path) -> None:
     ``?model=…`` to the API."""
     _write_aggregates(tmp_path, "RU-KAZAN-AGG", 8, model="catboost", pred_8a=42_000.0)
     out = GetHexAggregates(tmp_path).execute(
-        "RU-KAZAN-AGG", 8, asset_class="apartment",
+        "RU-KAZAN-AGG",
+        8,
+        asset_class="apartment",
         feature="median_pred_oof_rub_per_m2",
     )
     assert {r["hex"]: r["value"] for r in out}["8a"] == 42_000.0
@@ -157,13 +175,17 @@ def test_numeric_features_includes_geo_and_age_means() -> None:
         # Distance to nearest geometry — ADR-0019 layers use the
         # ``dist_to_<layer>_m`` convention (legacy ``dist_metro_m`` /
         # ``dist_entrance_m`` predate that and are also listed).
-        "mean_dist_to_water_m", "mean_dist_to_park_m",
-        "mean_dist_to_school_m", "mean_dist_to_railway_m",
+        "mean_dist_to_water_m",
+        "mean_dist_to_park_m",
+        "mean_dist_to_school_m",
+        "mean_dist_to_railway_m",
         "mean_dist_to_bus_stop_m",
         # Polygonal share-in-buffer at 500 m.
-        "mean_water_share_500m", "mean_park_share_500m",
+        "mean_water_share_500m",
+        "mean_park_share_500m",
         # Road density + zonal count (legacy + ADR-0019 within_500m).
-        "mean_road_length_500m", "mean_count_apartments_500m",
+        "mean_road_length_500m",
+        "mean_count_apartments_500m",
         "mean_school_within_500m",
         # Age (ADR-0020).
         "mean_age_years",
@@ -179,6 +201,9 @@ def test_missing_model_partition_raises_filenotfound(tmp_path: Path) -> None:
     _write_aggregates(tmp_path, "RU-KAZAN-AGG", 8, model="catboost")
     with pytest.raises(FileNotFoundError):
         GetHexAggregates(tmp_path).execute(
-            "RU-KAZAN-AGG", 8, asset_class="apartment",
-            feature="count", model="ebm",
+            "RU-KAZAN-AGG",
+            8,
+            asset_class="apartment",
+            feature="count",
+            model="ebm",
         )

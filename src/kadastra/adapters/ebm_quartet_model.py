@@ -40,10 +40,7 @@ class EbmQuartetModel:
         cat_feature_indices: list[int] | None = None,
     ) -> None:
         cat_set = set(cat_feature_indices or [])
-        feature_types = [
-            "nominal" if i in cat_set else "continuous"
-            for i in range(X.shape[1])
-        ]
+        feature_types = ["nominal" if i in cat_set else "continuous" for i in range(X.shape[1])]
         # Default EBM n_jobs is -2 ("all-1 cores"). When the caller pins
         # us to 1 (parallel-folds outer loop), pass it through.
         n_jobs = self._n_jobs if self._n_jobs is not None else -2
@@ -65,9 +62,7 @@ class EbmQuartetModel:
     def serialize(self) -> bytes:
         if self._model is None:
             raise RuntimeError("EbmQuartetModel.serialize before fit")
-        return pickle.dumps(
-            (self._max_bins, self._interactions, self._model)
-        )
+        return pickle.dumps((self._max_bins, self._interactions, self._model))
 
     @classmethod
     def deserialize(cls, blob: bytes) -> EbmQuartetModel:

@@ -34,9 +34,7 @@ class _FakeOofReader:
         self._by_model = by_model or {}
         self.model_calls: list[tuple[AssetClass, str]] = []
 
-    def load_latest(
-        self, asset_class: AssetClass, *, model: str = "catboost"
-    ) -> pl.DataFrame:
+    def load_latest(self, asset_class: AssetClass, *, model: str = "catboost") -> pl.DataFrame:
         self.model_calls.append((asset_class, model))
         if (asset_class, model) in self._by_model:
             return self._by_model[(asset_class, model)]
@@ -91,18 +89,25 @@ def test_list_for_map_joins_predictions() -> None:
     objects = _objects(
         [
             {
-                "object_id": "a1", "asset_class": "apartment",
-                "lat": 55.78, "lon": 49.12,
+                "object_id": "a1",
+                "asset_class": "apartment",
+                "lat": 55.78,
+                "lon": 49.12,
                 "synthetic_target_rub_per_m2": 100_000.0,
-                "intra_city_raion": "Советский", "levels": 5,
+                "intra_city_raion": "Советский",
+                "levels": 5,
             }
         ]
     )
     oof = _oof(
         [
             {
-                "object_id": "a1", "lat": 55.78, "lon": 49.12,
-                "fold_id": 2, "y_true": 100_000.0, "y_pred_oof": 95_000.0,
+                "object_id": "a1",
+                "lat": 55.78,
+                "lon": 49.12,
+                "fold_id": 2,
+                "y_true": 100_000.0,
+                "y_pred_oof": 95_000.0,
             }
         ]
     )
@@ -121,8 +126,14 @@ def test_list_for_map_joins_predictions() -> None:
     assert item["residual"] == -5_000.0
     assert item["fold_id"] == 2
     assert {
-        "object_id", "lat", "lon", "y_true", "y_pred_oof", "residual",
-        "fold_id", "polygon_wkt_3857",
+        "object_id",
+        "lat",
+        "lon",
+        "y_true",
+        "y_pred_oof",
+        "residual",
+        "fold_id",
+        "polygon_wkt_3857",
     }.issubset(item.keys())
 
 
@@ -132,10 +143,13 @@ def test_list_for_map_null_predictions_when_oof_missing() -> None:
     objects = _objects(
         [
             {
-                "object_id": "a1", "asset_class": "apartment",
-                "lat": 55.78, "lon": 49.12,
+                "object_id": "a1",
+                "asset_class": "apartment",
+                "lat": 55.78,
+                "lon": 49.12,
                 "synthetic_target_rub_per_m2": 100_000.0,
-                "intra_city_raion": "Советский", "levels": 5,
+                "intra_city_raion": "Советский",
+                "levels": 5,
             }
         ]
     )
@@ -164,24 +178,27 @@ def test_list_for_map_passes_polygon_wkt_through() -> None:
     bright-outlined polygon (not just a dot). list_for_map must keep
     polygon_wkt_3857 in the slim payload — the API edge converts WKT
     to GeoJSON-WGS84 before serving, but the usecase ships it raw."""
-    wkt = (
-        "POLYGON ((5470000 7510000, 5470100 7510000, "
-        "5470100 7510100, 5470000 7510100, 5470000 7510000))"
-    )
+    wkt = "POLYGON ((5470000 7510000, 5470100 7510000, 5470100 7510100, 5470000 7510100, 5470000 7510000))"
     objects = _objects(
         [
             {
-                "object_id": "a1", "asset_class": "apartment",
-                "lat": 55.78, "lon": 49.12,
+                "object_id": "a1",
+                "asset_class": "apartment",
+                "lat": 55.78,
+                "lon": 49.12,
                 "synthetic_target_rub_per_m2": 100_000.0,
-                "intra_city_raion": "Советский", "levels": 5,
+                "intra_city_raion": "Советский",
+                "levels": 5,
                 "polygon_wkt_3857": wkt,
             },
             {
-                "object_id": "a2", "asset_class": "apartment",
-                "lat": 55.79, "lon": 49.13,
+                "object_id": "a2",
+                "asset_class": "apartment",
+                "lat": 55.79,
+                "lon": 49.13,
                 "synthetic_target_rub_per_m2": 110_000.0,
-                "intra_city_raion": "Вахитовский", "levels": 9,
+                "intra_city_raion": "Вахитовский",
+                "levels": 9,
                 "polygon_wkt_3857": None,
             },
         ]
@@ -206,17 +223,23 @@ def test_list_for_map_includes_curated_numeric_features() -> None:
     counts, age) in the slim payload — full feature dict is too heavy
     for ~1k objects."""
     schema = {
-        "object_id": pl.Utf8, "asset_class": pl.Utf8,
-        "lat": pl.Float64, "lon": pl.Float64,
+        "object_id": pl.Utf8,
+        "asset_class": pl.Utf8,
+        "lat": pl.Float64,
+        "lon": pl.Float64,
         "synthetic_target_rub_per_m2": pl.Float64,
         "polygon_wkt_3857": pl.Utf8,
         # Curated numeric features — same naming as the gold parquet.
         "area_m2": pl.Float64,
-        "levels": pl.Int64, "flats": pl.Int64,
-        "year_built": pl.Int64, "age_years": pl.Float64,
-        "dist_to_water_m": pl.Float64, "dist_to_park_m": pl.Float64,
+        "levels": pl.Int64,
+        "flats": pl.Int64,
+        "year_built": pl.Int64,
+        "age_years": pl.Float64,
+        "dist_to_water_m": pl.Float64,
+        "dist_to_park_m": pl.Float64,
         "dist_to_school_m": pl.Float64,
-        "water_share_500m": pl.Float64, "park_share_500m": pl.Float64,
+        "water_share_500m": pl.Float64,
+        "park_share_500m": pl.Float64,
         "road_length_500m": pl.Float64,
         "school_within_500m": pl.Float64,
         "dist_metro_m": pl.Float64,
@@ -224,15 +247,22 @@ def test_list_for_map_includes_curated_numeric_features() -> None:
     objects = pl.DataFrame(
         [
             {
-                "object_id": "a1", "asset_class": "apartment",
-                "lat": 55.78, "lon": 49.12,
+                "object_id": "a1",
+                "asset_class": "apartment",
+                "lat": 55.78,
+                "lon": 49.12,
                 "synthetic_target_rub_per_m2": 100_000.0,
                 "polygon_wkt_3857": None,
-                "area_m2": 60.0, "levels": 5, "flats": 100,
-                "year_built": 2010, "age_years": 16.0,
-                "dist_to_water_m": 250.0, "dist_to_park_m": 400.0,
+                "area_m2": 60.0,
+                "levels": 5,
+                "flats": 100,
+                "year_built": 2010,
+                "age_years": 16.0,
+                "dist_to_water_m": 250.0,
+                "dist_to_park_m": 400.0,
                 "dist_to_school_m": 120.0,
-                "water_share_500m": 0.05, "park_share_500m": 0.10,
+                "water_share_500m": 0.05,
+                "park_share_500m": 0.10,
                 "road_length_500m": 1500.0,
                 "school_within_500m": 3.0,
                 "dist_metro_m": 800.0,
@@ -267,10 +297,13 @@ def test_list_for_map_skips_features_absent_from_input() -> None:
     objects = _objects(
         [
             {
-                "object_id": "a1", "asset_class": "apartment",
-                "lat": 55.78, "lon": 49.12,
+                "object_id": "a1",
+                "asset_class": "apartment",
+                "lat": 55.78,
+                "lon": 49.12,
                 "synthetic_target_rub_per_m2": 100_000.0,
-                "intra_city_raion": "Советский", "levels": 5,
+                "intra_city_raion": "Советский",
+                "levels": 5,
                 "polygon_wkt_3857": None,
             }
         ]
@@ -295,24 +328,34 @@ def test_get_detail_returns_full_feature_dict() -> None:
     objects = _objects(
         [
             {
-                "object_id": "a1", "asset_class": "apartment",
-                "lat": 55.78, "lon": 49.12,
+                "object_id": "a1",
+                "asset_class": "apartment",
+                "lat": 55.78,
+                "lon": 49.12,
                 "synthetic_target_rub_per_m2": 100_000.0,
-                "intra_city_raion": "Советский", "levels": 5,
+                "intra_city_raion": "Советский",
+                "levels": 5,
             },
             {
-                "object_id": "a2", "asset_class": "apartment",
-                "lat": 55.79, "lon": 49.13,
+                "object_id": "a2",
+                "asset_class": "apartment",
+                "lat": 55.79,
+                "lon": 49.13,
                 "synthetic_target_rub_per_m2": 110_000.0,
-                "intra_city_raion": "Вахитовский", "levels": 9,
+                "intra_city_raion": "Вахитовский",
+                "levels": 9,
             },
         ]
     )
     oof = _oof(
         [
             {
-                "object_id": "a1", "lat": 55.78, "lon": 49.12,
-                "fold_id": 2, "y_true": 100_000.0, "y_pred_oof": 95_000.0,
+                "object_id": "a1",
+                "lat": 55.78,
+                "lon": 49.12,
+                "fold_id": 2,
+                "y_true": 100_000.0,
+                "y_pred_oof": 95_000.0,
             }
         ]
     )
@@ -336,10 +379,13 @@ def test_get_detail_returns_none_for_unknown_object_id() -> None:
     objects = _objects(
         [
             {
-                "object_id": "a1", "asset_class": "apartment",
-                "lat": 55.78, "lon": 49.12,
+                "object_id": "a1",
+                "asset_class": "apartment",
+                "lat": 55.78,
+                "lon": 49.12,
                 "synthetic_target_rub_per_m2": 100_000.0,
-                "intra_city_raion": "Советский", "levels": 5,
+                "intra_city_raion": "Советский",
+                "levels": 5,
             }
         ]
     )
@@ -368,26 +414,37 @@ def test_list_for_map_threads_model_param_to_oof_reader() -> None:
     objects = _objects(
         [
             {
-                "object_id": "a1", "asset_class": "apartment",
-                "lat": 55.78, "lon": 49.12,
+                "object_id": "a1",
+                "asset_class": "apartment",
+                "lat": 55.78,
+                "lon": 49.12,
                 "synthetic_target_rub_per_m2": 100_000.0,
-                "intra_city_raion": "Советский", "levels": 5,
+                "intra_city_raion": "Советский",
+                "levels": 5,
             }
         ]
     )
     ebm_oof = _oof(
         [
             {
-                "object_id": "a1", "lat": 55.78, "lon": 49.12,
-                "fold_id": 2, "y_true": 100_000.0, "y_pred_oof": 92_000.0,
+                "object_id": "a1",
+                "lat": 55.78,
+                "lon": 49.12,
+                "fold_id": 2,
+                "y_true": 100_000.0,
+                "y_pred_oof": 92_000.0,
             }
         ]
     )
     cb_oof = _oof(
         [
             {
-                "object_id": "a1", "lat": 55.78, "lon": 49.12,
-                "fold_id": 2, "y_true": 100_000.0, "y_pred_oof": 95_000.0,
+                "object_id": "a1",
+                "lat": 55.78,
+                "lon": 49.12,
+                "fold_id": 2,
+                "y_true": 100_000.0,
+                "y_pred_oof": 95_000.0,
             }
         ]
     )
@@ -416,28 +473,27 @@ def test_get_detail_quartet_returns_per_model_predictions() -> None:
     objects = _objects(
         [
             {
-                "object_id": "a1", "asset_class": "apartment",
-                "lat": 55.78, "lon": 49.12,
+                "object_id": "a1",
+                "asset_class": "apartment",
+                "lat": 55.78,
+                "lon": 49.12,
                 "synthetic_target_rub_per_m2": 100_000.0,
-                "intra_city_raion": "Советский", "levels": 5,
+                "intra_city_raion": "Советский",
+                "levels": 5,
             }
         ]
     )
     cb_oof = _oof(
-        [{"object_id": "a1", "lat": 55.78, "lon": 49.12,
-          "fold_id": 2, "y_true": 100_000.0, "y_pred_oof": 95_000.0}]
+        [{"object_id": "a1", "lat": 55.78, "lon": 49.12, "fold_id": 2, "y_true": 100_000.0, "y_pred_oof": 95_000.0}]
     )
     ebm_oof = _oof(
-        [{"object_id": "a1", "lat": 55.78, "lon": 49.12,
-          "fold_id": 2, "y_true": 100_000.0, "y_pred_oof": 92_000.0}]
+        [{"object_id": "a1", "lat": 55.78, "lon": 49.12, "fold_id": 2, "y_true": 100_000.0, "y_pred_oof": 92_000.0}]
     )
     grey_oof = _oof(
-        [{"object_id": "a1", "lat": 55.78, "lon": 49.12,
-          "fold_id": 2, "y_true": 100_000.0, "y_pred_oof": 96_500.0}]
+        [{"object_id": "a1", "lat": 55.78, "lon": 49.12, "fold_id": 2, "y_true": 100_000.0, "y_pred_oof": 96_500.0}]
     )
     naive_oof = _oof(
-        [{"object_id": "a1", "lat": 55.78, "lon": 49.12,
-          "fold_id": 2, "y_true": 100_000.0, "y_pred_oof": 110_000.0}]
+        [{"object_id": "a1", "lat": 55.78, "lon": 49.12, "fold_id": 2, "y_true": 100_000.0, "y_pred_oof": 110_000.0}]
     )
     fake_oof = _FakeOofReader(
         by_model={
@@ -452,9 +508,7 @@ def test_get_detail_quartet_returns_per_model_predictions() -> None:
         oof_reader=fake_oof,
     )
 
-    detail = usecase.get_detail_quartet(
-        "RU-KAZAN-AGG", AssetClass.APARTMENT, "a1"
-    )
+    detail = usecase.get_detail_quartet("RU-KAZAN-AGG", AssetClass.APARTMENT, "a1")
     assert detail is not None
     # Shared gold features are at the top level (single source of truth).
     assert detail["object_id"] == "a1"
@@ -483,16 +537,18 @@ def test_get_detail_quartet_returns_nulls_for_missing_oof_per_model() -> None:
     objects = _objects(
         [
             {
-                "object_id": "a1", "asset_class": "apartment",
-                "lat": 55.78, "lon": 49.12,
+                "object_id": "a1",
+                "asset_class": "apartment",
+                "lat": 55.78,
+                "lon": 49.12,
                 "synthetic_target_rub_per_m2": 100_000.0,
-                "intra_city_raion": "Советский", "levels": 5,
+                "intra_city_raion": "Советский",
+                "levels": 5,
             }
         ]
     )
     cb_oof = _oof(
-        [{"object_id": "a1", "lat": 55.78, "lon": 49.12,
-          "fold_id": 2, "y_true": 100_000.0, "y_pred_oof": 95_000.0}]
+        [{"object_id": "a1", "lat": 55.78, "lon": 49.12, "fold_id": 2, "y_true": 100_000.0, "y_pred_oof": 95_000.0}]
     )
     fake_oof = _FakeOofReader(
         by_model={(AssetClass.APARTMENT, "catboost"): cb_oof},
@@ -502,9 +558,7 @@ def test_get_detail_quartet_returns_nulls_for_missing_oof_per_model() -> None:
         oof_reader=fake_oof,
     )
 
-    detail = usecase.get_detail_quartet(
-        "RU-KAZAN-AGG", AssetClass.APARTMENT, "a1"
-    )
+    detail = usecase.get_detail_quartet("RU-KAZAN-AGG", AssetClass.APARTMENT, "a1")
     assert detail is not None
     assert detail["models"]["catboost"]["y_pred_oof"] == 95_000.0
     assert detail["models"]["ebm"]["y_pred_oof"] is None
@@ -516,10 +570,13 @@ def test_get_detail_quartet_returns_none_for_unknown_object() -> None:
     objects = _objects(
         [
             {
-                "object_id": "a1", "asset_class": "apartment",
-                "lat": 55.78, "lon": 49.12,
+                "object_id": "a1",
+                "asset_class": "apartment",
+                "lat": 55.78,
+                "lon": 49.12,
                 "synthetic_target_rub_per_m2": 100_000.0,
-                "intra_city_raion": "Советский", "levels": 5,
+                "intra_city_raion": "Советский",
+                "levels": 5,
             }
         ]
     )
@@ -527,41 +584,41 @@ def test_get_detail_quartet_returns_none_for_unknown_object() -> None:
         reader=_FakeReader({AssetClass.APARTMENT: objects}),
         oof_reader=_FakeOofReader({}),
     )
-    assert (
-        usecase.get_detail_quartet("RU-KAZAN-AGG", AssetClass.APARTMENT, "missing")
-        is None
-    )
+    assert usecase.get_detail_quartet("RU-KAZAN-AGG", AssetClass.APARTMENT, "missing") is None
 
 
 def test_get_detail_threads_model_param_to_oof_reader() -> None:
     objects = _objects(
         [
             {
-                "object_id": "a1", "asset_class": "apartment",
-                "lat": 55.78, "lon": 49.12,
+                "object_id": "a1",
+                "asset_class": "apartment",
+                "lat": 55.78,
+                "lon": 49.12,
                 "synthetic_target_rub_per_m2": 100_000.0,
-                "intra_city_raion": "Советский", "levels": 5,
+                "intra_city_raion": "Советский",
+                "levels": 5,
             }
         ]
     )
     grey_oof = _oof(
         [
             {
-                "object_id": "a1", "lat": 55.78, "lon": 49.12,
-                "fold_id": 2, "y_true": 100_000.0, "y_pred_oof": 91_500.0,
+                "object_id": "a1",
+                "lat": 55.78,
+                "lon": 49.12,
+                "fold_id": 2,
+                "y_true": 100_000.0,
+                "y_pred_oof": 91_500.0,
             }
         ]
     )
-    fake_oof = _FakeOofReader(
-        by_model={(AssetClass.APARTMENT, "grey_tree"): grey_oof}
-    )
+    fake_oof = _FakeOofReader(by_model={(AssetClass.APARTMENT, "grey_tree"): grey_oof})
     usecase = LoadObjectInspection(
         reader=_FakeReader({AssetClass.APARTMENT: objects}),
         oof_reader=fake_oof,
     )
-    detail = usecase.get_detail(
-        "RU-KAZAN-AGG", AssetClass.APARTMENT, "a1", model="grey_tree"
-    )
+    detail = usecase.get_detail("RU-KAZAN-AGG", AssetClass.APARTMENT, "a1", model="grey_tree")
     assert detail is not None
     assert detail["y_pred_oof"] == 91_500.0
     assert (AssetClass.APARTMENT, "grey_tree") in fake_oof.model_calls

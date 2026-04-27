@@ -6,6 +6,4 @@ from kadastra.domain.asset_class import AssetClass
 
 
 class ValuationObjectReaderPort(Protocol):
-    def load(
-        self, region_code: str, asset_class: AssetClass
-    ) -> pl.DataFrame: ...
+    def load(self, region_code: str, asset_class: AssetClass) -> pl.DataFrame: ...

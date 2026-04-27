@@ -32,17 +32,13 @@ class TrainObjectValuationModel:
         self._parent_resolution = parent_resolution
 
     def execute(self, region_code: str, asset_class: AssetClass) -> str:
-        df = self._reader.load(region_code, asset_class).drop_nulls(
-            subset=[_TARGET_COLUMN]
-        )
+        df = self._reader.load(region_code, asset_class).drop_nulls(subset=[_TARGET_COLUMN])
 
         numeric_cols, categorical_cols = select_object_feature_columns(df)
         feature_cols = numeric_cols + categorical_cols
         cat_feature_indices = list(range(len(numeric_cols), len(feature_cols)))
 
-        X = build_object_feature_matrix(
-            df, numeric_cols=numeric_cols, categorical_cols=categorical_cols
-        )
+        X = build_object_feature_matrix(df, numeric_cols=numeric_cols, categorical_cols=categorical_cols)
         y = df[_TARGET_COLUMN].to_numpy().astype(np.float64)
 
         cell_resolution = max(self._parent_resolution + 1, 10)
@@ -60,9 +56,7 @@ class TrainObjectValuationModel:
             parent_resolution=self._parent_resolution,
             cat_features=cat_feature_indices or None,
         )
-        final_model = train_catboost(
-            X, y, self._params, cat_features=cat_feature_indices or None
-        )
+        final_model = train_catboost(X, y, self._params, cat_features=cat_feature_indices or None)
 
         params_payload = {
             **asdict(self._params),

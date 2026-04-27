@@ -63,9 +63,7 @@ def test_multiple_ways_concatenated() -> None:
     way1 = _way((0.0, 0.0), (0.001, 0.0))
     way2 = _way((1.0, 1.0), (1.001, 1.0), (1.002, 1.0))
 
-    edges = build_road_graph_edges_from_overpass(
-        {"elements": [way1, way2]}
-    )
+    edges = build_road_graph_edges_from_overpass({"elements": [way1, way2]})
 
     # 1 + 2 = 3 edges
     assert edges.height == 3
@@ -132,6 +130,4 @@ def test_zero_length_edge_kept_for_traceability() -> None:
     edges = build_road_graph_edges_from_overpass({"elements": [_way(a, a)]})
 
     assert edges.height == 1
-    assert edges["length_m"][0] == 0.0 or math.isclose(
-        edges["length_m"][0], 0.0, abs_tol=1e-6
-    )
+    assert edges["length_m"][0] == 0.0 or math.isclose(edges["length_m"][0], 0.0, abs_tol=1e-6)

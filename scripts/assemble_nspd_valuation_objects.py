@@ -19,10 +19,7 @@ def main() -> None:
     usecase = container.build_assemble_nspd_valuation_objects()
 
     classes = list(AssetClass)
-    print(
-        f"Assembling NSPD valuation objects: region={settings.region_code} "
-        f"classes={[c.value for c in classes]}"
-    )
+    print(f"Assembling NSPD valuation objects: region={settings.region_code} classes={[c.value for c in classes]}")
     usecase.execute(settings.region_code, asset_classes=classes)
     print("done")
 

@@ -13,17 +13,13 @@ class MLflowModelLoader:
         mlflow.set_tracking_uri(self._tracking_uri)
         model = mlflow_catboost.load_model(model_uri=f"runs:/{run_id}/model")
         if not isinstance(model, CatBoostRegressor):
-            raise TypeError(
-                f"expected CatBoostRegressor for run_id={run_id}, got {type(model).__name__}"
-            )
+            raise TypeError(f"expected CatBoostRegressor for run_id={run_id}, got {type(model).__name__}")
         return model
 
     def find_latest_run_id(self, run_name_prefix: str) -> str:
         experiment = self._client.get_experiment_by_name(self._experiment_name)
         if experiment is None:
-            raise FileNotFoundError(
-                f"experiment {self._experiment_name!r} not found in {self._tracking_uri}"
-            )
+            raise FileNotFoundError(f"experiment {self._experiment_name!r} not found in {self._tracking_uri}")
         runs = self._client.search_runs(
             experiment_ids=[experiment.experiment_id],
             filter_string=f"tags.mlflow.runName LIKE '{run_name_prefix}%'",

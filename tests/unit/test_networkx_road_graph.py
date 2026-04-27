@@ -81,8 +81,7 @@ def test_distance_matrix_includes_snap_distance_to_nearest_node() -> None:
 
 
 def test_distance_matrix_handles_batch_of_sources_and_targets() -> None:
-    """Shape and ordering: out[i, j] is from_coords[i] -> to_coords[j].
-    """
+    """Shape and ordering: out[i, j] is from_coords[i] -> to_coords[j]."""
     a = (0.0, 0.0)
     b = (0.001, 0.0)
     c = (0.002, 0.0)
@@ -98,9 +97,7 @@ def test_distance_matrix_handles_batch_of_sources_and_targets() -> None:
     # a -> b: ~111
     assert out[0, 0] == pytest.approx(haversine_meters(*a, *b), rel=1e-3)
     # a -> c: ~222
-    assert out[0, 1] == pytest.approx(
-        haversine_meters(*a, *b) + haversine_meters(*b, *c), rel=1e-3
-    )
+    assert out[0, 1] == pytest.approx(haversine_meters(*a, *b) + haversine_meters(*b, *c), rel=1e-3)
     # b -> b: 0
     assert out[1, 0] == pytest.approx(0.0, abs=1e-6)
     # b -> c: ~111
@@ -108,9 +105,7 @@ def test_distance_matrix_handles_batch_of_sources_and_targets() -> None:
 
 
 def test_empty_query_returns_zero_sized_matrix() -> None:
-    graph = NetworkxRoadGraph.from_edges(
-        [((0.0, 0.0), (0.001, 0.0), 111.0)]
-    )
+    graph = NetworkxRoadGraph.from_edges([((0.0, 0.0), (0.001, 0.0), 111.0)])
 
     out = graph.distance_matrix_m(from_coords=[], to_coords=[(0.0, 0.0)])
     assert out.shape == (0, 1)

@@ -36,17 +36,16 @@ def _validate_inputs(df: pl.DataFrame) -> None:
     classes = set(df["asset_class"].unique().to_list())
     unknown = classes - set(_BASE_BY_CLASS.keys())
     if unknown:
-        raise ValueError(
-            f"compute_object_synthetic_target got unknown asset_class values: {sorted(unknown)}"
-        )
+        raise ValueError(f"compute_object_synthetic_target got unknown asset_class values: {sorted(unknown)}")
 
 
 def _apartment_factor(df: pl.DataFrame) -> pl.Expr:
     metro = 1.0 + 0.6 * (-pl.col("dist_metro_m") / 800.0).exp()
-    density = 1.0 + 0.05 * (
-        pl.col("count_apartments_500m").cast(pl.Float64)
-        + pl.col("count_commercial_500m").cast(pl.Float64)
-    ).log1p()
+    density = (
+        1.0
+        + 0.05
+        * (pl.col("count_apartments_500m").cast(pl.Float64) + pl.col("count_commercial_500m").cast(pl.Float64)).log1p()
+    )
     road = 1.0 + 0.0001 * pl.col("road_length_500m")
     _ = df  # Polars exprs reference column names, df not needed here
     return metro * density * road
@@ -65,11 +64,15 @@ def _house_factor(df: pl.DataFrame) -> pl.Expr:
 
 def _commercial_factor(df: pl.DataFrame) -> pl.Expr:
     metro = 1.0 + 1.0 * (-pl.col("dist_metro_m") / 1500.0).exp()
-    foot = 1.0 + 0.1 * (
-        pl.col("count_apartments_500m").cast(pl.Float64)
-        + pl.col("count_commercial_500m").cast(pl.Float64)
-        + pl.col("count_houses_500m").cast(pl.Float64)
-    ).log1p()
+    foot = (
+        1.0
+        + 0.1
+        * (
+            pl.col("count_apartments_500m").cast(pl.Float64)
+            + pl.col("count_commercial_500m").cast(pl.Float64)
+            + pl.col("count_houses_500m").cast(pl.Float64)
+        ).log1p()
+    )
     road = 1.0 + 0.0002 * pl.col("road_length_500m")
     _ = df
     return metro * foot * road
@@ -95,7 +98,5 @@ def compute_object_synthetic_target(df: pl.DataFrame, *, seed: int) -> pl.DataFr
     noise = rng.standard_normal(df.height)
 
     return df.with_columns(
-        ((base * factor) + sigma * pl.Series("_noise", noise))
-        .clip(lower_bound=0.0)
-        .alias(_TARGET_COLUMN)
+        ((base * factor) + sigma * pl.Series("_noise", noise)).clip(lower_bound=0.0).alias(_TARGET_COLUMN)
     )

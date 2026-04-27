@@ -60,16 +60,12 @@ def _coord_at_offset(
 
 
 def test_adds_count_columns_per_layer_and_radius() -> None:
-    objects = _objects(
-        [{"object_id": "a", "lat": KAZAN_LAT, "lon": KAZAN_LON}]
-    )
+    objects = _objects([{"object_id": "a", "lat": KAZAN_LAT, "lon": KAZAN_LON}])
     far_lat, far_lon = _coord_at_offset(KAZAN_LAT, KAZAN_LON, north_m=2_000.0)
     near_lat, near_lon = _coord_at_offset(KAZAN_LAT, KAZAN_LON, east_m=200.0)
     stations = _layer([{"lat": near_lat, "lon": near_lon}, {"lat": far_lat, "lon": far_lon}])
 
-    out = compute_object_zonal_features(
-        objects, layers={"stations": stations}, radii_m=[100, 300, 500, 800]
-    )
+    out = compute_object_zonal_features(objects, layers={"stations": stations}, radii_m=[100, 300, 500, 800])
 
     expected_extra = {
         "stations_within_100m",
@@ -90,21 +86,21 @@ def test_count_grows_monotonically_with_radius() -> None:
     objects = _objects([{"object_id": "a", "lat": base[0], "lon": base[1]}])
 
     near, mid, far_in, far_out = (
-        _coord_at_offset(*base, east_m=80.0),     # within 100
-        _coord_at_offset(*base, east_m=250.0),    # within 300
-        _coord_at_offset(*base, east_m=700.0),    # within 800
-        _coord_at_offset(*base, east_m=900.0),    # outside 800
+        _coord_at_offset(*base, east_m=80.0),  # within 100
+        _coord_at_offset(*base, east_m=250.0),  # within 300
+        _coord_at_offset(*base, east_m=700.0),  # within 800
+        _coord_at_offset(*base, east_m=900.0),  # outside 800
     )
-    layer = _layer([
-        {"lat": near[0], "lon": near[1]},
-        {"lat": mid[0], "lon": mid[1]},
-        {"lat": far_in[0], "lon": far_in[1]},
-        {"lat": far_out[0], "lon": far_out[1]},
-    ])
+    layer = _layer(
+        [
+            {"lat": near[0], "lon": near[1]},
+            {"lat": mid[0], "lon": mid[1]},
+            {"lat": far_in[0], "lon": far_in[1]},
+            {"lat": far_out[0], "lon": far_out[1]},
+        ]
+    )
 
-    out = compute_object_zonal_features(
-        objects, layers={"poi": layer}, radii_m=[100, 300, 500, 800]
-    )
+    out = compute_object_zonal_features(objects, layers={"poi": layer}, radii_m=[100, 300, 500, 800])
 
     assert out["poi_within_100m"][0] == 1
     assert out["poi_within_300m"][0] == 2
@@ -136,24 +132,30 @@ def test_self_excluded_when_layer_carries_object_id() -> None:
     """An object that appears in its own layer (e.g. apartments → other
     apartments) must not count itself in any radius."""
     base = (KAZAN_LAT, KAZAN_LON)
-    objects = _objects([
-        {"object_id": "a", "lat": base[0], "lon": base[1]},
-        {"object_id": "b", "lat": _coord_at_offset(*base, east_m=120.0)[0],
-         "lon": _coord_at_offset(*base, east_m=120.0)[1]},
-    ])
+    objects = _objects(
+        [
+            {"object_id": "a", "lat": base[0], "lon": base[1]},
+            {
+                "object_id": "b",
+                "lat": _coord_at_offset(*base, east_m=120.0)[0],
+                "lon": _coord_at_offset(*base, east_m=120.0)[1],
+            },
+        ]
+    )
     # Layer == objects (same coordinates and ids)
     layer = _layer(
         [
             {"object_id": "a", "lat": base[0], "lon": base[1]},
-            {"object_id": "b", "lat": _coord_at_offset(*base, east_m=120.0)[0],
-             "lon": _coord_at_offset(*base, east_m=120.0)[1]},
+            {
+                "object_id": "b",
+                "lat": _coord_at_offset(*base, east_m=120.0)[0],
+                "lon": _coord_at_offset(*base, east_m=120.0)[1],
+            },
         ],
         with_object_id=True,
     )
 
-    out = compute_object_zonal_features(
-        objects, layers={"apartments": layer}, radii_m=[300]
-    )
+    out = compute_object_zonal_features(objects, layers={"apartments": layer}, radii_m=[300])
 
     # a and b are 120 m apart → each sees the other within 300 m, not itself.
     assert out["apartments_within_300m"].to_list() == [1, 1]
@@ -163,10 +165,12 @@ def test_distinct_objects_at_same_coord_still_counted() -> None:
     """Two objects with different object_id but identical (lat, lon) — both
     are real objects, both should count toward each other's density."""
     base = (KAZAN_LAT, KAZAN_LON)
-    objects = _objects([
-        {"object_id": "a", "lat": base[0], "lon": base[1]},
-        {"object_id": "b", "lat": base[0], "lon": base[1]},
-    ])
+    objects = _objects(
+        [
+            {"object_id": "a", "lat": base[0], "lon": base[1]},
+            {"object_id": "b", "lat": base[0], "lon": base[1]},
+        ]
+    )
     layer = _layer(
         [
             {"object_id": "a", "lat": base[0], "lon": base[1]},
@@ -175,9 +179,7 @@ def test_distinct_objects_at_same_coord_still_counted() -> None:
         with_object_id=True,
     )
 
-    out = compute_object_zonal_features(
-        objects, layers={"layer": layer}, radii_m=[100]
-    )
+    out = compute_object_zonal_features(objects, layers={"layer": layer}, radii_m=[100])
 
     # a sees b at distance 0 m (within 100); b sees a likewise. Self excluded.
     assert out["layer_within_100m"].to_list() == [1, 1]
@@ -187,9 +189,7 @@ def test_empty_objects_returns_empty_with_columns() -> None:
     objects = _objects([])
     layer = _layer([{"lat": KAZAN_LAT, "lon": KAZAN_LON}])
 
-    out = compute_object_zonal_features(
-        objects, layers={"poi": layer}, radii_m=[100, 500]
-    )
+    out = compute_object_zonal_features(objects, layers={"poi": layer}, radii_m=[100, 500])
 
     assert out.is_empty()
     assert "poi_within_100m" in out.columns
@@ -200,9 +200,7 @@ def test_empty_layer_yields_zero_counts() -> None:
     objects = _objects([{"object_id": "a", "lat": KAZAN_LAT, "lon": KAZAN_LON}])
     layer = _layer([])
 
-    out = compute_object_zonal_features(
-        objects, layers={"poi": layer}, radii_m=[100, 500]
-    )
+    out = compute_object_zonal_features(objects, layers={"poi": layer}, radii_m=[100, 500])
 
     assert out["poi_within_100m"][0] == 0
     assert out["poi_within_500m"][0] == 0
@@ -211,9 +209,7 @@ def test_empty_layer_yields_zero_counts() -> None:
 def test_no_layers_returns_input_unchanged() -> None:
     objects = _objects([{"object_id": "a", "lat": KAZAN_LAT, "lon": KAZAN_LON}])
 
-    out = compute_object_zonal_features(
-        objects, layers={}, radii_m=[100, 500]
-    )
+    out = compute_object_zonal_features(objects, layers={}, radii_m=[100, 500])
 
     assert out.columns == objects.columns
     assert out.height == objects.height
@@ -225,12 +221,8 @@ def test_radii_order_does_not_matter() -> None:
     near = _coord_at_offset(*base, east_m=200.0)
     layer = _layer([{"lat": near[0], "lon": near[1]}])
 
-    out_a = compute_object_zonal_features(
-        objects, layers={"poi": layer}, radii_m=[100, 300, 500, 800]
-    )
-    out_b = compute_object_zonal_features(
-        objects, layers={"poi": layer}, radii_m=[800, 100, 500, 300]
-    )
+    out_a = compute_object_zonal_features(objects, layers={"poi": layer}, radii_m=[100, 300, 500, 800])
+    out_b = compute_object_zonal_features(objects, layers={"poi": layer}, radii_m=[800, 100, 500, 300])
 
     for r in (100, 300, 500, 800):
         col = f"poi_within_{r}m"
@@ -249,8 +241,6 @@ def test_haversine_threshold_is_strict_lt() -> None:
     layer = _layer([{"lat": boundary[0], "lon": boundary[1]}])
 
     threshold = round(actual) + 5
-    out = compute_object_zonal_features(
-        objects, layers={"poi": layer}, radii_m=[threshold]
-    )
+    out = compute_object_zonal_features(objects, layers={"poi": layer}, radii_m=[threshold])
     col = f"poi_within_{threshold}m"
     assert out[col][0] == 1

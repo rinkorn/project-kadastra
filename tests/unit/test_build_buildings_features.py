@@ -79,9 +79,7 @@ def test_execute_reads_buildings_from_raw_data() -> None:
 
 def test_execute_saves_one_feature_set_per_resolution_with_buildings_label() -> None:
     raw_data = FakeRawData({"buildings/kazan.csv": _buildings_csv()})
-    coverage_reader = FakeCoverageReader(
-        {7: _coverage_for_kazan(7), 8: _coverage_for_kazan(8)}
-    )
+    coverage_reader = FakeCoverageReader({7: _coverage_for_kazan(7), 8: _coverage_for_kazan(8)})
     feature_store = FakeFeatureStore()
     usecase = _make_usecase(raw_data, coverage_reader, feature_store)
 
@@ -116,9 +114,7 @@ def test_execute_produces_features_with_expected_columns() -> None:
 
 def test_execute_does_not_re_read_csv_per_resolution() -> None:
     raw_data = FakeRawData({"buildings/kazan.csv": _buildings_csv()})
-    coverage_reader = FakeCoverageReader(
-        {7: _coverage_for_kazan(7), 8: _coverage_for_kazan(8)}
-    )
+    coverage_reader = FakeCoverageReader({7: _coverage_for_kazan(7), 8: _coverage_for_kazan(8)})
     feature_store = FakeFeatureStore()
     usecase = _make_usecase(raw_data, coverage_reader, feature_store)
 

@@ -89,13 +89,9 @@ def _silver_landplots() -> pl.DataFrame:
 
 
 def test_writes_one_partition_per_asset_class() -> None:
-    silver = _FakeSilverStore(
-        buildings=_silver_buildings(), landplots=_silver_landplots()
-    )
+    silver = _FakeSilverStore(buildings=_silver_buildings(), landplots=_silver_landplots())
     store = _FakeValuationObjectStore()
-    usecase = AssembleNspdValuationObjects(
-        silver_store=silver, valuation_object_store=store
-    )
+    usecase = AssembleNspdValuationObjects(silver_store=silver, valuation_object_store=store)
 
     usecase.execute(
         "RU-KAZAN-AGG",
@@ -107,13 +103,9 @@ def test_writes_one_partition_per_asset_class() -> None:
 
 
 def test_object_id_uses_nspd_prefix() -> None:
-    silver = _FakeSilverStore(
-        buildings=_silver_buildings(), landplots=_silver_landplots()
-    )
+    silver = _FakeSilverStore(buildings=_silver_buildings(), landplots=_silver_landplots())
     store = _FakeValuationObjectStore()
-    AssembleNspdValuationObjects(
-        silver_store=silver, valuation_object_store=store
-    ).execute(
+    AssembleNspdValuationObjects(silver_store=silver, valuation_object_store=store).execute(
         "RU-KAZAN-AGG",
         asset_classes=[AssetClass.HOUSE, AssetClass.LANDPLOT],
     )
@@ -127,13 +119,11 @@ def test_object_id_uses_nspd_prefix() -> None:
 
 
 def test_target_column_holds_real_cost_index() -> None:
-    silver = _FakeSilverStore(
-        buildings=_silver_buildings(), landplots=_silver_landplots()
-    )
+    silver = _FakeSilverStore(buildings=_silver_buildings(), landplots=_silver_landplots())
     store = _FakeValuationObjectStore()
-    AssembleNspdValuationObjects(
-        silver_store=silver, valuation_object_store=store
-    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.HOUSE])
+    AssembleNspdValuationObjects(silver_store=silver, valuation_object_store=store).execute(
+        "RU-KAZAN-AGG", asset_classes=[AssetClass.HOUSE]
+    )
 
     df = store.calls[0][2]
     assert "synthetic_target_rub_per_m2" in df.columns
@@ -142,13 +132,11 @@ def test_target_column_holds_real_cost_index() -> None:
 
 
 def test_levels_maps_floors_for_buildings_and_null_for_landplots() -> None:
-    silver = _FakeSilverStore(
-        buildings=_silver_buildings(), landplots=_silver_landplots()
-    )
+    silver = _FakeSilverStore(buildings=_silver_buildings(), landplots=_silver_landplots())
     store = _FakeValuationObjectStore()
-    AssembleNspdValuationObjects(
-        silver_store=silver, valuation_object_store=store
-    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT, AssetClass.LANDPLOT])
+    AssembleNspdValuationObjects(silver_store=silver, valuation_object_store=store).execute(
+        "RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT, AssetClass.LANDPLOT]
+    )
 
     by_class = {c: df for _, c, df in store.calls}
     assert sorted(by_class[AssetClass.APARTMENT]["levels"].to_list()) == [9, 12]
@@ -164,9 +152,9 @@ def test_drops_rows_with_null_target() -> None:
     )
     silver = _FakeSilverStore(buildings=buildings, landplots=_silver_landplots())
     store = _FakeValuationObjectStore()
-    AssembleNspdValuationObjects(
-        silver_store=silver, valuation_object_store=store
-    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.HOUSE])
+    AssembleNspdValuationObjects(silver_store=silver, valuation_object_store=store).execute(
+        "RU-KAZAN-AGG", asset_classes=[AssetClass.HOUSE]
+    )
 
     df = store.calls[0][2]
     assert df.height == 1
@@ -174,16 +162,13 @@ def test_drops_rows_with_null_target() -> None:
 
 def test_drops_rows_with_null_asset_class() -> None:
     buildings = _silver_buildings().with_columns(
-        pl.when(pl.col("geom_data_id") == 1)
-        .then(None)
-        .otherwise(pl.col("asset_class"))
-        .alias("asset_class")
+        pl.when(pl.col("geom_data_id") == 1).then(None).otherwise(pl.col("asset_class")).alias("asset_class")
     )
     silver = _FakeSilverStore(buildings=buildings, landplots=_silver_landplots())
     store = _FakeValuationObjectStore()
-    AssembleNspdValuationObjects(
-        silver_store=silver, valuation_object_store=store
-    ).execute("RU-KAZAN-AGG", asset_classes=list(AssetClass))
+    AssembleNspdValuationObjects(silver_store=silver, valuation_object_store=store).execute(
+        "RU-KAZAN-AGG", asset_classes=list(AssetClass)
+    )
 
     saved = {c.value: df for _, c, df in store.calls}
     # House had 2 rows, dropped 1 with null asset_class
@@ -213,9 +198,7 @@ def test_drops_rows_with_zero_or_negative_target() -> None:
     ).drop("cost_index_rub_per_m2_negative_marker")
     silver = _FakeSilverStore(buildings=buildings, landplots=_silver_landplots())
     store = _FakeValuationObjectStore()
-    AssembleNspdValuationObjects(
-        silver_store=silver, valuation_object_store=store
-    ).execute(
+    AssembleNspdValuationObjects(silver_store=silver, valuation_object_store=store).execute(
         "RU-KAZAN-AGG", asset_classes=[AssetClass.HOUSE, AssetClass.APARTMENT]
     )
     saved = {c.value: df for _, c, df in store.calls}
@@ -231,16 +214,13 @@ def test_drops_rows_with_zero_cost_value() -> None:
     cost is missing in NSPD but the area+target field is non-null
     (computed from a stale cache)."""
     buildings = _silver_buildings().with_columns(
-        pl.when(pl.col("geom_data_id") == 1)
-        .then(0.0)
-        .otherwise(pl.col("cost_value_rub"))
-        .alias("cost_value_rub")
+        pl.when(pl.col("geom_data_id") == 1).then(0.0).otherwise(pl.col("cost_value_rub")).alias("cost_value_rub")
     )
     silver = _FakeSilverStore(buildings=buildings, landplots=_silver_landplots())
     store = _FakeValuationObjectStore()
-    AssembleNspdValuationObjects(
-        silver_store=silver, valuation_object_store=store
-    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.HOUSE])
+    AssembleNspdValuationObjects(silver_store=silver, valuation_object_store=store).execute(
+        "RU-KAZAN-AGG", asset_classes=[AssetClass.HOUSE]
+    )
     df = store.calls[0][2]
     assert df.height == 1
 
@@ -254,9 +234,9 @@ def test_dedupes_by_object_id() -> None:
     duplicated = pl.concat([base, base.filter(pl.col("geom_data_id") == 4)])
     silver = _FakeSilverStore(buildings=duplicated, landplots=_silver_landplots())
     store = _FakeValuationObjectStore()
-    AssembleNspdValuationObjects(
-        silver_store=silver, valuation_object_store=store
-    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.HOUSE])
+    AssembleNspdValuationObjects(silver_store=silver, valuation_object_store=store).execute(
+        "RU-KAZAN-AGG", asset_classes=[AssetClass.HOUSE]
+    )
     df = store.calls[0][2]
     # Originally 2 houses; even after duplicating one, output is still 2.
     assert df.height == 2
@@ -268,13 +248,9 @@ def test_polygon_wkt_3857_passthrough_buildings_and_landplots() -> None:
     buildings and landplots — the web UI needs object polygons,
     and BuildObjectFeatures runs without selecting columns so the
     only place the geometry can be dropped is here in assemble."""
-    silver = _FakeSilverStore(
-        buildings=_silver_buildings(), landplots=_silver_landplots()
-    )
+    silver = _FakeSilverStore(buildings=_silver_buildings(), landplots=_silver_landplots())
     store = _FakeValuationObjectStore()
-    AssembleNspdValuationObjects(
-        silver_store=silver, valuation_object_store=store
-    ).execute(
+    AssembleNspdValuationObjects(silver_store=silver, valuation_object_store=store).execute(
         "RU-KAZAN-AGG",
         asset_classes=[AssetClass.HOUSE, AssetClass.LANDPLOT],
     )
@@ -284,24 +260,14 @@ def test_polygon_wkt_3857_passthrough_buildings_and_landplots() -> None:
     landplot_df = by_class[AssetClass.LANDPLOT]
     assert "polygon_wkt_3857" in house_df.columns
     assert "polygon_wkt_3857" in landplot_df.columns
-    assert all(
-        wkt is not None and wkt.startswith("POLYGON")
-        for wkt in house_df["polygon_wkt_3857"].to_list()
-    )
-    assert all(
-        wkt is not None and wkt.startswith("POLYGON")
-        for wkt in landplot_df["polygon_wkt_3857"].to_list()
-    )
+    assert all(wkt is not None and wkt.startswith("POLYGON") for wkt in house_df["polygon_wkt_3857"].to_list())
+    assert all(wkt is not None and wkt.startswith("POLYGON") for wkt in landplot_df["polygon_wkt_3857"].to_list())
 
 
 def test_landplots_partition_skipped_when_landplot_not_requested() -> None:
-    silver = _FakeSilverStore(
-        buildings=_silver_buildings(), landplots=_silver_landplots()
-    )
+    silver = _FakeSilverStore(buildings=_silver_buildings(), landplots=_silver_landplots())
     store = _FakeValuationObjectStore()
-    AssembleNspdValuationObjects(
-        silver_store=silver, valuation_object_store=store
-    ).execute(
+    AssembleNspdValuationObjects(silver_store=silver, valuation_object_store=store).execute(
         "RU-KAZAN-AGG",
         asset_classes=[AssetClass.HOUSE, AssetClass.APARTMENT, AssetClass.COMMERCIAL],
     )

@@ -31,9 +31,7 @@ import polars as pl
 _ACTIVE_ENDDATE = "2079-06-06"
 
 
-def parse_object_params_xml(
-    path: Path, *, typeids: Iterable[int]
-) -> pl.DataFrame:
+def parse_object_params_xml(path: Path, *, typeids: Iterable[int]) -> pl.DataFrame:
     wanted = {str(t) for t in typeids}
     objectids: list[int] = []
     typeids_out: list[int] = []

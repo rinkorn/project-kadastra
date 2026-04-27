@@ -36,24 +36,33 @@ def test_groups_by_hex_and_asset_class() -> None:
     add a house in the same hex → second row. Plus an "all" roll-up."""
     rows = [
         {
-            "object_id": "a1", "asset_class": "apartment",
-            "lat": KAZAN_LAT, "lon": KAZAN_LON,
+            "object_id": "a1",
+            "asset_class": "apartment",
+            "lat": KAZAN_LAT,
+            "lon": KAZAN_LON,
             "synthetic_target_rub_per_m2": 100_000.0,
-            "y_pred_oof": 95_000.0, "levels": 5,
+            "y_pred_oof": 95_000.0,
+            "levels": 5,
             "intra_city_raion": "Советский",
         },
         {
-            "object_id": "a2", "asset_class": "apartment",
-            "lat": KAZAN_LAT + 1e-5, "lon": KAZAN_LON + 1e-5,
+            "object_id": "a2",
+            "asset_class": "apartment",
+            "lat": KAZAN_LAT + 1e-5,
+            "lon": KAZAN_LON + 1e-5,
             "synthetic_target_rub_per_m2": 110_000.0,
-            "y_pred_oof": 100_000.0, "levels": 9,
+            "y_pred_oof": 100_000.0,
+            "levels": 9,
             "intra_city_raion": "Советский",
         },
         {
-            "object_id": "h1", "asset_class": "house",
-            "lat": KAZAN_LAT + 2e-5, "lon": KAZAN_LON + 2e-5,
+            "object_id": "h1",
+            "asset_class": "house",
+            "lat": KAZAN_LAT + 2e-5,
+            "lon": KAZAN_LON + 2e-5,
             "synthetic_target_rub_per_m2": 50_000.0,
-            "y_pred_oof": 60_000.0, "levels": 2,
+            "y_pred_oof": 60_000.0,
+            "levels": 2,
             "intra_city_raion": "Советский",
         },
     ]
@@ -72,10 +81,13 @@ def test_groups_by_hex_and_asset_class() -> None:
 def test_median_target_and_pred_per_hex() -> None:
     rows = [
         {
-            "object_id": f"a{i}", "asset_class": "apartment",
-            "lat": KAZAN_LAT + 1e-5 * i, "lon": KAZAN_LON + 1e-5 * i,
+            "object_id": f"a{i}",
+            "asset_class": "apartment",
+            "lat": KAZAN_LAT + 1e-5 * i,
+            "lon": KAZAN_LON + 1e-5 * i,
             "synthetic_target_rub_per_m2": float(t),
-            "y_pred_oof": float(p), "levels": 5,
+            "y_pred_oof": float(p),
+            "levels": 5,
             "intra_city_raion": "Советский",
         }
         for i, (t, p) in enumerate([(100, 90), (200, 180), (300, 280)])
@@ -92,15 +104,16 @@ def test_median_target_and_pred_per_hex() -> None:
 def test_dominant_intra_raion() -> None:
     rows = [
         {
-            "object_id": f"a{i}", "asset_class": "apartment",
-            "lat": KAZAN_LAT + 1e-5 * i, "lon": KAZAN_LON + 1e-5 * i,
+            "object_id": f"a{i}",
+            "asset_class": "apartment",
+            "lat": KAZAN_LAT + 1e-5 * i,
+            "lon": KAZAN_LON + 1e-5 * i,
             "synthetic_target_rub_per_m2": 100.0,
-            "y_pred_oof": 100.0, "levels": 5,
+            "y_pred_oof": 100.0,
+            "levels": 5,
             "intra_city_raion": raion,
         }
-        for i, raion in enumerate(
-            ["Советский", "Советский", "Вахитовский"]
-        )
+        for i, raion in enumerate(["Советский", "Советский", "Вахитовский"])
     ]
     out = aggregate_objects_to_hex(_objects(rows), resolution=10)
     apt = out.filter(pl.col("asset_class") == "apartment").row(0, named=True)
@@ -121,8 +134,10 @@ def test_works_without_oof_pred_column() -> None:
     df = pl.DataFrame(
         [
             {
-                "object_id": "a1", "asset_class": "apartment",
-                "lat": KAZAN_LAT, "lon": KAZAN_LON,
+                "object_id": "a1",
+                "asset_class": "apartment",
+                "lat": KAZAN_LAT,
+                "lon": KAZAN_LON,
                 "synthetic_target_rub_per_m2": 100.0,
             }
         ],
@@ -137,10 +152,14 @@ def test_works_without_oof_pred_column() -> None:
 def test_resolution_column_set_correctly() -> None:
     rows = [
         {
-            "object_id": "a1", "asset_class": "apartment",
-            "lat": KAZAN_LAT, "lon": KAZAN_LON,
-            "synthetic_target_rub_per_m2": 100.0, "y_pred_oof": 100.0,
-            "levels": 5, "intra_city_raion": "Советский",
+            "object_id": "a1",
+            "asset_class": "apartment",
+            "lat": KAZAN_LAT,
+            "lon": KAZAN_LON,
+            "synthetic_target_rub_per_m2": 100.0,
+            "y_pred_oof": 100.0,
+            "levels": 5,
+            "intra_city_raion": "Советский",
         }
     ]
     out = aggregate_objects_to_hex(_objects(rows), resolution=8)
@@ -157,9 +176,12 @@ def test_mean_geofeatures_per_hex() -> None:
     «доля парков в 500 м», etc. — currently it only handles
     levels/flats/area_m2/year_built."""
     schema = {
-        "object_id": pl.Utf8, "asset_class": pl.Utf8,
-        "lat": pl.Float64, "lon": pl.Float64,
-        "synthetic_target_rub_per_m2": pl.Float64, "y_pred_oof": pl.Float64,
+        "object_id": pl.Utf8,
+        "asset_class": pl.Utf8,
+        "lat": pl.Float64,
+        "lon": pl.Float64,
+        "synthetic_target_rub_per_m2": pl.Float64,
+        "y_pred_oof": pl.Float64,
         # Curated subset of per-object geo / age features. Names match
         # the build_object_features convention: dist_to_<layer>_m for
         # ADR-0019 layers, dist_metro_m / dist_entrance_m for legacy,
@@ -176,23 +198,35 @@ def test_mean_geofeatures_per_hex() -> None:
     }
     rows = [
         {
-            "object_id": "a1", "asset_class": "apartment",
-            "lat": KAZAN_LAT, "lon": KAZAN_LON,
-            "synthetic_target_rub_per_m2": 100.0, "y_pred_oof": 100.0,
-            "dist_to_water_m": 100.0, "dist_to_park_m": 200.0,
+            "object_id": "a1",
+            "asset_class": "apartment",
+            "lat": KAZAN_LAT,
+            "lon": KAZAN_LON,
+            "synthetic_target_rub_per_m2": 100.0,
+            "y_pred_oof": 100.0,
+            "dist_to_water_m": 100.0,
+            "dist_to_park_m": 200.0,
             "dist_to_school_m": 50.0,
-            "water_share_500m": 0.10, "park_share_500m": 0.20,
-            "road_length_500m": 1000.0, "school_within_500m": 2.0,
+            "water_share_500m": 0.10,
+            "park_share_500m": 0.20,
+            "road_length_500m": 1000.0,
+            "school_within_500m": 2.0,
             "age_years": 10.0,
         },
         {
-            "object_id": "a2", "asset_class": "apartment",
-            "lat": KAZAN_LAT + 1e-5, "lon": KAZAN_LON + 1e-5,
-            "synthetic_target_rub_per_m2": 100.0, "y_pred_oof": 100.0,
-            "dist_to_water_m": 300.0, "dist_to_park_m": 400.0,
+            "object_id": "a2",
+            "asset_class": "apartment",
+            "lat": KAZAN_LAT + 1e-5,
+            "lon": KAZAN_LON + 1e-5,
+            "synthetic_target_rub_per_m2": 100.0,
+            "y_pred_oof": 100.0,
+            "dist_to_water_m": 300.0,
+            "dist_to_park_m": 400.0,
             "dist_to_school_m": 150.0,
-            "water_share_500m": 0.30, "park_share_500m": 0.40,
-            "road_length_500m": 2000.0, "school_within_500m": 4.0,
+            "water_share_500m": 0.30,
+            "park_share_500m": 0.40,
+            "road_length_500m": 2000.0,
+            "school_within_500m": 4.0,
             "age_years": 20.0,
         },
     ]
@@ -215,10 +249,13 @@ def test_mean_geofeatures_absent_when_columns_missing() -> None:
     column is actually present should appear."""
     rows = [
         {
-            "object_id": "a1", "asset_class": "apartment",
-            "lat": KAZAN_LAT, "lon": KAZAN_LON,
+            "object_id": "a1",
+            "asset_class": "apartment",
+            "lat": KAZAN_LAT,
+            "lon": KAZAN_LON,
             "synthetic_target_rub_per_m2": 100.0,
-            "y_pred_oof": 100.0, "levels": 5,
+            "y_pred_oof": 100.0,
+            "levels": 5,
             "intra_city_raion": "Советский",
         }
     ]

@@ -26,9 +26,7 @@ from __future__ import annotations
 import polars as pl
 
 
-def build_mun_lookup(
-    addr_obj: pl.DataFrame, mun_hierarchy: pl.DataFrame
-) -> pl.DataFrame:
+def build_mun_lookup(addr_obj: pl.DataFrame, mun_hierarchy: pl.DataFrame) -> pl.DataFrame:
     if mun_hierarchy.is_empty():
         return pl.DataFrame(
             schema={
@@ -57,15 +55,11 @@ def build_mun_lookup(
         .with_columns(pl.col("path").str.split(".").alias("segments"))
         .explode("segments")
         .with_columns(pl.col("segments").cast(pl.Int64).alias("segment_id"))
-        .with_columns(
-            pl.int_range(pl.len(), dtype=pl.Int32).over("objectid").alias("seg_pos")
-        )
+        .with_columns(pl.int_range(pl.len(), dtype=pl.Int32).over("objectid").alias("seg_pos"))
         .drop("path", "segments")
     )
 
-    annotated = exploded.join(seg_levels, on="segment_id", how="left").join(
-        seg_oktmo, on="segment_id", how="left"
-    )
+    annotated = exploded.join(seg_levels, on="segment_id", how="left").join(seg_oktmo, on="segment_id", how="left")
 
     okrug = (
         annotated.filter(pl.col("segment_level").is_in([2, 3]))
@@ -90,8 +84,4 @@ def build_mun_lookup(
     )
 
     leaves = mun_hierarchy.lazy().select("objectid").unique(maintain_order=True)
-    return (
-        leaves.join(okrug, on="objectid", how="left")
-        .join(settlement, on="objectid", how="left")
-        .collect()
-    )
+    return leaves.join(okrug, on="objectid", how="left").join(settlement, on="objectid", how="left").collect()

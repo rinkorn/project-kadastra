@@ -32,11 +32,7 @@ def compute_synthetic_target(gold: pl.DataFrame, *, seed: int = 42) -> pl.DataFr
     rng = np.random.default_rng(seed)
     noise = rng.normal(loc=0.0, scale=NOISE_SIGMA, size=gold.height)
 
-    target = (
-        BASE_FLOOR_RUB_PER_M2
-        + BASE_INFRA_RUB_PER_M2 * (infra_score**INFRA_EXPONENT) * metro_factor
-        + noise
-    )
+    target = BASE_FLOOR_RUB_PER_M2 + BASE_INFRA_RUB_PER_M2 * (infra_score**INFRA_EXPONENT) * metro_factor + noise
     target = np.clip(target, a_min=0.0, a_max=None)
 
     return gold.with_columns(pl.Series("synthetic_target_rub_per_m2", target))

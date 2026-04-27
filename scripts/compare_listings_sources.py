@@ -41,12 +41,20 @@ ANCHORS_QUERY = {
 }
 
 KEY_FIELDS_PER_SOURCE = {
-    "yandex_realty": ["price_rub", "total_area_m2", "floor", "floors_count",
-                      "rooms_str", "url"],
-    "cian": ["price_rub", "total_area_m2", "floor", "floors_count",
-             "rooms_count", "build_year", "material_type", "lat", "lon", "url"],
-    "avito": ["price_rub", "total_area_m2", "floor", "floors_count",
-              "rooms_str", "url"],
+    "yandex_realty": ["price_rub", "total_area_m2", "floor", "floors_count", "rooms_str", "url"],
+    "cian": [
+        "price_rub",
+        "total_area_m2",
+        "floor",
+        "floors_count",
+        "rooms_count",
+        "build_year",
+        "material_type",
+        "lat",
+        "lon",
+        "url",
+    ],
+    "avito": ["price_rub", "total_area_m2", "floor", "floors_count", "rooms_str", "url"],
 }
 
 
@@ -79,9 +87,7 @@ def stats_for_source_city(source: str, city_ru: str) -> dict:
     # raw count = из per-page-counts если есть в _summary.json
     summary = json.loads((SILVER / "_summary.json").read_text())
     raw_match = next(
-        (s for s in summary
-         if s["source"] == source and s["city"] == ("irkutsk"
-            if city_ru == "Иркутск" else "kazan")),
+        (s for s in summary if s["source"] == source and s["city"] == ("irkutsk" if city_ru == "Иркутск" else "kazan")),
         None,
     )
     rows_raw = raw_match.get("rows_raw", n_unique) if raw_match else n_unique
@@ -99,17 +105,12 @@ def stats_for_source_city(source: str, city_ru: str) -> dict:
     # ₽/м²: для Yandex есть price_per_sqm_rub отдельно;
     # для остальных — price_rub / total_area_m2
     if source == "yandex_realty" and "price_per_sqm_rub" in df.columns:
-        ppsqm = df.select(
-            pl.col("price_per_sqm_rub").cast(pl.Float64).alias("ppsqm")
-        )
+        ppsqm = df.select(pl.col("price_per_sqm_rub").cast(pl.Float64).alias("ppsqm"))
     else:
         ppsqm = df.select(
-            (pl.col("price_rub").cast(pl.Float64)
-             / pl.col("total_area_m2").cast(pl.Float64)).alias("ppsqm")
+            (pl.col("price_rub").cast(pl.Float64) / pl.col("total_area_m2").cast(pl.Float64)).alias("ppsqm")
         )
-    ppsqm = ppsqm.filter(pl.col("ppsqm").is_not_null()
-                         & (pl.col("ppsqm") > 30000)
-                         & (pl.col("ppsqm") < 1_000_000))
+    ppsqm = ppsqm.filter(pl.col("ppsqm").is_not_null() & (pl.col("ppsqm") > 30000) & (pl.col("ppsqm") < 1_000_000))
     n_valid_ppsqm = ppsqm.shape[0]
 
     if n_valid_ppsqm > 0:
@@ -120,9 +121,9 @@ def stats_for_source_city(source: str, city_ru: str) -> dict:
         med_ppsqm = p25 = p75 = None
 
     med_price = (
-        df.filter(pl.col("price_rub").is_not_null())
-        .select(pl.col("price_rub").median()).item()
-        if "price_rub" in df.columns else None
+        df.filter(pl.col("price_rub").is_not_null()).select(pl.col("price_rub").median()).item()
+        if "price_rub" in df.columns
+        else None
     )
 
     # dedup ratio
@@ -146,7 +147,7 @@ def stats_for_source_city(source: str, city_ru: str) -> dict:
 
 def main() -> None:
     anchors = load_emiss_anchors()
-    print(f"== ЕМИСС #61781 якоря 2025-Q4 (вторичный рынок) ==", flush=True)
+    print("== ЕМИСС #61781 якоря 2025-Q4 (вторичный рынок) ==", flush=True)
     for c, v in anchors.items():
         print(f"  {c}: {v:.0f} ₽/м²", flush=True)
 
@@ -156,9 +157,7 @@ def main() -> None:
             r = stats_for_source_city(src, city)
             anchor = anchors.get(city)
             if anchor and r.get("median_ppsqm_rub"):
-                r["anchor_delta_pct"] = round(
-                    100 * (r["median_ppsqm_rub"] - anchor) / anchor, 1
-                )
+                r["anchor_delta_pct"] = round(100 * (r["median_ppsqm_rub"] - anchor) / anchor, 1)
             else:
                 r["anchor_delta_pct"] = None
             rows.append(r)
@@ -167,9 +166,17 @@ def main() -> None:
     df.write_csv(OUT_CSV)
 
     # короткая markdown-таблица
-    cols = ["source", "city", "rows_unique", "rows_raw", "dedup_ratio",
-            "median_price_rub", "median_ppsqm_rub", "anchor_delta_pct",
-            "n_valid_ppsqm"]
+    cols = [
+        "source",
+        "city",
+        "rows_unique",
+        "rows_raw",
+        "dedup_ratio",
+        "median_price_rub",
+        "median_ppsqm_rub",
+        "anchor_delta_pct",
+        "n_valid_ppsqm",
+    ]
     md = "| " + " | ".join(cols) + " |\n| " + " | ".join("---" for _ in cols) + " |\n"
     for r in rows:
         md += "| " + " | ".join(str(r.get(c, "")) for c in cols) + " |\n"
@@ -186,7 +193,7 @@ def main() -> None:
     # completeness отдельно (он широкий)
     completeness_cols = [c for c in df.columns if c.startswith("compl_")]
     if completeness_cols:
-        compl_df = df.select(["source", "city"] + completeness_cols)
+        compl_df = df.select(["source", "city", *completeness_cols])
         print("\n== Полнота ключевых полей (% non-null) ==", flush=True)
         with pl.Config(tbl_cols=20, tbl_width_chars=200):
             print(compl_df, flush=True)

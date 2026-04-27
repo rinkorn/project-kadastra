@@ -137,10 +137,7 @@ def _run(cmd: list[str]) -> None:
 
 def _check_osmium() -> None:
     if shutil.which("osmium") is None:
-        sys.exit(
-            "osmium not found on PATH. Install via 'brew install osmium-tool' "
-            "or your package manager."
-        )
+        sys.exit("osmium not found on PATH. Install via 'brew install osmium-tool' or your package manager.")
 
 
 def _extract_layer(
@@ -164,28 +161,50 @@ def _extract_layer(
         # multi-region relations (e.g. Куйбышевское water relation) still
         # carry all their member ways, even those well outside the bbox.
         filtered = tmp_path / f"{layer}-tagged.osm.pbf"
-        _run([
-            "osmium", "tags-filter", "--overwrite",
-            "-o", str(filtered), str(src), *filters,
-        ])
+        _run(
+            [
+                "osmium",
+                "tags-filter",
+                "--overwrite",
+                "-o",
+                str(filtered),
+                str(src),
+                *filters,
+            ]
+        )
         # Stage 2: smart bbox clip — keeps ways whose nodes are inside the
         # bbox AND complete relations whose envelope merely touches it.
         # Without --strategy=smart, the relation's ways outside the bbox
         # are dropped → broken rings → polygon silently disappears.
         clipped = tmp_path / f"{layer}-clipped.osm.pbf"
-        _run([
-            "osmium", "extract", "--overwrite",
-            "--strategy=smart", "-b", bbox,
-            "-o", str(clipped), str(filtered),
-        ])
+        _run(
+            [
+                "osmium",
+                "extract",
+                "--overwrite",
+                "--strategy=smart",
+                "-b",
+                bbox,
+                "-o",
+                str(clipped),
+                str(filtered),
+            ]
+        )
         # Stage 3: vector export — osmium assembles closed polygons from
         # complete relations now that no ways are missing.
-        _run([
-            "osmium", "export", "--overwrite",
-            "-f", "geojsonseq",
-            "--add-unique-id=type_id",
-            "-o", str(out_path), str(clipped),
-        ])
+        _run(
+            [
+                "osmium",
+                "export",
+                "--overwrite",
+                "-f",
+                "geojsonseq",
+                "--add-unique-id=type_id",
+                "-o",
+                str(out_path),
+                str(clipped),
+            ]
+        )
 
     size_mb = out_path.stat().st_size / 1024 / 1024
     print(f"Wrote {out_path} ({size_mb:.1f} MB)")
@@ -209,17 +228,32 @@ def _extract_raions(src: Path, out_dir: Path, bbox: str, force: bool) -> None:
         # are made of many way members; truncating any of them produces
         # null polygons just like the water-layer Куйбышевское bug).
         clipped = tmp_path / "raions-clipped.osm.pbf"
-        _run([
-            "osmium", "extract", "--overwrite",
-            "--strategy=smart", "-b", bbox,
-            "-o", str(clipped), str(current),
-        ])
+        _run(
+            [
+                "osmium",
+                "extract",
+                "--overwrite",
+                "--strategy=smart",
+                "-b",
+                bbox,
+                "-o",
+                str(clipped),
+                str(current),
+            ]
+        )
         current = clipped
         raw = tmp_path / "raions-raw.geojsonseq"
         _run(
             [
-                "osmium", "export", "--overwrite", "-f", "geojsonseq",
-                "--add-unique-id=type_id", "-o", str(raw), str(current),
+                "osmium",
+                "export",
+                "--overwrite",
+                "-f",
+                "geojsonseq",
+                "--add-unique-id=type_id",
+                "-o",
+                str(raw),
+                str(current),
             ]
         )
         kept = 0
@@ -250,16 +284,18 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__)
     all_layers = [*list(_LAYER_FILTERS.keys()), "raions"]
     p.add_argument(
-        "--src", type=Path, default=_DEFAULT_SRC,
+        "--src",
+        type=Path,
+        default=_DEFAULT_SRC,
         help="Full Volga federal district PBF (extract clips with --strategy=smart)",
     )
     p.add_argument(
-        "--bbox", type=str, default=_DEFAULT_BBOX,
+        "--bbox",
+        type=str,
+        default=_DEFAULT_BBOX,
         help="Agglomeration bbox (minlon,minlat,maxlon,maxlat) for the smart clip",
     )
-    p.add_argument(
-        "--out-dir", type=Path, default=_OUT_DIR, help="Output directory"
-    )
+    p.add_argument("--out-dir", type=Path, default=_OUT_DIR, help="Output directory")
     p.add_argument(
         "--layers",
         nargs="+",
@@ -280,8 +316,12 @@ def main() -> None:
             _extract_raions(args.src, args.out_dir, args.bbox, args.force)
         else:
             _extract_layer(
-                args.src, layer, _LAYER_FILTERS[layer],
-                args.out_dir, args.bbox, args.force,
+                args.src,
+                layer,
+                _LAYER_FILTERS[layer],
+                args.out_dir,
+                args.bbox,
+                args.force,
             )
 
 

@@ -57,9 +57,7 @@ def test_distant_road_not_counted() -> None:
             }
         ]
     )
-    far_road = _way(
-        [(KAZAN_LAT + 0.5, KAZAN_LON + 0.5), (KAZAN_LAT + 0.5, KAZAN_LON + 0.501)]
-    )
+    far_road = _way([(KAZAN_LAT + 0.5, KAZAN_LON + 0.5), (KAZAN_LAT + 0.5, KAZAN_LON + 0.501)])
     result = compute_object_road_features(objects, [far_road], radius_m=500)
 
     assert result["road_length_500m"][0] == 0.0
@@ -105,9 +103,7 @@ def test_radius_controls_inclusion() -> None:
         ]
     )
     # Segment ~250 m north of object
-    moderate_road = _way(
-        [(KAZAN_LAT + 0.0023, KAZAN_LON), (KAZAN_LAT + 0.0023, KAZAN_LON + 0.001)]
-    )
+    moderate_road = _way([(KAZAN_LAT + 0.0023, KAZAN_LON), (KAZAN_LAT + 0.0023, KAZAN_LON + 0.001)])
     inside = compute_object_road_features(objects, [moderate_road], radius_m=500)
     outside = compute_object_road_features(objects, [moderate_road], radius_m=100)
 

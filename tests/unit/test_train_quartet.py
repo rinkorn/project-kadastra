@@ -75,9 +75,7 @@ def _synth_gold(n: int = 240) -> pl.DataFrame:
     okrug = np.full(n, "город Казань", dtype=object)
     # Target structured by (raion, area, levels) so EBM/Naive can learn
     # something instead of fitting noise.
-    raion_offset = np.array(
-        [{"Советский": 100_000, "Вахитовский": 130_000, "Приволжский": 80_000}[r] for r in raion]
-    )
+    raion_offset = np.array([{"Советский": 100_000, "Вахитовский": 130_000, "Приволжский": 80_000}[r] for r in raion])
     target = raion_offset + area * 50.0 - levels * 200.0 + rng.normal(0.0, 5_000, n)
     return pl.DataFrame(
         {
@@ -102,9 +100,7 @@ def test_quartet_runs_and_logs_full_metrics() -> None:
     usecase = TrainQuartet(
         reader=reader,
         model_registry=registry,
-        catboost_params=CatBoostParams(
-            iterations=80, learning_rate=0.1, depth=4, seed=42
-        ),
+        catboost_params=CatBoostParams(iterations=80, learning_rate=0.1, depth=4, seed=42),
         ebm_max_bins=64,
         ebm_interactions=0,
         grey_tree_max_depth=6,
@@ -140,9 +136,7 @@ def test_quartet_runs_and_logs_full_metrics() -> None:
         name = f"{model}_oof_predictions.parquet"
         assert name in artifacts
         df = pl.read_parquet(io.BytesIO(artifacts[name]))
-        assert set(df.columns) >= {
-            "object_id", "lat", "lon", "fold_id", "y_true", "y_pred_oof"
-        }
+        assert set(df.columns) >= {"object_id", "lat", "lon", "fold_id", "y_true", "y_pred_oof"}
         assert df.height == 240
 
 
@@ -155,9 +149,7 @@ def test_default_keeps_all_simplifier_final_fit_pkl_artifacts() -> None:
     usecase = TrainQuartet(
         reader=reader,
         model_registry=registry,
-        catboost_params=CatBoostParams(
-            iterations=40, learning_rate=0.1, depth=4, seed=42
-        ),
+        catboost_params=CatBoostParams(iterations=40, learning_rate=0.1, depth=4, seed=42),
         ebm_max_bins=32,
         ebm_interactions=0,
         grey_tree_max_depth=6,
@@ -186,9 +178,7 @@ def test_skip_final_simplifier_fits_omits_pkl_artifacts() -> None:
     usecase = TrainQuartet(
         reader=reader,
         model_registry=registry,
-        catboost_params=CatBoostParams(
-            iterations=40, learning_rate=0.1, depth=4, seed=42
-        ),
+        catboost_params=CatBoostParams(iterations=40, learning_rate=0.1, depth=4, seed=42),
         ebm_max_bins=32,
         ebm_interactions=0,
         grey_tree_max_depth=6,
@@ -217,9 +207,7 @@ def test_parallel_folds_smoke_runs_and_produces_oof_for_all_models() -> None:
     usecase = TrainQuartet(
         reader=reader,
         model_registry=registry,
-        catboost_params=CatBoostParams(
-            iterations=40, learning_rate=0.1, depth=4, seed=42
-        ),
+        catboost_params=CatBoostParams(iterations=40, learning_rate=0.1, depth=4, seed=42),
         ebm_max_bins=32,
         ebm_interactions=0,
         grey_tree_max_depth=6,
@@ -234,7 +222,5 @@ def test_parallel_folds_smoke_runs_and_produces_oof_for_all_models() -> None:
         name = f"{model}_oof_predictions.parquet"
         assert name in artifacts
         df = pl.read_parquet(io.BytesIO(artifacts[name]))
-        assert set(df.columns) >= {
-            "object_id", "lat", "lon", "fold_id", "y_true", "y_pred_oof"
-        }
+        assert set(df.columns) >= {"object_id", "lat", "lon", "fold_id", "y_true", "y_pred_oof"}
         assert df.height == 240

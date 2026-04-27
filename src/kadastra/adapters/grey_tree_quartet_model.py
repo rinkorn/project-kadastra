@@ -59,9 +59,7 @@ class GreyTreeQuartetModel:
             max_depth=self._max_depth,
             random_state=self._seed,
         )
-        pipeline = Pipeline(
-            steps=[("pre", preprocessor), ("dt", regressor)]
-        )
+        pipeline = Pipeline(steps=[("pre", preprocessor), ("dt", regressor)])
         pipeline.fit(X, y)
         self._pipeline = pipeline
 

@@ -41,8 +41,8 @@ def main() -> None:
         "--asset-class",
         choices=[c.value for c in AssetClass],
         help="Train this single class in the current process. "
-             "Without this flag, spawns one fresh subprocess per class "
-             "so loky worker pools don't leak between classes.",
+        "Without this flag, spawns one fresh subprocess per class "
+        "so loky worker pools don't leak between classes.",
     )
     args = parser.parse_args()
 

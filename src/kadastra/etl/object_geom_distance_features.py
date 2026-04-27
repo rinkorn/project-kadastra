@@ -69,10 +69,7 @@ def compute_object_geom_distance_features(
 
     if n == 0:
         return objects.with_columns(
-            [
-                pl.lit(None, dtype=pl.Float64).alias(f"dist_to_{layer}_m")
-                for layer in geometries_by_layer
-            ]
+            [pl.lit(None, dtype=pl.Float64).alias(f"dist_to_{layer}_m") for layer in geometries_by_layer]
         )
 
     obj_lats = objects["lat"].to_numpy()
@@ -96,16 +93,12 @@ def compute_object_geom_distance_features(
         merged = unary_union(projected)
         parts = _flatten_to_parts(merged)
         if not parts:
-            new_columns.append(
-                pl.Series(col_name, [None] * n, dtype=pl.Float64)
-            )
+            new_columns.append(pl.Series(col_name, [None] * n, dtype=pl.Float64))
             continue
         parts_arr = np.asarray(parts, dtype=object)
         tree = shapely.STRtree(parts_arr)
         nearest_idx = tree.nearest(points)
         distances = shapely.distance(points, parts_arr[nearest_idx])
-        new_columns.append(
-            pl.Series(col_name, np.asarray(distances, dtype=np.float64))
-        )
+        new_columns.append(pl.Series(col_name, np.asarray(distances, dtype=np.float64)))
 
     return objects.with_columns(new_columns)

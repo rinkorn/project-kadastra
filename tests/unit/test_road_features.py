@@ -99,9 +99,7 @@ def test_distant_hex_gets_zero_when_road_is_elsewhere() -> None:
     populated = h3.latlng_to_cell(KAZAN_LAT, KAZAN_LON, 8)
     distant = h3.latlng_to_cell(60.0, 30.0, 8)
     coverage = _coverage([populated, distant], 8)
-    way = _way(
-        [(KAZAN_LAT, KAZAN_LON), (KAZAN_LAT + 0.0001, KAZAN_LON)], highway="primary"
-    )
+    way = _way([(KAZAN_LAT, KAZAN_LON), (KAZAN_LAT + 0.0001, KAZAN_LON)], highway="primary")
 
     result = compute_road_features(coverage, ways=[way])
 

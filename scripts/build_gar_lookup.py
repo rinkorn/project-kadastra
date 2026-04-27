@@ -70,16 +70,9 @@ def main() -> None:
         t0 = time.perf_counter()
         # Parse PARAMS XMLs once with the widened TYPEID whitelist —
         # both downstream builders project the rows they need.
-        houses = parse_object_params_xml(
-            _glob_one("AS_HOUSES_PARAMS_*.XML"), typeids=_PARAMS_TYPEIDS
-        )
-        steads = parse_object_params_xml(
-            _glob_one("AS_STEADS_PARAMS_*.XML"), typeids=_PARAMS_TYPEIDS
-        )
-        print(
-            f"PARSED PARAMS  houses={houses.height:,}  steads={steads.height:,}  "
-            f"({time.perf_counter() - t0:.1f}s)"
-        )
+        houses = parse_object_params_xml(_glob_one("AS_HOUSES_PARAMS_*.XML"), typeids=_PARAMS_TYPEIDS)
+        steads = parse_object_params_xml(_glob_one("AS_STEADS_PARAMS_*.XML"), typeids=_PARAMS_TYPEIDS)
+        print(f"PARSED PARAMS  houses={houses.height:,}  steads={steads.height:,}  ({time.perf_counter() - t0:.1f}s)")
 
         if cadnum_skip:
             print(f"SKIP {cadnum_out} (exists; use --force to rebuild)")
@@ -87,23 +80,15 @@ def main() -> None:
             t1 = time.perf_counter()
             cadnum_ix = build_cadnum_index(houses=houses, steads=steads)
             cadnum_ix.write_parquet(cadnum_out)
-            print(
-                f"WROTE {cadnum_out}  rows={cadnum_ix.height:,}  "
-                f"({time.perf_counter() - t1:.1f}s)"
-            )
+            print(f"WROTE {cadnum_out}  rows={cadnum_ix.height:,}  ({time.perf_counter() - t1:.1f}s)")
 
         if object_params_skip:
             print(f"SKIP {object_params_out} (exists; use --force to rebuild)")
         else:
             t2 = time.perf_counter()
-            object_params = build_object_params_lookup(
-                houses=houses, steads=steads
-            )
+            object_params = build_object_params_lookup(houses=houses, steads=steads)
             object_params.write_parquet(object_params_out)
-            print(
-                f"WROTE {object_params_out}  rows={object_params.height:,}  "
-                f"({time.perf_counter() - t2:.1f}s)"
-            )
+            print(f"WROTE {object_params_out}  rows={object_params.height:,}  ({time.perf_counter() - t2:.1f}s)")
 
     if _maybe_skip(mun_out, args.force):
         print(f"SKIP {mun_out} (exists; use --force to rebuild)")
@@ -113,10 +98,7 @@ def main() -> None:
         mh = parse_mun_hierarchy_xml(_glob_one("AS_MUN_HIERARCHY_*.XML"))
         mun = build_mun_lookup(addr, mh)
         mun.write_parquet(mun_out)
-        print(
-            f"WROTE {mun_out}  rows={mun.height:,}  "
-            f"({time.perf_counter() - t0:.1f}s)"
-        )
+        print(f"WROTE {mun_out}  rows={mun.height:,}  ({time.perf_counter() - t0:.1f}s)")
 
 
 if __name__ == "__main__":

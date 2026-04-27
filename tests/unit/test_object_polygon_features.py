@@ -36,9 +36,7 @@ def _objects(rows: list[dict[str, object]]) -> pl.DataFrame:
     return pl.DataFrame(rows, schema=schema)
 
 
-def _utm_square_around(
-    base_lat: float, base_lon: float, *, side_m: float, offset_east_m: float = 0.0
-) -> Polygon:
+def _utm_square_around(base_lat: float, base_lon: float, *, side_m: float, offset_east_m: float = 0.0) -> Polygon:
     """Build a WGS84 polygon that is a metric-square in UTM 39N around the
     base point, optionally offset to the east. Useful for tests that need
     an exact area."""
@@ -94,9 +92,7 @@ def test_full_coverage_yields_share_one() -> None:
 def test_no_intersection_yields_share_zero() -> None:
     """Polygon sits 5 km away — no overlap with any of the buffers."""
     objects = _objects([{"object_id": "a", "lat": KAZAN_LAT, "lon": KAZAN_LON}])
-    far_poly = _utm_square_around(
-        KAZAN_LAT, KAZAN_LON, side_m=200.0, offset_east_m=5_000.0
-    )
+    far_poly = _utm_square_around(KAZAN_LAT, KAZAN_LON, side_m=200.0, offset_east_m=5_000.0)
 
     out = compute_object_polygon_features(
         objects,
@@ -112,9 +108,7 @@ def test_partial_coverage_grows_then_shrinks_with_radius() -> None:
     """A 200 m square 200 m east of the object covers part of the 300/500/800
     buffers but none of the 100 (too far)."""
     objects = _objects([{"object_id": "a", "lat": KAZAN_LAT, "lon": KAZAN_LON}])
-    poly = _utm_square_around(
-        KAZAN_LAT, KAZAN_LON, side_m=200.0, offset_east_m=200.0
-    )
+    poly = _utm_square_around(KAZAN_LAT, KAZAN_LON, side_m=200.0, offset_east_m=200.0)
 
     out = compute_object_polygon_features(
         objects,
@@ -137,12 +131,8 @@ def test_disjoint_polygons_of_same_layer_sum() -> None:
     to the share. (This is the raison d'être of poly-area: cumulative
     'water on both sides' counts as more than 'water on one side'.)"""
     objects = _objects([{"object_id": "a", "lat": KAZAN_LAT, "lon": KAZAN_LON}])
-    poly_east = _utm_square_around(
-        KAZAN_LAT, KAZAN_LON, side_m=200.0, offset_east_m=200.0
-    )
-    poly_west = _utm_square_around(
-        KAZAN_LAT, KAZAN_LON, side_m=200.0, offset_east_m=-200.0
-    )
+    poly_east = _utm_square_around(KAZAN_LAT, KAZAN_LON, side_m=200.0, offset_east_m=200.0)
+    poly_west = _utm_square_around(KAZAN_LAT, KAZAN_LON, side_m=200.0, offset_east_m=-200.0)
 
     out = compute_object_polygon_features(
         objects,
@@ -155,9 +145,7 @@ def test_disjoint_polygons_of_same_layer_sum() -> None:
         radii_m=[800],
     )
 
-    assert out["water_share_800m"][0] == pytest.approx(
-        2.0 * out_single["water_share_800m"][0], rel=0.05
-    )
+    assert out["water_share_800m"][0] == pytest.approx(2.0 * out_single["water_share_800m"][0], rel=0.05)
 
 
 def test_layers_are_independent() -> None:
@@ -179,9 +167,7 @@ def test_empty_objects_returns_empty_with_columns() -> None:
     objects = _objects([])
     layer: list[BaseGeometry] = [_utm_square_around(KAZAN_LAT, KAZAN_LON, side_m=200.0)]
 
-    out = compute_object_polygon_features(
-        objects, polygons_by_layer={"water": layer}, radii_m=[100, 800]
-    )
+    out = compute_object_polygon_features(objects, polygons_by_layer={"water": layer}, radii_m=[100, 800])
 
     assert out.is_empty()
     assert "water_share_100m" in out.columns
@@ -191,9 +177,7 @@ def test_empty_objects_returns_empty_with_columns() -> None:
 def test_no_layers_returns_input_unchanged() -> None:
     objects = _objects([{"object_id": "a", "lat": KAZAN_LAT, "lon": KAZAN_LON}])
 
-    out = compute_object_polygon_features(
-        objects, polygons_by_layer={}, radii_m=[100, 800]
-    )
+    out = compute_object_polygon_features(objects, polygons_by_layer={}, radii_m=[100, 800])
 
     assert out.columns == objects.columns
     assert out.height == objects.height
@@ -206,9 +190,7 @@ def test_share_is_in_zero_one_range_per_layer() -> None:
     objects = _objects([{"object_id": "a", "lat": KAZAN_LAT, "lon": KAZAN_LON}])
     # Two overlapping huge squares — naive sum would give > 1.
     a = _utm_square_around(KAZAN_LAT, KAZAN_LON, side_m=4_000.0)
-    b = _utm_square_around(
-        KAZAN_LAT, KAZAN_LON, side_m=4_000.0, offset_east_m=200.0
-    )
+    b = _utm_square_around(KAZAN_LAT, KAZAN_LON, side_m=4_000.0, offset_east_m=200.0)
 
     out = compute_object_polygon_features(
         objects,
@@ -231,8 +213,6 @@ def test_full_coverage_share_is_exactly_one() -> None:
     # Big enough to fully cover the 300 m buffer.
     poly = _utm_square_around(KAZAN_LAT, KAZAN_LON, side_m=2 * R + 200)
 
-    out = compute_object_polygon_features(
-        objects, polygons_by_layer={"poly": [poly]}, radii_m=[R]
-    )
+    out = compute_object_polygon_features(objects, polygons_by_layer={"poly": [poly]}, radii_m=[R])
 
     assert out[f"poly_share_{R}m"][0] == pytest.approx(1.0, abs=1e-6)

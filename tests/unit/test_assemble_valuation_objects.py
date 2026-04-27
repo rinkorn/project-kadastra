@@ -171,9 +171,7 @@ def test_levels_and_flats_cast_to_int_with_nulls() -> None:
 
     assert result["levels"].dtype == pl.Int64
     assert result["flats"].dtype == pl.Int64
-    levels_sorted = sorted(
-        result["levels"].to_list(), key=lambda v: (v is None, v)
-    )
+    levels_sorted = sorted(result["levels"].to_list(), key=lambda v: (v is None, v))
     assert levels_sorted == [9, None]
 
 

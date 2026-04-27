@@ -27,9 +27,7 @@ _ERA_BINS: list[tuple[int | None, int | None, str]] = [
 ]
 
 
-def compute_object_age_features(
-    objects: pl.DataFrame, *, current_year: int
-) -> pl.DataFrame:
+def compute_object_age_features(objects: pl.DataFrame, *, current_year: int) -> pl.DataFrame:
     """Append ``age_years``, ``age_years_sq``, ``era_category``,
     ``is_new_construction`` columns derived from ``year_built``.
 
@@ -39,14 +37,10 @@ def compute_object_age_features(
       treated identically to null.
     """
     if "year_built" not in objects.columns:
-        raise KeyError(
-            "compute_object_age_features requires column 'year_built'"
-        )
+        raise KeyError("compute_object_age_features requires column 'year_built'")
 
     # Treat year_built == 0 as null (data-quality from NSPD).
-    yb = pl.when(pl.col("year_built") == 0).then(None).otherwise(
-        pl.col("year_built")
-    )
+    yb = pl.when(pl.col("year_built") == 0).then(None).otherwise(pl.col("year_built"))
 
     age = (current_year - yb).cast(pl.Int64)
 
@@ -57,9 +51,7 @@ def compute_object_age_features(
             cond = cond & (yb >= lo)
         if hi is not None:
             cond = cond & (yb <= hi)
-        era_expr = pl.when(yb.is_not_null() & cond).then(
-            pl.lit(code, dtype=pl.Utf8)
-        ).otherwise(era_expr)
+        era_expr = pl.when(yb.is_not_null() & cond).then(pl.lit(code, dtype=pl.Utf8)).otherwise(era_expr)
 
     return objects.with_columns(
         age.alias("age_years"),

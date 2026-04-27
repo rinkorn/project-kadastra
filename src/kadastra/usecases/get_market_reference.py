@@ -62,22 +62,14 @@ class GetMarketReference:
         if df.is_empty():
             return None
 
-        secondary = df.filter(pl.col("rynzhel_code") == _RYNZHEL_SECONDARY)[
-            "value_rub_per_m2"
-        ].mean()
-        primary = df.filter(pl.col("rynzhel_code") == _RYNZHEL_PRIMARY)[
-            "value_rub_per_m2"
-        ].mean()
+        secondary = df.filter(pl.col("rynzhel_code") == _RYNZHEL_SECONDARY)["value_rub_per_m2"].mean()
+        primary = df.filter(pl.col("rynzhel_code") == _RYNZHEL_PRIMARY)["value_rub_per_m2"].mean()
 
         return {
             "source": f"EMISS-{_INDICATOR_DIR}",
             "region_okato": okato,
             "asset_class": asset_class,
             "year": year,
-            "primary_rub_per_m2": (
-                float(primary) if isinstance(primary, (int, float)) else None
-            ),
-            "secondary_rub_per_m2": (
-                float(secondary) if isinstance(secondary, (int, float)) else None
-            ),
+            "primary_rub_per_m2": (float(primary) if isinstance(primary, (int, float)) else None),
+            "secondary_rub_per_m2": (float(secondary) if isinstance(secondary, (int, float)) else None),
         }

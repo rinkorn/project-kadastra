@@ -61,12 +61,8 @@ def test_drops_unwanted_typeids() -> None:
 def test_houses_wins_on_objectid_typeid_collision() -> None:
     """Same OBJECTID present in both HOUSES and STEADS — HOUSES wins,
     consistent with cadnum_index precedence."""
-    houses = _params(
-        [{"objectid": 100, "typeid": 7, "value": "house-oktmo"}]
-    )
-    steads = _params(
-        [{"objectid": 100, "typeid": 7, "value": "stead-oktmo"}]
-    )
+    houses = _params([{"objectid": 100, "typeid": 7, "value": "house-oktmo"}])
+    steads = _params([{"objectid": 100, "typeid": 7, "value": "stead-oktmo"}])
     df = build_object_params_lookup(houses=houses, steads=steads)
     assert df.height == 1
     assert df.row(0, named=True)["oktmo_full"] == "house-oktmo"
@@ -76,9 +72,7 @@ def test_partial_typeids_yield_null_columns() -> None:
     """Only TYPEID=7 present → oktmo_full filled, others null but
     columns still exist (downstream join should not have to handle
     missing columns)."""
-    houses = _params(
-        [{"objectid": 100, "typeid": 7, "value": "92701000001"}]
-    )
+    houses = _params([{"objectid": 100, "typeid": 7, "value": "92701000001"}])
     df = build_object_params_lookup(houses=houses, steads=_params([]))
     assert set(df.columns) == {"objectid", "oktmo_full", "okato", "postal_index"}
     row = df.row(0, named=True)

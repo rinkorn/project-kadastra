@@ -76,9 +76,7 @@ _MOSCOW_3857 = [
 ]
 
 
-def _building_feature(
-    idx: int, *, coords: list[list[list[float]]], purpose: str = "Жилой дом"
-) -> dict[str, Any]:
+def _building_feature(idx: int, *, coords: list[list[list[float]]], purpose: str = "Жилой дом") -> dict[str, Any]:
     return {
         "id": 100000 + idx,
         "type": "Feature",
@@ -120,9 +118,7 @@ def test_execute_writes_filtered_frame_to_silver(tmp_path: Path) -> None:
     store = _FakeNspdSilverStore()
     usecase = LoadNspdRawObjects(region_boundary=region_boundary, silver_store=store)
 
-    n = usecase.execute(
-        region_code="RU-KAZAN-AGG", source="buildings", raw_dir=raw_dir
-    )
+    n = usecase.execute(region_code="RU-KAZAN-AGG", source="buildings", raw_dir=raw_dir)
 
     assert n == 1
     assert region_boundary.calls == ["RU-KAZAN-AGG"]
@@ -167,9 +163,7 @@ def test_execute_landplots_uses_landplot_parser(tmp_path: Path) -> None:
     store = _FakeNspdSilverStore()
     usecase = LoadNspdRawObjects(region_boundary=region_boundary, silver_store=store)
 
-    n = usecase.execute(
-        region_code="RU-KAZAN-AGG", source="landplots", raw_dir=raw_dir
-    )
+    n = usecase.execute(region_code="RU-KAZAN-AGG", source="landplots", raw_dir=raw_dir)
 
     assert n == 1
     df = store.saves[0][2]
@@ -185,6 +179,4 @@ def test_execute_unknown_source_raises(tmp_path: Path) -> None:
     import pytest
 
     with pytest.raises(ValueError, match="parcels"):
-        usecase.execute(
-            region_code="RU-KAZAN-AGG", source="parcels", raw_dir=tmp_path
-        )
+        usecase.execute(region_code="RU-KAZAN-AGG", source="parcels", raw_dir=tmp_path)

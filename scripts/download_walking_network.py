@@ -56,16 +56,13 @@ def main() -> None:
         default=_DEFAULT_ENDPOINT,
         help=f"Overpass endpoint (default: {_DEFAULT_ENDPOINT})",
     )
-    p.add_argument(
-        "--force", action="store_true", help="Re-download even if output exists"
-    )
+    p.add_argument("--force", action="store_true", help="Re-download even if output exists")
     args = p.parse_args()
 
     if args.out.exists() and not args.force:
         size_mb = args.out.stat().st_size / 1024 / 1024
         print(
-            f"{args.out} already exists ({size_mb:.1f} MB); "
-            f"pass --force to re-download.",
+            f"{args.out} already exists ({size_mb:.1f} MB); pass --force to re-download.",
             flush=True,
         )
         return
@@ -79,10 +76,7 @@ def main() -> None:
     headers = {
         # Overpass returns 406 for the default httpx UA; use a contact-
         # bearing string per the Overpass usage guidelines.
-        "User-Agent": (
-            "kadastra-pilot/0.1 "
-            "(https://github.com/joeblackdev/kadastra; rinkorn.alb@gmail.com)"
-        ),
+        "User-Agent": ("kadastra-pilot/0.1 (https://github.com/joeblackdev/kadastra; rinkorn.alb@gmail.com)"),
         "Accept": "application/json,*/*",
     }
     with httpx.Client(timeout=httpx.Timeout(900.0), headers=headers) as client:
@@ -92,9 +86,7 @@ def main() -> None:
             sys.exit(f"Overpass request failed: {exc}")
 
     if r.status_code != 200:
-        sys.exit(
-            f"Overpass returned HTTP {r.status_code}: {r.text[:500]}"
-        )
+        sys.exit(f"Overpass returned HTTP {r.status_code}: {r.text[:500]}")
 
     args.out.write_bytes(r.content)
     size_mb = len(r.content) / 1024 / 1024

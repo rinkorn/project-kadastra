@@ -153,6 +153,7 @@ def compute_object_polygon_features(
             results[(layer, r)] = shares
     else:
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
+
             def _run_pair(lr: tuple[str, int]) -> tuple[str, int, np.ndarray]:
                 return _share_for_pair(*lr)
 
@@ -160,8 +161,6 @@ def compute_object_polygon_features(
                 results[(layer, r)] = shares
 
     new_columns: list[pl.Series] = [
-        pl.Series(f"{layer}_share_{r}m", results[(layer, r)])
-        for layer in polygons_by_layer
-        for r in radii_sorted
+        pl.Series(f"{layer}_share_{r}m", results[(layer, r)]) for layer in polygons_by_layer for r in radii_sorted
     ]
     return objects.with_columns(new_columns)

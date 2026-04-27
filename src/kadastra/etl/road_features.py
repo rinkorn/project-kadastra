@@ -33,6 +33,4 @@ def compute_road_features(coverage: pl.DataFrame, ways: list[dict[str, Any]]) ->
     else:
         agg = pl.DataFrame(schema={"h3_index": pl.Utf8, "road_length_m": pl.Float64})
 
-    return coverage.join(agg, on="h3_index", how="left").with_columns(
-        pl.col("road_length_m").fill_null(0.0)
-    )
+    return coverage.join(agg, on="h3_index", how="left").with_columns(pl.col("road_length_m").fill_null(0.0))

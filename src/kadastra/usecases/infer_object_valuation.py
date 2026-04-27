@@ -31,17 +31,13 @@ class InferObjectValuation:
         *,
         run_id: str | None = None,
     ) -> str:
-        resolved_run_id = run_id or self._model_loader.find_latest_run_id(
-            f"{self._run_name_prefix}{asset_class.value}"
-        )
+        resolved_run_id = run_id or self._model_loader.find_latest_run_id(f"{self._run_name_prefix}{asset_class.value}")
         model = self._model_loader.load(resolved_run_id)
 
         df = self._reader.load(region_code, asset_class)
 
         numeric_cols, categorical_cols = select_object_feature_columns(df)
-        X = build_object_feature_matrix(
-            df, numeric_cols=numeric_cols, categorical_cols=categorical_cols
-        )
+        X = build_object_feature_matrix(df, numeric_cols=numeric_cols, categorical_cols=categorical_cols)
         preds = np.asarray(model.predict(X), dtype=np.float64)
 
         out = pl.DataFrame(

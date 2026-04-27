@@ -38,8 +38,7 @@ def main() -> None:
     run_id = usecase.execute(settings.region_code, asset_class)
     profiler.disable()
     elapsed = time.perf_counter() - t0
-    print(f"[profile] class={asset_class.value} run_id={run_id} elapsed={elapsed:.1f}s",
-          flush=True)
+    print(f"[profile] class={asset_class.value} run_id={run_id} elapsed={elapsed:.1f}s", flush=True)
 
     buf = io.StringIO()
     stats = pstats.Stats(profiler, stream=buf).sort_stats("cumulative")

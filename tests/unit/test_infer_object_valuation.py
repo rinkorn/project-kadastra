@@ -75,25 +75,14 @@ def _trained_model(df: pl.DataFrame) -> CatBoostRegressor:
         "synthetic_target_rub_per_m2",
         "cost_value_rub",
     }
-    numeric_cols = [
-        c
-        for c in df.columns
-        if c not in excluded and _is_numeric(df.schema[c])
-    ]
-    categorical_cols = [
-        c
-        for c in df.columns
-        if c not in excluded and _is_categorical(df.schema[c])
-    ]
+    numeric_cols = [c for c in df.columns if c not in excluded and _is_numeric(df.schema[c])]
+    categorical_cols = [c for c in df.columns if c not in excluded and _is_categorical(df.schema[c])]
     feature_cols = numeric_cols + categorical_cols
     cat_indices = list(range(len(numeric_cols), len(feature_cols)))
 
     df = df.with_columns(
         [pl.col(c).fill_null(0).cast(pl.Float64) for c in numeric_cols]
-        + [
-            pl.col(c).fill_null("__missing__").cast(pl.Utf8)
-            for c in categorical_cols
-        ]
+        + [pl.col(c).fill_null("__missing__").cast(pl.Utf8) for c in categorical_cols]
     )
     X = df.select(feature_cols).to_numpy()
     y = df["synthetic_target_rub_per_m2"].to_numpy()
@@ -128,9 +117,7 @@ class _FakeStore:
     def __init__(self) -> None:
         self.calls: list[_StoreCall] = []
 
-    def save(
-        self, region_code: str, asset_class: AssetClass, df: pl.DataFrame
-    ) -> None:
+    def save(self, region_code: str, asset_class: AssetClass, df: pl.DataFrame) -> None:
         self.calls.append(_StoreCall(region_code, asset_class, df))
 
 
@@ -221,9 +208,7 @@ def test_excludes_cost_value_rub_target_leak() -> None:
     """cost_value_rub is the EГРН total from which cost_index = cost_value
     / area_m2 is derived; must be excluded from features at inference too.
     """
-    df = _featured(AssetClass.APARTMENT, 30).with_columns(
-        pl.lit(5_000_000.0).alias("cost_value_rub")
-    )
+    df = _featured(AssetClass.APARTMENT, 30).with_columns(pl.lit(5_000_000.0).alias("cost_value_rub"))
     model = _trained_model(df)
     reader = _FakeReader({AssetClass.APARTMENT: df})
     store = _FakeStore()

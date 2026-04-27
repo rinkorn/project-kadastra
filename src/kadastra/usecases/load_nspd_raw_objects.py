@@ -35,17 +35,11 @@ class LoadNspdRawObjects:
 
     def execute(self, *, region_code: str, source: str, raw_dir: Path) -> int:
         if source not in _SUPPORTED_SOURCES:
-            raise ValueError(
-                f"unsupported NSPD source {source!r}; expected one of {_SUPPORTED_SOURCES}"
-            )
+            raise ValueError(f"unsupported NSPD source {source!r}; expected one of {_SUPPORTED_SOURCES}")
 
         polygon = self._region_boundary.get_boundary(region_code)
 
-        df = (
-            read_nspd_buildings_dir(raw_dir)
-            if source == "buildings"
-            else read_nspd_landplots_dir(raw_dir)
-        )
+        df = read_nspd_buildings_dir(raw_dir) if source == "buildings" else read_nspd_landplots_dir(raw_dir)
 
         filtered = filter_inside_polygon(df, polygon)
         self._silver_store.save(region_code, source, filtered)

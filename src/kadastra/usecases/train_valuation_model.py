@@ -30,9 +30,7 @@ class TrainValuationModel:
 
     def execute(self, region_code: str, resolution: int) -> str:
         gold = self._gold_reader.load(region_code, resolution)
-        target = self._target_reader.load(region_code, resolution).select(
-            [*_KEY_COLUMNS, _TARGET_COLUMN]
-        )
+        target = self._target_reader.load(region_code, resolution).select([*_KEY_COLUMNS, _TARGET_COLUMN])
 
         df = gold.join(target, on=_KEY_COLUMNS, how="inner").drop_nulls(subset=[_TARGET_COLUMN])
 

@@ -21,9 +21,7 @@ class BuildObjectSyntheticTarget:
         for asset_class in asset_classes:
             df = self._reader.load(region_code, asset_class)
             if df.is_empty():
-                with_target = df.with_columns(
-                    pl.lit(None, dtype=pl.Float64).alias("synthetic_target_rub_per_m2")
-                )
+                with_target = df.with_columns(pl.lit(None, dtype=pl.Float64).alias("synthetic_target_rub_per_m2"))
             else:
                 with_target = compute_object_synthetic_target(df, seed=self._seed)
             self._store.save(region_code, asset_class, with_target)

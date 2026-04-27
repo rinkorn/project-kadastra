@@ -86,20 +86,14 @@ class _StoreCall:
 
 
 class _FakeStore:
-    def __init__(
-        self, initial: dict[AssetClass, pl.DataFrame] | None = None
-    ) -> None:
+    def __init__(self, initial: dict[AssetClass, pl.DataFrame] | None = None) -> None:
         self._initial = dict(initial or {})
         self.calls: list[_StoreCall] = []
 
-    def save(
-        self, region_code: str, asset_class: AssetClass, df: pl.DataFrame
-    ) -> None:
+    def save(self, region_code: str, asset_class: AssetClass, df: pl.DataFrame) -> None:
         self.calls.append(_StoreCall(region_code, asset_class, df))
 
-    def load(
-        self, region_code: str, asset_class: AssetClass
-    ) -> pl.DataFrame:
+    def load(self, region_code: str, asset_class: AssetClass) -> pl.DataFrame:
         assert region_code == "RU-KAZAN-AGG"
         return self._initial[asset_class]
 
@@ -165,34 +159,20 @@ def _usecase(
         road_radius_m=500.0,
         road_graph=_FAKE_GRAPH,
         relative_feature_parent_resolutions=(
-            relative_feature_parent_resolutions
-            if relative_feature_parent_resolutions is not None
-            else [7]
+            relative_feature_parent_resolutions if relative_feature_parent_resolutions is not None else [7]
         ),
         relative_feature_columns=(
-            relative_feature_columns
-            if relative_feature_columns is not None
-            else ["dist_metro_m"]
+            relative_feature_columns if relative_feature_columns is not None else ["dist_metro_m"]
         ),
-        zonal_radii_m=(
-            zonal_radii_m if zonal_radii_m is not None else [100, 300, 500, 800]
-        ),
+        zonal_radii_m=(zonal_radii_m if zonal_radii_m is not None else [100, 300, 500, 800]),
         zonal_layer_names=(
             zonal_layer_names
             if zonal_layer_names is not None
             else ["stations", "entrances", "apartments", "houses", "commercial"]
         ),
-        poly_area_radii_m=(
-            poly_area_radii_m if poly_area_radii_m is not None else [100, 800]
-        ),
-        poly_area_layer_paths=(
-            poly_area_layer_paths if poly_area_layer_paths is not None else {}
-        ),
-        geom_distance_layer_paths=(
-            geom_distance_layer_paths
-            if geom_distance_layer_paths is not None
-            else {}
-        ),
+        poly_area_radii_m=(poly_area_radii_m if poly_area_radii_m is not None else [100, 800]),
+        poly_area_layer_paths=(poly_area_layer_paths if poly_area_layer_paths is not None else {}),
+        geom_distance_layer_paths=(geom_distance_layer_paths if geom_distance_layer_paths is not None else {}),
         current_year_for_age_features=current_year_for_age_features,
     )
 
@@ -227,9 +207,7 @@ def test_appends_feature_columns_to_each_partition() -> None:
         roads=_roads_json([]),
     )
 
-    _usecase(store, raw).execute(
-        "RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT]
-    )
+    _usecase(store, raw).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
 
     df = store.calls[0].df
     expected = {
@@ -421,8 +399,10 @@ def test_appends_relative_feature_columns_for_configured_features() -> None:
 
     df = store.calls[0].df
     expected_relative = {
-        "parent_h3_p7", "count_p7",
-        "parent_h3_p8", "count_p8",
+        "parent_h3_p7",
+        "count_p7",
+        "parent_h3_p8",
+        "count_p8",
         "dist_metro_m__rel_p7_diff_med",
         "dist_metro_m__rel_p7_ratio_med",
         "dist_metro_m__rel_p7_z_iqr",
@@ -469,15 +449,18 @@ def test_appends_zonal_density_columns_per_layer_and_radius() -> None:
 
     df = next(c for c in store.calls if c.asset_class is AssetClass.APARTMENT).df
     expected = {
-        "stations_within_100m", "stations_within_800m",
-        "entrances_within_100m", "entrances_within_800m",
-        "apartments_within_100m", "apartments_within_800m",
-        "houses_within_100m", "houses_within_800m",
-        "commercial_within_100m", "commercial_within_800m",
+        "stations_within_100m",
+        "stations_within_800m",
+        "entrances_within_100m",
+        "entrances_within_800m",
+        "apartments_within_100m",
+        "apartments_within_800m",
+        "houses_within_100m",
+        "houses_within_800m",
+        "commercial_within_100m",
+        "commercial_within_800m",
     }
-    assert expected.issubset(set(df.columns)), (
-        f"missing columns: {expected - set(df.columns)}"
-    )
+    assert expected.issubset(set(df.columns)), f"missing columns: {expected - set(df.columns)}"
 
 
 def test_appends_poly_area_share_columns_for_each_layer_path(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -526,7 +509,7 @@ def test_appends_geom_distance_columns_for_each_layer_path(tmp_path) -> None:  #
     geojson_path.write_text(
         '{"type":"Feature","properties":{},"geometry":{"type":"Polygon",'
         '"coordinates":[[[49.121,55.788],[49.123,55.788],'
-        '[49.123,55.789],[49.121,55.789],[49.121,55.788]]]}}\n'
+        "[49.123,55.789],[49.121,55.789],[49.121,55.788]]]}}\n"
     )
 
     initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
@@ -565,9 +548,7 @@ def test_missing_geom_distance_layer_path_yields_null_column(tmp_path) -> None: 
     _usecase(
         store,
         raw,
-        geom_distance_layer_paths={
-            "landfill": str(tmp_path / "missing.geojsonseq")
-        },
+        geom_distance_layer_paths={"landfill": str(tmp_path / "missing.geojsonseq")},
     ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
 
     df = store.calls[0].df
@@ -631,9 +612,7 @@ def test_missing_zonal_poi_layer_file_yields_zero_counts(tmp_path) -> None:  # t
         raw,
         zonal_layer_names=["bus_stop"],
         zonal_radii_m=[500],
-        geom_distance_layer_paths={
-            "bus_stop": str(tmp_path / "missing.geojsonseq")
-        },
+        geom_distance_layer_paths={"bus_stop": str(tmp_path / "missing.geojsonseq")},
     ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
 
     df = store.calls[0].df

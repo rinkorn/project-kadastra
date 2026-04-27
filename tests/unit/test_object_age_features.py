@@ -34,9 +34,7 @@ def test_age_features_basic_2020_object() -> None:
 
 def test_new_construction_flag_is_true_for_age_le_5() -> None:
     """current_year=2026: age cutoff at 5 means year_built ≥ 2021."""
-    df = compute_object_age_features(
-        _objects([2024, 2021, 2020, 2019]), current_year=2026
-    )
+    df = compute_object_age_features(_objects([2024, 2021, 2020, 2019]), current_year=2026)
     flags = df["is_new_construction"].to_list()
     assert flags == [True, True, False, False]
 
@@ -50,9 +48,7 @@ def test_new_construction_flag_is_true_for_current_year_build() -> None:
 
 
 def test_age_years_sq_is_squared_age() -> None:
-    df = compute_object_age_features(
-        _objects([2020, 2010, 1990]), current_year=2026
-    )
+    df = compute_object_age_features(_objects([2020, 2010, 1990]), current_year=2026)
     ages = df["age_years"].to_list()
     sqs = df["age_years_sq"].to_list()
     assert sqs == [a * a for a in ages]
@@ -87,10 +83,7 @@ def test_era_boundaries_match_adr_table() -> None:
     eras = df["era_category"].to_list()
     expected = list(boundary_years_to_era.values())
     assert eras == expected, (
-        f"era binning mismatch:\n"
-        f"  years    : {years}\n"
-        f"  got      : {eras}\n"
-        f"  expected : {expected}"
+        f"era binning mismatch:\n  years    : {years}\n  got      : {eras}\n  expected : {expected}"
     )
 
 

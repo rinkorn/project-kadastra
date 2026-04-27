@@ -23,9 +23,7 @@ from shapely.geometry.base import BaseGeometry
 from kadastra.domain.asset_class import AssetClass
 from kadastra.domain.classify_nspd_purpose import classify_nspd_building_purpose
 
-_TRANSFORMER_3857_TO_4326 = Transformer.from_crs(
-    "EPSG:3857", "EPSG:4326", always_xy=True
-)
+_TRANSFORMER_3857_TO_4326 = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
 
 
 def _to_int(value: Any) -> int | None:

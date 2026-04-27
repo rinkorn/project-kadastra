@@ -87,9 +87,7 @@ def test_gar_primary_match() -> None:
         ]
     )
 
-    out = compute_object_municipality_features(
-        objects, cadnum_index=ix, mun_lookup=mun
-    )
+    out = compute_object_municipality_features(objects, cadnum_index=ix, mun_lookup=mun)
 
     assert out.height == 1
     row = out.row(0, named=True)
@@ -132,9 +130,7 @@ def test_address_fallback_for_unmatched_kazan_object() -> None:
         ]
     )
 
-    out = compute_object_municipality_features(
-        objects, cadnum_index=ix, mun_lookup=mun
-    )
+    out = compute_object_municipality_features(objects, cadnum_index=ix, mun_lookup=mun)
 
     row = out.row(0, named=True)
     assert row["mun_okrug_name"] == "город Казань"
@@ -152,8 +148,7 @@ def test_address_fallback_for_rural_raion() -> None:
                 "object_id": "a",
                 "cad_num": "16:16:999:999",
                 "readable_address": (
-                    "Республика Татарстан, Высокогорский муниципальный "
-                    "район, Семиозерское сельское поселение, СНТ 'X'"
+                    "Республика Татарстан, Высокогорский муниципальный район, Семиозерское сельское поселение, СНТ 'X'"
                 ),
                 "lat": 55.96,
                 "lon": 49.30,
@@ -172,9 +167,7 @@ def test_address_fallback_for_rural_raion() -> None:
         ]
     )
 
-    out = compute_object_municipality_features(
-        objects, cadnum_index=ix, mun_lookup=mun
-    )
+    out = compute_object_municipality_features(objects, cadnum_index=ix, mun_lookup=mun)
 
     row = out.row(0, named=True)
     assert row["mun_okrug_name"] == "Высокогорский"
@@ -191,19 +184,14 @@ def test_intra_city_raion_parsed_from_address() -> None:
             {
                 "object_id": "a",
                 "cad_num": "16:50:1:1",
-                "readable_address": (
-                    "Республика Татарстан, г Казань, Советский район, "
-                    "ул Пушкина, д. 5"
-                ),
+                "readable_address": ("Республика Татарстан, г Казань, Советский район, ул Пушкина, д. 5"),
                 "lat": 55.78,
                 "lon": 49.12,
             },
             {
                 "object_id": "b",
                 "cad_num": "16:50:2:2",
-                "readable_address": (
-                    "Татарстан, г.о. город Казань, г Казань, ул Пушкина"
-                ),
+                "readable_address": ("Татарстан, г.о. город Казань, г Казань, ул Пушкина"),
                 "lat": 55.78,
                 "lon": 49.12,
             },
@@ -232,9 +220,7 @@ def test_intra_city_raion_parsed_from_address() -> None:
         ]
     )
 
-    out = compute_object_municipality_features(
-        objects, cadnum_index=ix, mun_lookup=mun
-    ).sort("object_id")
+    out = compute_object_municipality_features(objects, cadnum_index=ix, mun_lookup=mun).sort("object_id")
 
     assert out["intra_city_raion"].to_list() == ["Советский", None]
 
@@ -254,9 +240,7 @@ def test_no_matches_returns_nulls_with_address_source() -> None:
             }
         ]
     )
-    out = compute_object_municipality_features(
-        objects, cadnum_index=_cadnum_ix([]), mun_lookup=_mun([])
-    )
+    out = compute_object_municipality_features(objects, cadnum_index=_cadnum_ix([]), mun_lookup=_mun([]))
     row = out.row(0, named=True)
     assert row["mun_okrug_name"] is None
     assert row["mun_okrug_oktmo"] is None
@@ -293,25 +277,27 @@ def test_object_params_join_when_cadnum_matches() -> None:
     )
     ix = _cadnum_ix([{"cad_num": "16:50:1:1", "objectid": 1, "source": "house"}])
     mun = _mun(
-        [{
-            "objectid": 1,
-            "mun_okrug_name": "город Казань",
-            "mun_okrug_oktmo": "92701000",
-            "settlement_name": "Казань",
-        }]
+        [
+            {
+                "objectid": 1,
+                "mun_okrug_name": "город Казань",
+                "mun_okrug_oktmo": "92701000",
+                "settlement_name": "Казань",
+            }
+        ]
     )
     params = _params_lookup(
-        [{
-            "objectid": 1,
-            "oktmo_full": "92701000001",
-            "okato": "92401000001",
-            "postal_index": "420000",
-        }]
+        [
+            {
+                "objectid": 1,
+                "oktmo_full": "92701000001",
+                "okato": "92401000001",
+                "postal_index": "420000",
+            }
+        ]
     )
 
-    out = compute_object_municipality_features(
-        objects, cadnum_index=ix, mun_lookup=mun, object_params=params
-    )
+    out = compute_object_municipality_features(objects, cadnum_index=ix, mun_lookup=mun, object_params=params)
     row = out.row(0, named=True)
     assert row["oktmo_full"] == "92701000001"
     assert row["okato"] == "92401000001"
@@ -322,17 +308,17 @@ def test_object_params_columns_null_when_no_lookup_provided() -> None:
     """If object_params is None (lookup file missing), the 3 columns
     still exist in the output but are filled with nulls."""
     objects = _objects(
-        [{
-            "object_id": "a",
-            "cad_num": "x",
-            "readable_address": "Татарстан, г Казань, ул X",
-            "lat": 55.78,
-            "lon": 49.12,
-        }]
+        [
+            {
+                "object_id": "a",
+                "cad_num": "x",
+                "readable_address": "Татарстан, г Казань, ул X",
+                "lat": 55.78,
+                "lon": 49.12,
+            }
+        ]
     )
-    out = compute_object_municipality_features(
-        objects, cadnum_index=_cadnum_ix([]), mun_lookup=_mun([])
-    )
+    out = compute_object_municipality_features(objects, cadnum_index=_cadnum_ix([]), mun_lookup=_mun([]))
     assert "oktmo_full" in out.columns
     assert "okato" in out.columns
     assert "postal_index" in out.columns
@@ -346,26 +332,30 @@ def test_object_params_null_for_unmatched_cadnum() -> None:
     """cad_num present in input but no GAR match → object_params join
     yields nulls (no row to copy over)."""
     objects = _objects(
-        [{
-            "object_id": "a",
-            "cad_num": "16:50:99:99",
-            "readable_address": "Татарстан, г Казань",
-            "lat": 55.78,
-            "lon": 49.12,
-        }]
+        [
+            {
+                "object_id": "a",
+                "cad_num": "16:50:99:99",
+                "readable_address": "Татарстан, г Казань",
+                "lat": 55.78,
+                "lon": 49.12,
+            }
+        ]
     )
     out = compute_object_municipality_features(
         objects,
         cadnum_index=_cadnum_ix([]),
         mun_lookup=_mun([]),
-        object_params=_params_lookup([
-            {
-                "objectid": 1,
-                "oktmo_full": "92701000001",
-                "okato": "92401000001",
-                "postal_index": "420000",
-            }
-        ]),
+        object_params=_params_lookup(
+            [
+                {
+                    "objectid": 1,
+                    "oktmo_full": "92701000001",
+                    "okato": "92401000001",
+                    "postal_index": "420000",
+                }
+            ]
+        ),
     )
     row = out.row(0, named=True)
     assert row["oktmo_full"] is None
@@ -389,10 +379,7 @@ def test_intra_raion_via_polygon_takes_precedence_over_address() -> None:
             {
                 "object_id": "a",
                 "cad_num": "16:50:1:1",
-                "readable_address": (
-                    "Татарстан, г.о. город Казань, г Казань, "
-                    "Вахитовский район, ул X"
-                ),
+                "readable_address": ("Татарстан, г.о. город Казань, г Казань, Вахитовский район, ул X"),
                 "lat": 55.79,
                 "lon": 49.15,
             },
@@ -400,10 +387,7 @@ def test_intra_raion_via_polygon_takes_precedence_over_address() -> None:
             {
                 "object_id": "b",
                 "cad_num": "16:50:2:2",
-                "readable_address": (
-                    "Татарстан, г.о. город Казань, г Казань, "
-                    "Приволжский район, ул Y"
-                ),
+                "readable_address": ("Татарстан, г.о. город Казань, г Казань, Приволжский район, ул Y"),
                 "lat": 55.60,
                 "lon": 49.50,
             },
@@ -431,10 +415,7 @@ def test_intra_raion_polygon_fills_when_address_lacks_raion() -> None:
             {
                 "object_id": "a",
                 "cad_num": "x",
-                "readable_address": (
-                    "Татарстан, г.о. город Казань, г Казань, "
-                    "ул Пушкина, д 5"
-                ),
+                "readable_address": ("Татарстан, г.о. город Казань, г Казань, ул Пушкина, д 5"),
                 "lat": 55.79,
                 "lon": 49.15,
             }
@@ -518,9 +499,7 @@ def test_idempotent_when_input_already_has_output_columns() -> None:
         ]
     )
 
-    out = compute_object_municipality_features(
-        objects, cadnum_index=ix, mun_lookup=mun
-    )
+    out = compute_object_municipality_features(objects, cadnum_index=ix, mun_lookup=mun)
 
     row = out.row(0, named=True)
     assert row["mun_okrug_name"] == "город Казань"
@@ -534,15 +513,11 @@ def test_idempotent_when_input_already_has_output_columns() -> None:
 def test_preserves_input_columns_and_order() -> None:
     objects = _objects(
         [
-            {"object_id": "z", "cad_num": "x", "readable_address": "x",
-             "lat": 0.0, "lon": 0.0},
-            {"object_id": "a", "cad_num": "y", "readable_address": "y",
-             "lat": 1.0, "lon": 1.0},
+            {"object_id": "z", "cad_num": "x", "readable_address": "x", "lat": 0.0, "lon": 0.0},
+            {"object_id": "a", "cad_num": "y", "readable_address": "y", "lat": 1.0, "lon": 1.0},
         ]
     )
-    out = compute_object_municipality_features(
-        objects, cadnum_index=_cadnum_ix([]), mun_lookup=_mun([])
-    )
+    out = compute_object_municipality_features(objects, cadnum_index=_cadnum_ix([]), mun_lookup=_mun([]))
     assert out["object_id"].to_list() == ["z", "a"]
     for col in ("object_id", "cad_num", "readable_address", "lat", "lon"):
         assert col in out.columns

@@ -42,9 +42,7 @@ def _emiss_row(
         "period_name": f"Q{quarter}",
         "period_quarter": quarter,
         "rynzhel_code": rynzhel_code,
-        "rynzhel_name": (
-            "Первичный рынок жилья" if rynzhel_code == "1" else "Вторичный рынок жилья"
-        ),
+        "rynzhel_name": ("Первичный рынок жилья" if rynzhel_code == "1" else "Вторичный рынок жилья"),
         "tipkvartir_code": tipkvartir_code,
         "tipkvartir_name": "Все типы квартир",
         "year": year,
@@ -92,20 +90,34 @@ def test_returns_avg_over_year_for_both_markets(tmp_path: Path) -> None:
     rows = []
     # Secondary 2025: 154, 155, 156, 157 → avg 155.5
     for q, val in zip([1, 2, 3, 4], [154_000, 155_000, 156_000, 157_000], strict=True):
-        rows.append(_emiss_row(
-            region_okato="92000000000", year=2025, quarter=q,
-            rynzhel_code="3", tipkvartir_code="1", value=val,
-        ))
+        rows.append(
+            _emiss_row(
+                region_okato="92000000000",
+                year=2025,
+                quarter=q,
+                rynzhel_code="3",
+                tipkvartir_code="1",
+                value=val,
+            )
+        )
     # Primary 2025: 234, 236, 238, 240 → avg 237
     for q, val in zip([1, 2, 3, 4], [234_000, 236_000, 238_000, 240_000], strict=True):
-        rows.append(_emiss_row(
-            region_okato="92000000000", year=2025, quarter=q,
-            rynzhel_code="1", tipkvartir_code="1", value=val,
-        ))
+        rows.append(
+            _emiss_row(
+                region_okato="92000000000",
+                year=2025,
+                quarter=q,
+                rynzhel_code="1",
+                tipkvartir_code="1",
+                value=val,
+            )
+        )
     base = _seed_emiss(tmp_path, rows)
 
     out = GetMarketReference(base).execute(
-        region_code="RU-KAZAN-AGG", asset_class="apartment", year=2025,
+        region_code="RU-KAZAN-AGG",
+        asset_class="apartment",
+        year=2025,
     )
     assert out is not None
     assert out["source"] == "EMISS-61781"
@@ -123,14 +135,18 @@ def test_returns_avg_over_year_for_both_markets(tmp_path: Path) -> None:
 
 def test_year_filter_excludes_other_years(tmp_path: Path) -> None:
     rows = [
-        _emiss_row(region_okato="92000000000", year=2025, quarter=1,
-                   rynzhel_code="3", tipkvartir_code="1", value=200_000),
-        _emiss_row(region_okato="92000000000", year=2024, quarter=1,
-                   rynzhel_code="3", tipkvartir_code="1", value=999_999),
+        _emiss_row(
+            region_okato="92000000000", year=2025, quarter=1, rynzhel_code="3", tipkvartir_code="1", value=200_000
+        ),
+        _emiss_row(
+            region_okato="92000000000", year=2024, quarter=1, rynzhel_code="3", tipkvartir_code="1", value=999_999
+        ),
     ]
     base = _seed_emiss(tmp_path, rows)
     out = GetMarketReference(base).execute(
-        region_code="RU-KAZAN-AGG", asset_class="apartment", year=2025,
+        region_code="RU-KAZAN-AGG",
+        asset_class="apartment",
+        year=2025,
     )
     assert out is not None
     # Only 2025 row → mean is 200_000, not contaminated by 2024.
@@ -147,8 +163,9 @@ def test_returns_none_for_non_apartment_classes(tmp_path: Path) -> None:
     commercial, landplot are not covered — return None so the API
     surfaces null and UI renders «—»."""
     rows = [
-        _emiss_row(region_okato="92000000000", year=2025, quarter=1,
-                   rynzhel_code="3", tipkvartir_code="1", value=156_000),
+        _emiss_row(
+            region_okato="92000000000", year=2025, quarter=1, rynzhel_code="3", tipkvartir_code="1", value=156_000
+        ),
     ]
     base = _seed_emiss(tmp_path, rows)
     usecase = GetMarketReference(base)
@@ -163,12 +180,15 @@ def test_returns_none_for_non_apartment_classes(tmp_path: Path) -> None:
 
 def test_returns_none_for_unknown_region(tmp_path: Path) -> None:
     rows = [
-        _emiss_row(region_okato="92000000000", year=2025, quarter=1,
-                   rynzhel_code="3", tipkvartir_code="1", value=156_000),
+        _emiss_row(
+            region_okato="92000000000", year=2025, quarter=1, rynzhel_code="3", tipkvartir_code="1", value=156_000
+        ),
     ]
     base = _seed_emiss(tmp_path, rows)
     out = GetMarketReference(base).execute(
-        region_code="RU-IRKUTSK", asset_class="apartment", year=2025,
+        region_code="RU-IRKUTSK",
+        asset_class="apartment",
+        year=2025,
     )
     assert out is None
 
@@ -180,12 +200,15 @@ def test_returns_none_for_unknown_region(tmp_path: Path) -> None:
 
 def test_returns_none_when_year_has_no_data(tmp_path: Path) -> None:
     rows = [
-        _emiss_row(region_okato="92000000000", year=2024, quarter=1,
-                   rynzhel_code="3", tipkvartir_code="1", value=130_000),
+        _emiss_row(
+            region_okato="92000000000", year=2024, quarter=1, rynzhel_code="3", tipkvartir_code="1", value=130_000
+        ),
     ]
     base = _seed_emiss(tmp_path, rows)
     out = GetMarketReference(base).execute(
-        region_code="RU-KAZAN-AGG", asset_class="apartment", year=2025,
+        region_code="RU-KAZAN-AGG",
+        asset_class="apartment",
+        year=2025,
     )
     assert out is None
 
@@ -201,15 +224,19 @@ def test_filters_to_all_quartiles_tipkvartir(tmp_path: Path) -> None:
     the elite/economy variants would skew the average."""
     rows = [
         # «Все типы» = code '1' → must be picked.
-        _emiss_row(region_okato="92000000000", year=2025, quarter=1,
-                   rynzhel_code="3", tipkvartir_code="1", value=156_000),
+        _emiss_row(
+            region_okato="92000000000", year=2025, quarter=1, rynzhel_code="3", tipkvartir_code="1", value=156_000
+        ),
         # «Элитные» = code '5' → must be ignored.
-        _emiss_row(region_okato="92000000000", year=2025, quarter=1,
-                   rynzhel_code="3", tipkvartir_code="5", value=999_999),
+        _emiss_row(
+            region_okato="92000000000", year=2025, quarter=1, rynzhel_code="3", tipkvartir_code="5", value=999_999
+        ),
     ]
     base = _seed_emiss(tmp_path, rows)
     out = GetMarketReference(base).execute(
-        region_code="RU-KAZAN-AGG", asset_class="apartment", year=2025,
+        region_code="RU-KAZAN-AGG",
+        asset_class="apartment",
+        year=2025,
     )
     assert out is not None
     assert out["secondary_rub_per_m2"] == 156_000.0
@@ -225,6 +252,8 @@ def test_returns_none_when_emiss_parquet_missing(tmp_path: Path) -> None:
     None — the UI/API treats this as «no reference available» and
     hides the EMISS row in the quartet panel."""
     out = GetMarketReference(tmp_path).execute(
-        region_code="RU-KAZAN-AGG", asset_class="apartment", year=2025,
+        region_code="RU-KAZAN-AGG",
+        asset_class="apartment",
+        year=2025,
     )
     assert out is None

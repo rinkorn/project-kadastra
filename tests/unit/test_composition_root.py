@@ -82,9 +82,7 @@ def test_container_builds_synthetic_target_usecase(tmp_path: Path) -> None:
 def test_settings_has_synthetic_target_defaults() -> None:
     settings = Settings()
 
-    assert settings.synthetic_target_store_path.as_posix().endswith(
-        "data/gold/targets"
-    )
+    assert settings.synthetic_target_store_path.as_posix().endswith("data/gold/targets")
     assert settings.synthetic_target_seed == 42
 
 
@@ -193,12 +191,8 @@ def test_container_builds_infer_valuation(tmp_path: Path) -> None:
 def test_settings_has_object_pipeline_defaults() -> None:
     settings = Settings()
 
-    assert settings.valuation_object_store_path.as_posix().endswith(
-        "data/gold/valuation_objects"
-    )
-    assert settings.object_predictions_store_path.as_posix().endswith(
-        "data/gold/object_predictions"
-    )
+    assert settings.valuation_object_store_path.as_posix().endswith("data/gold/valuation_objects")
+    assert settings.object_predictions_store_path.as_posix().endswith("data/gold/object_predictions")
     assert settings.object_neighbor_radius_m == 500.0
     assert settings.object_road_radius_m == 500.0
 
@@ -262,9 +256,7 @@ def test_container_builds_build_object_synthetic_target(tmp_path: Path) -> None:
     )
     container = Container(settings)
 
-    assert isinstance(
-        container.build_object_synthetic_target(), BuildObjectSyntheticTarget
-    )
+    assert isinstance(container.build_object_synthetic_target(), BuildObjectSyntheticTarget)
 
 
 def test_container_builds_train_object_valuation_model(tmp_path: Path) -> None:
@@ -279,9 +271,7 @@ def test_container_builds_train_object_valuation_model(tmp_path: Path) -> None:
     )
     container = Container(settings)
 
-    assert isinstance(
-        container.build_train_object_valuation_model(), TrainObjectValuationModel
-    )
+    assert isinstance(container.build_train_object_valuation_model(), TrainObjectValuationModel)
 
 
 def test_container_builds_infer_object_valuation(tmp_path: Path) -> None:

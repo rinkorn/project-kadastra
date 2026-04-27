@@ -18,9 +18,7 @@ def trained_model() -> CatBoostRegressor:
 
 
 def test_log_run_returns_mlflow_run_id(tmp_path: Path, trained_model: CatBoostRegressor) -> None:
-    registry = MLflowModelRegistry(
-        tracking_uri=f"file:{tmp_path / 'mlruns'}", experiment_name="test-exp"
-    )
+    registry = MLflowModelRegistry(tracking_uri=f"file:{tmp_path / 'mlruns'}", experiment_name="test-exp")
 
     run_id = registry.log_run(
         run_name="baseline",
@@ -35,9 +33,7 @@ def test_log_run_returns_mlflow_run_id(tmp_path: Path, trained_model: CatBoostRe
 
 
 def test_log_run_records_params_and_metrics_in_mlflow(tmp_path: Path, trained_model: CatBoostRegressor) -> None:
-    registry = MLflowModelRegistry(
-        tracking_uri=f"file:{tmp_path / 'mlruns'}", experiment_name="test-exp"
-    )
+    registry = MLflowModelRegistry(tracking_uri=f"file:{tmp_path / 'mlruns'}", experiment_name="test-exp")
 
     run_id = registry.log_run(
         run_name="baseline",
@@ -56,13 +52,9 @@ def test_log_run_records_params_and_metrics_in_mlflow(tmp_path: Path, trained_mo
 
 
 def test_log_run_creates_experiment_if_missing(tmp_path: Path, trained_model: CatBoostRegressor) -> None:
-    registry = MLflowModelRegistry(
-        tracking_uri=f"file:{tmp_path / 'mlruns'}", experiment_name="brand-new-exp"
-    )
+    registry = MLflowModelRegistry(tracking_uri=f"file:{tmp_path / 'mlruns'}", experiment_name="brand-new-exp")
 
-    registry.log_run(
-        run_name="baseline", params={}, metrics={"mae": 1.0}, model=trained_model
-    )
+    registry.log_run(run_name="baseline", params={}, metrics={"mae": 1.0}, model=trained_model)
 
     client = mlflow.MlflowClient(tracking_uri=f"file:{tmp_path / 'mlruns'}")
     exp = client.get_experiment_by_name("brand-new-exp")

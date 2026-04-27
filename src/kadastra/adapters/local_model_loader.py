@@ -18,11 +18,7 @@ class LocalModelLoader:
     def find_latest_run_id(self, run_name_prefix: str) -> str:
         if not self._base_path.is_dir():
             raise FileNotFoundError(f"registry path does not exist: {self._base_path}")
-        matches = sorted(
-            d.name for d in self._base_path.iterdir() if d.is_dir() and d.name.startswith(run_name_prefix)
-        )
+        matches = sorted(d.name for d in self._base_path.iterdir() if d.is_dir() and d.name.startswith(run_name_prefix))
         if not matches:
-            raise FileNotFoundError(
-                f"no runs matching prefix={run_name_prefix!r} under {self._base_path}"
-            )
+            raise FileNotFoundError(f"no runs matching prefix={run_name_prefix!r} under {self._base_path}")
         return matches[-1]

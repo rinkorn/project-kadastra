@@ -66,16 +66,31 @@ def test_filters_out_inactive_and_expired(tmp_path: Path) -> None:
     xml = _write(
         tmp_path,
         _item(
-            ID="1", OBJECTID="100", PARENTOBJID="50", OKTMO="92...",
-            ISACTIVE="0", ENDDATE="2079-06-06", PATH="50.100",
+            ID="1",
+            OBJECTID="100",
+            PARENTOBJID="50",
+            OKTMO="92...",
+            ISACTIVE="0",
+            ENDDATE="2079-06-06",
+            PATH="50.100",
         )
         + _item(
-            ID="2", OBJECTID="100", PARENTOBJID="50", OKTMO="92...",
-            ISACTIVE="1", ENDDATE="2018-01-01", PATH="50.100",
+            ID="2",
+            OBJECTID="100",
+            PARENTOBJID="50",
+            OKTMO="92...",
+            ISACTIVE="1",
+            ENDDATE="2018-01-01",
+            PATH="50.100",
         )
         + _item(
-            ID="3", OBJECTID="100", PARENTOBJID="50", OKTMO="92702",
-            ISACTIVE="1", ENDDATE="2079-06-06", PATH="50.100",
+            ID="3",
+            OBJECTID="100",
+            PARENTOBJID="50",
+            OKTMO="92702",
+            ISACTIVE="1",
+            ENDDATE="2079-06-06",
+            PATH="50.100",
         ),
     )
     df = parse_mun_hierarchy_xml(xml)
@@ -91,8 +106,13 @@ def test_handles_missing_parent_and_oktmo(tmp_path: Path) -> None:
     xml = _write(
         tmp_path,
         _item(
-            ID="1", OBJECTID="169363", PARENTOBJID="0", OKTMO="",
-            ISACTIVE="1", ENDDATE="2079-06-06", PATH="169363",
+            ID="1",
+            OBJECTID="169363",
+            PARENTOBJID="0",
+            OKTMO="",
+            ISACTIVE="1",
+            ENDDATE="2079-06-06",
+            PATH="169363",
         ),
     )
 
@@ -109,8 +129,13 @@ def test_returns_typed_schema(tmp_path: Path) -> None:
     xml = _write(
         tmp_path,
         _item(
-            ID="1", OBJECTID="100", PARENTOBJID="50", OKTMO="92702",
-            ISACTIVE="1", ENDDATE="2079-06-06", PATH="50.100",
+            ID="1",
+            OBJECTID="100",
+            PARENTOBJID="50",
+            OKTMO="92702",
+            ISACTIVE="1",
+            ENDDATE="2079-06-06",
+            PATH="50.100",
         ),
     )
     df = parse_mun_hierarchy_xml(xml)

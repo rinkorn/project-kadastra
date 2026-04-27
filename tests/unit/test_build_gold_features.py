@@ -31,19 +31,13 @@ class FakeGoldStore:
 
 def test_execute_joins_all_feature_sets_into_gold() -> None:
     coverage = pl.DataFrame({"h3_index": ["h1", "h2"], "resolution": [8, 8]})
-    metro = pl.DataFrame(
-        {"h3_index": ["h1", "h2"], "resolution": [8, 8], "dist_metro_m": [10.0, 100.0]}
-    )
-    buildings = pl.DataFrame(
-        {"h3_index": ["h1", "h2"], "resolution": [8, 8], "building_count": [3, 0]}
-    )
+    metro = pl.DataFrame({"h3_index": ["h1", "h2"], "resolution": [8, 8], "dist_metro_m": [10.0, 100.0]})
+    buildings = pl.DataFrame({"h3_index": ["h1", "h2"], "resolution": [8, 8], "building_count": [3, 0]})
     gold_store = FakeGoldStore()
 
     usecase = BuildGoldFeatures(
         coverage_reader=FakeCoverageReader({8: coverage}),
-        feature_reader=FakeFeatureReader(
-            {(8, "metro"): metro, (8, "buildings"): buildings}
-        ),
+        feature_reader=FakeFeatureReader({(8, "metro"): metro, (8, "buildings"): buildings}),
         gold_store=gold_store,
         feature_sets=["metro", "buildings"],
     )
@@ -107,9 +101,7 @@ def test_execute_reads_each_feature_set_once_per_resolution() -> None:
     coverage = pl.DataFrame({"h3_index": ["h1"], "resolution": [8]})
     metro = pl.DataFrame({"h3_index": ["h1"], "resolution": [8], "dist_metro_m": [10.0]})
     buildings = pl.DataFrame({"h3_index": ["h1"], "resolution": [8], "building_count": [1]})
-    feature_reader = FakeFeatureReader(
-        {(8, "metro"): metro, (8, "buildings"): buildings}
-    )
+    feature_reader = FakeFeatureReader({(8, "metro"): metro, (8, "buildings"): buildings})
 
     usecase = BuildGoldFeatures(
         coverage_reader=FakeCoverageReader({8: coverage}),

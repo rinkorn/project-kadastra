@@ -43,9 +43,7 @@ def _polygon_around(lat: float, lon: float, radius_deg: float) -> Polygon:
     """Approximate square polygon around a point in WGS84 degrees.
     Used for tests where exact geometry is not the assertion target —
     we just need a polygon that contains/excludes the test points."""
-    return box(
-        lon - radius_deg, lat - radius_deg, lon + radius_deg, lat + radius_deg
-    )
+    return box(lon - radius_deg, lat - radius_deg, lon + radius_deg, lat + radius_deg)
 
 
 def test_empty_layer_yields_null_column() -> None:
@@ -130,9 +128,7 @@ def test_preserves_existing_columns() -> None:
 
 def test_no_layers_returns_unchanged_frame() -> None:
     df_in = _objects([(_KAZAN_LAT, _KAZAN_LON)])
-    df_out = compute_object_geom_distance_features(
-        df_in, geometries_by_layer={}
-    )
+    df_out = compute_object_geom_distance_features(df_in, geometries_by_layer={})
     assert df_out.columns == df_in.columns
 
 
@@ -151,9 +147,7 @@ def test_empty_objects_frame_emits_null_columns() -> None:
             "lon": pl.Float64,
         },
     )
-    df_out = compute_object_geom_distance_features(
-        df_in, geometries_by_layer=empty
-    )
+    df_out = compute_object_geom_distance_features(df_in, geometries_by_layer=empty)
     assert "dist_to_water_m" in df_out.columns
     assert "dist_to_landfill_m" in df_out.columns
     assert df_out.height == 0
@@ -179,9 +173,7 @@ def test_distance_to_linestring_layer() -> None:
     """Linear features (powerline, railway). Object 0.005° south of a
     long west-east line at _KAZAN_LAT; expected ~555 m (lat-only delta,
     constant across longitudes)."""
-    line = LineString(
-        [(_KAZAN_LON - 0.05, _KAZAN_LAT), (_KAZAN_LON + 0.05, _KAZAN_LAT)]
-    )
+    line = LineString([(_KAZAN_LON - 0.05, _KAZAN_LAT), (_KAZAN_LON + 0.05, _KAZAN_LAT)])
     df = compute_object_geom_distance_features(
         _objects([(_KAZAN_LAT - 0.005, _KAZAN_LON)]),
         geometries_by_layer={"railway": [line]},
@@ -197,9 +189,7 @@ def test_object_on_linestring_distance_is_zero() -> None:
     Endpoint coincidence is the cleanest "on-line" check; using a midpoint
     of a long lat-constant line introduces UTM chord-vs-arc deviation
     (~1 m on a 6 km segment at 55.8° latitude)."""
-    line = LineString(
-        [(_KAZAN_LON, _KAZAN_LAT), (_KAZAN_LON + 0.01, _KAZAN_LAT + 0.01)]
-    )
+    line = LineString([(_KAZAN_LON, _KAZAN_LAT), (_KAZAN_LON + 0.01, _KAZAN_LAT + 0.01)])
     df = compute_object_geom_distance_features(
         _objects([(_KAZAN_LAT, _KAZAN_LON)]),
         geometries_by_layer={"railway": [line]},
@@ -211,10 +201,7 @@ def test_mixed_geometry_types_in_one_call() -> None:
     """Single call mixing point, line and polygon layers — exactly how
     the production usecase wires school/railway/water side by side."""
     school = Point(_KAZAN_LON + 0.005, _KAZAN_LAT)
-    railway = LineString(
-        [(_KAZAN_LON - 0.05, _KAZAN_LAT - 0.005),
-         (_KAZAN_LON + 0.05, _KAZAN_LAT - 0.005)]
-    )
+    railway = LineString([(_KAZAN_LON - 0.05, _KAZAN_LAT - 0.005), (_KAZAN_LON + 0.05, _KAZAN_LAT - 0.005)])
     water = _polygon_around(_KAZAN_LAT + 0.010, _KAZAN_LON, 0.001)
     df = compute_object_geom_distance_features(
         _objects([(_KAZAN_LAT, _KAZAN_LON)]),

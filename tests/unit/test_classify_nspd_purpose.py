@@ -9,9 +9,7 @@ def test_apartment_purpose(purpose: str) -> None:
     assert classify_nspd_building_purpose(purpose) is AssetClass.APARTMENT
 
 
-@pytest.mark.parametrize(
-    "purpose", ["Жилой дом", "Жилое", "Садовый дом", "ЖИЛОЙ ДОМ"]
-)
+@pytest.mark.parametrize("purpose", ["Жилой дом", "Жилое", "Садовый дом", "ЖИЛОЙ ДОМ"])
 def test_house_purpose(purpose: str) -> None:
     assert classify_nspd_building_purpose(purpose) is AssetClass.HOUSE
 

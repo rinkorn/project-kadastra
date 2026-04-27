@@ -30,11 +30,11 @@ from dotenv import load_dotenv
 
 # 4 minimal-set families per ADR-0015 (revised). Order = download priority.
 _FAMILIES = [
-    "AS_ADDR_OBJ_",            # smallest, sanity check first
-    "AS_HOUSES_PARAMS_",       # cadnum → objectid for buildings
-    "AS_STEADS_PARAMS_",       # cadnum → objectid for parcels
-    "AS_MUN_HIERARCHY_",       # walk to municipality
-    "AS_ADM_HIERARCHY_",       # intra-city raions (Советский / Приволжский …)
+    "AS_ADDR_OBJ_",  # smallest, sanity check first
+    "AS_HOUSES_PARAMS_",  # cadnum → objectid for buildings
+    "AS_STEADS_PARAMS_",  # cadnum → objectid for parcels
+    "AS_MUN_HIERARCHY_",  # walk to municipality
+    "AS_ADM_HIERARCHY_",  # intra-city raions (Советский / Приволжский …)
 ]
 _PREFIX = "Kadatastr/gar_xml/16/"
 _OUT_ROOT = Path("data/raw/gar/16")
@@ -58,9 +58,7 @@ def main() -> None:
         aws_access_key_id=os.environ["S3_ACCESS_KEY"],
         aws_secret_access_key=os.environ["S3_SECRET_KEY"],
         region_name=os.environ.get("S3_REGION", "us-east-1"),
-        config=Config(
-            s3={"addressing_style": os.environ.get("S3_ADDRESSING_STYLE", "path")}
-        ),
+        config=Config(s3={"addressing_style": os.environ.get("S3_ADDRESSING_STYLE", "path")}),
     )
 
     paginator = client.get_paginator("list_objects_v2")
@@ -88,18 +86,13 @@ def main() -> None:
             skipped += 1
             print(f"SKIP  {out_path.name}  ({size / 1024 / 1024:.1f} MB)")
             continue
-        print(
-            f"GET   {out_path.name}  ({size / 1024 / 1024:.1f} MB)  → {out_path}"
-        )
+        print(f"GET   {out_path.name}  ({size / 1024 / 1024:.1f} MB)  → {out_path}")
         client.download_file(bucket, key, str(out_path))
         downloaded += 1
         total_bytes += size
 
     print()
-    print(
-        f"done: downloaded={downloaded}  skipped={skipped}  "
-        f"new_bytes={total_bytes / 1024 / 1024 / 1024:.2f} GB"
-    )
+    print(f"done: downloaded={downloaded}  skipped={skipped}  new_bytes={total_bytes / 1024 / 1024 / 1024:.2f} GB")
 
 
 if __name__ == "__main__":

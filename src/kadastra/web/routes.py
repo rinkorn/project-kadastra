@@ -23,8 +23,6 @@ def make_web_router(templates_dir: Path) -> APIRouter:
 
     @router.get("/", response_class=HTMLResponse)
     def index(request: Request) -> HTMLResponse:
-        return templates.TemplateResponse(
-            request=request, name="map.html", context={}
-        )
+        return templates.TemplateResponse(request=request, name="map.html", context={})
 
     return router

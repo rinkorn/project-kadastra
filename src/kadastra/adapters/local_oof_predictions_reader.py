@@ -41,13 +41,9 @@ class LocalOofPredictionsReader:
     def __init__(self, base_path: Path) -> None:
         self._base_path = base_path
 
-    def load_latest(
-        self, asset_class: AssetClass, *, model: str = "catboost"
-    ) -> pl.DataFrame:
+    def load_latest(self, asset_class: AssetClass, *, model: str = "catboost") -> pl.DataFrame:
         if model not in _QUARTET_MODELS:
-            raise ValueError(
-                f"unknown model {model!r}; expected one of {_QUARTET_MODELS}"
-            )
+            raise ValueError(f"unknown model {model!r}; expected one of {_QUARTET_MODELS}")
         if not self._base_path.is_dir():
             return pl.DataFrame(schema=_OOF_SCHEMA)
 
@@ -63,9 +59,7 @@ class LocalOofPredictionsReader:
                 return pl.read_parquet(path)
         return pl.DataFrame(schema=_OOF_SCHEMA)
 
-    def _enumerate_runs(
-        self, class_value: str, model: str
-    ) -> list[tuple[Path, str]]:
+    def _enumerate_runs(self, class_value: str, model: str) -> list[tuple[Path, str]]:
         """Return (run_dir, artifact_filename) pairs eligible for model."""
         legacy_prefix = _LEGACY_PREFIX_TPL.format(class_=class_value)
         quartet_prefix = _QUARTET_PREFIX_TPL.format(class_=class_value)

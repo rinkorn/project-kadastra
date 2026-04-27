@@ -137,51 +137,54 @@ def main() -> int:
                 value = float(str(cell).replace(",", "."))
             except (ValueError, TypeError):
                 continue
-            rows_out.append({
-                "indicator_id": args.indicator_id,
-                "region_okato": okato_code,
-                "region_name": okato_name,
-                "mestdom_code": mestdom_code,
-                "mestdom_name": mestdom_name,
-                "unit_code": unit_code,
-                "unit_name": unit_name,
-                "period_code": period_code,
-                "period_name": period_name,
-                "period_quarter": period_quarter,
-                "rynzhel_code": rynzhel_code,
-                "rynzhel_name": rynzhel_name,
-                "tipkvartir_code": tip_code,
-                "tipkvartir_name": tip_name,
-                "year": year,
-                "period_label": (
-                    f"{year}-Q{period_quarter}" if period_quarter else str(year)
-                ),
-                "value_rub_per_m2": value,
-            })
+            rows_out.append(
+                {
+                    "indicator_id": args.indicator_id,
+                    "region_okato": okato_code,
+                    "region_name": okato_name,
+                    "mestdom_code": mestdom_code,
+                    "mestdom_name": mestdom_name,
+                    "unit_code": unit_code,
+                    "unit_name": unit_name,
+                    "period_code": period_code,
+                    "period_name": period_name,
+                    "period_quarter": period_quarter,
+                    "rynzhel_code": rynzhel_code,
+                    "rynzhel_name": rynzhel_name,
+                    "tipkvartir_code": tip_code,
+                    "tipkvartir_name": tip_name,
+                    "year": year,
+                    "period_label": (f"{year}-Q{period_quarter}" if period_quarter else str(year)),
+                    "value_rub_per_m2": value,
+                }
+            )
 
     print(f"=> long rows: {len(rows_out):,}", flush=True)
     if not rows_out:
         sys.exit("no rows parsed")
 
-    df = pl.DataFrame(rows_out, schema={
-        "indicator_id": pl.Int64,
-        "region_okato": pl.Utf8,
-        "region_name": pl.Utf8,
-        "mestdom_code": pl.Utf8,
-        "mestdom_name": pl.Utf8,
-        "unit_code": pl.Utf8,
-        "unit_name": pl.Utf8,
-        "period_code": pl.Utf8,
-        "period_name": pl.Utf8,
-        "period_quarter": pl.Int64,
-        "rynzhel_code": pl.Utf8,
-        "rynzhel_name": pl.Utf8,
-        "tipkvartir_code": pl.Utf8,
-        "tipkvartir_name": pl.Utf8,
-        "year": pl.Int64,
-        "period_label": pl.Utf8,
-        "value_rub_per_m2": pl.Float64,
-    })
+    df = pl.DataFrame(
+        rows_out,
+        schema={
+            "indicator_id": pl.Int64,
+            "region_okato": pl.Utf8,
+            "region_name": pl.Utf8,
+            "mestdom_code": pl.Utf8,
+            "mestdom_name": pl.Utf8,
+            "unit_code": pl.Utf8,
+            "unit_name": pl.Utf8,
+            "period_code": pl.Utf8,
+            "period_name": pl.Utf8,
+            "period_quarter": pl.Int64,
+            "rynzhel_code": pl.Utf8,
+            "rynzhel_name": pl.Utf8,
+            "tipkvartir_code": pl.Utf8,
+            "tipkvartir_name": pl.Utf8,
+            "year": pl.Int64,
+            "period_label": pl.Utf8,
+            "value_rub_per_m2": pl.Float64,
+        },
+    )
     df.write_parquet(args.dst)
     print(f"=> wrote {args.dst}  shape={df.shape}", flush=True)
 

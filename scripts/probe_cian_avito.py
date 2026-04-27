@@ -45,7 +45,7 @@ SCROLL_STEPS = 3
 def safe_title(page: Page) -> str:
     try:
         return page.title()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return ""
 
 
@@ -53,18 +53,16 @@ def visit(page: Page, name: str, url: str) -> None:
     print(f"\n=> [{name}] {url}", flush=True)
     try:
         page.goto(url, wait_until="domcontentloaded", timeout=60000)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"   goto err: {exc}", flush=True)
 
     time.sleep(PER_PAGE_WAIT)
 
     for i in range(SCROLL_STEPS):
         try:
-            page.evaluate(
-                f"window.scrollTo(0, document.body.scrollHeight * {(i + 1) / SCROLL_STEPS})"
-            )
+            page.evaluate(f"window.scrollTo(0, document.body.scrollHeight * {(i + 1) / SCROLL_STEPS})")
             time.sleep(1.5)
-        except Exception:  # noqa: BLE001, S110
+        except Exception:
             pass
 
     print(f"   url   : {page.url}", flush=True)
@@ -74,7 +72,7 @@ def visit(page: Page, name: str, url: str) -> None:
         html = page.content()
         (PAGES_OUT / f"{name}.html").write_text(html, encoding="utf-8")
         print(f"   html  : {len(html):,} байт", flush=True)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         print(f"   content err: {exc}", flush=True)
 
 
@@ -108,12 +106,9 @@ def main() -> int:
             visit(page, name, url)
 
         state = context.storage_state()
-        (OUT / "state.json").write_text(
-            json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        (OUT / "state.json").write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
         print(
-            f"\n=> сохранено: cookies={len(state.get('cookies', []))} "
-            f"origins={len(state.get('origins', []))}",
+            f"\n=> сохранено: cookies={len(state.get('cookies', []))} origins={len(state.get('origins', []))}",
             flush=True,
         )
         context.close()

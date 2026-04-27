@@ -7,10 +7,7 @@ from pathlib import Path
 
 import httpx
 
-URL = (
-    "https://github.com/wmgeolab/geoBoundaries/raw/9469f09/"
-    "releaseData/gbOpen/RUS/ADM1/geoBoundaries-RUS-ADM1.geojson"
-)
+URL = "https://github.com/wmgeolab/geoBoundaries/raw/9469f09/releaseData/gbOpen/RUS/ADM1/geoBoundaries-RUS-ADM1.geojson"
 DEST = Path("data/raw/regions/geoBoundaries-RUS-ADM1.geojson")
 
 

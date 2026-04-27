@@ -38,8 +38,7 @@ _NEW_INT_COLUMN = "polygon_n_vertices"
 def compute_object_geometry_features(objects: pl.DataFrame) -> pl.DataFrame:
     if "polygon_wkt_3857" not in objects.columns:
         raise KeyError(
-            "compute_object_geometry_features requires column "
-            "'polygon_wkt_3857' (EPSG:3857 WKT) — it is not present"
+            "compute_object_geometry_features requires column 'polygon_wkt_3857' (EPSG:3857 WKT) — it is not present"
         )
 
     n = objects.height

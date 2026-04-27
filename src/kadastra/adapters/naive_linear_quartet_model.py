@@ -41,9 +41,7 @@ class NaiveLinearQuartetModel:
 
         transformers: list[tuple[str, object, list[int]]] = []
         if num_idx:
-            transformers.append(
-                ("num", SimpleImputer(strategy="median"), num_idx)
-            )
+            transformers.append(("num", SimpleImputer(strategy="median"), num_idx))
         if cat_idx:
             transformers.append(
                 (
@@ -54,9 +52,7 @@ class NaiveLinearQuartetModel:
             )
 
         preprocessor = ColumnTransformer(transformers)
-        pipeline = Pipeline(
-            steps=[("pre", preprocessor), ("lr", LinearRegression())]
-        )
+        pipeline = Pipeline(steps=[("pre", preprocessor), ("lr", LinearRegression())])
         pipeline.fit(X, y)
         self._pipeline = pipeline
 

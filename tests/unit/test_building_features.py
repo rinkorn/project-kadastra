@@ -25,9 +25,7 @@ def _buildings(rows: list[dict[str, object]]) -> pl.DataFrame:
 def test_returns_expected_columns() -> None:
     cell = h3.latlng_to_cell(KAZAN_LAT, KAZAN_LON, 8)
     coverage = _coverage([cell], 8)
-    buildings = _buildings(
-        [{"lat": KAZAN_LAT, "lon": KAZAN_LON, "building": "house", "levels": "2", "flats": None}]
-    )
+    buildings = _buildings([{"lat": KAZAN_LAT, "lon": KAZAN_LON, "building": "house", "levels": "2", "flats": None}])
 
     result = compute_building_features(coverage, buildings)
 
@@ -97,9 +95,7 @@ def test_empty_hex_gets_zero_counts() -> None:
     populated = h3.latlng_to_cell(KAZAN_LAT, KAZAN_LON, 8)
     empty = h3.latlng_to_cell(60.0, 30.0, 8)  # SPB area, no buildings here
     coverage = _coverage([populated, empty], 8)
-    buildings = _buildings(
-        [{"lat": KAZAN_LAT, "lon": KAZAN_LON, "building": "house", "levels": "2", "flats": None}]
-    )
+    buildings = _buildings([{"lat": KAZAN_LAT, "lon": KAZAN_LON, "building": "house", "levels": "2", "flats": None}])
 
     result = compute_building_features(coverage, buildings)
 

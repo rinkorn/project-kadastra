@@ -33,12 +33,7 @@ def test_catboost_handles_categorical_natively() -> None:
     cats = np.array([["red"], ["blue"], ["green"]] * (n // 3), dtype=object)
     X = np.hstack([numeric.astype(object), cats])
     cat_to_y = {"red": 0.0, "blue": 1.0, "green": 2.0}
-    y = np.array(
-        [
-            float(numeric[i, 0]) + cat_to_y[str(cats[i, 0])]
-            for i in range(n)
-        ]
-    )
+    y = np.array([float(numeric[i, 0]) + cat_to_y[str(cats[i, 0])] for i in range(n)])
     model = CatBoostQuartetModel(iterations=100, learning_rate=0.1, depth=4)
     model.fit(X, y, cat_feature_indices=[1])
     preds = model.predict(X)

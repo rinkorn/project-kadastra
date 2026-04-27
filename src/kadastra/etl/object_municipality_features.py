@@ -154,12 +154,7 @@ def compute_object_municipality_features(
     n = objects.height
     if n == 0:
         # Preserve input schema + add the new columns as Utf8 nulls.
-        return objects.with_columns(
-            [
-                pl.lit(None, dtype=pl.Utf8).alias(c)
-                for c in _OUTPUT_COLUMNS
-            ]
-        )
+        return objects.with_columns([pl.lit(None, dtype=pl.Utf8).alias(c) for c in _OUTPUT_COLUMNS])
 
     name_to_oktmo = _build_name_to_oktmo(mun_lookup)
 
@@ -170,13 +165,9 @@ def compute_object_municipality_features(
         lats = objects.get_column("lat").to_list()
         lons = objects.get_column("lon").to_list()
         poly_raions = _intra_raion_via_polygons(lats, lons, intra_raion_polygons)
-        objects = objects.with_columns(
-            pl.Series("_intra_raion_poly", poly_raions, dtype=pl.Utf8)
-        )
+        objects = objects.with_columns(pl.Series("_intra_raion_poly", poly_raions, dtype=pl.Utf8))
     else:
-        objects = objects.with_columns(
-            pl.lit(None, dtype=pl.Utf8).alias("_intra_raion_poly")
-        )
+        objects = objects.with_columns(pl.lit(None, dtype=pl.Utf8).alias("_intra_raion_poly"))
 
     # Stage 1: GAR lookup via cad_num. Joins are chained with
     # ``objectid`` left in scope so the optional object_params join
@@ -189,16 +180,12 @@ def compute_object_municipality_features(
     )
     if object_params is not None and object_params.height > 0:
         gar_join_lf = gar_join_lf.join(
-            object_params.lazy().select(
-                ["objectid", *_OBJECT_PARAMS_COLUMNS]
-            ),
+            object_params.lazy().select(["objectid", *_OBJECT_PARAMS_COLUMNS]),
             on="objectid",
             how="left",
         )
     else:
-        gar_join_lf = gar_join_lf.with_columns(
-            [pl.lit(None, dtype=pl.Utf8).alias(c) for c in _OBJECT_PARAMS_COLUMNS]
-        )
+        gar_join_lf = gar_join_lf.with_columns([pl.lit(None, dtype=pl.Utf8).alias(c) for c in _OBJECT_PARAMS_COLUMNS])
     gar_join = gar_join_lf.drop("objectid")
 
     # Stage 2: address parse + intra_raion + okrug→OKTMO bridge.
@@ -206,12 +193,8 @@ def compute_object_municipality_features(
         gar_join
         # Address-extracted okrug (rural pattern OR urban "г.о." pattern).
         .with_columns(
-            addr.str.extract(_RX_RURAL_OKRUG, group_index=1).alias(
-                "_okrug_addr_rural"
-            ),
-            addr.str.extract(_RX_URBAN_OKRUG, group_index=1).alias(
-                "_okrug_addr_urban"
-            ),
+            addr.str.extract(_RX_RURAL_OKRUG, group_index=1).alias("_okrug_addr_rural"),
+            addr.str.extract(_RX_URBAN_OKRUG, group_index=1).alias("_okrug_addr_urban"),
             addr.str.extract(_RX_CITY, group_index=1).alias("_city_addr"),
             addr.str.extract(_RX_VILLAGE, group_index=1).alias("_vil_addr"),
             addr.str.extract(_RX_INTRA, group_index=1).alias("_intra_raion_addr"),
@@ -224,18 +207,14 @@ def compute_object_municipality_features(
         .with_columns(
             pl.col("_okrug_addr_urban")
             .str.replace(
-                r"\s+(?:муниципальный\s+район|"
-                + r"|".join(_INTRA_KAZAN_RAIONS)
-                + r"\s+район).*$",
+                r"\s+(?:муниципальный\s+район|" + r"|".join(_INTRA_KAZAN_RAIONS) + r"\s+район).*$",
                 "",
             )
             .str.strip_chars(" \t.,;")
             .alias("_okrug_addr_urban_clean"),
             pl.col("_city_addr")
             .str.replace(
-                r"\s+(?:муниципальный\s+район|"
-                + r"|".join(_INTRA_KAZAN_RAIONS)
-                + r"\s+район).*$",
+                r"\s+(?:муниципальный\s+район|" + r"|".join(_INTRA_KAZAN_RAIONS) + r"\s+район).*$",
                 "",
             )
             .str.strip_chars(" \t.,;")
@@ -265,20 +244,17 @@ def compute_object_municipality_features(
         )
     )
     # Bridge resolved okrug name → OKTMO (mun_lookup drops nulls/empties).
-    enriched = (
-        enriched.join(
-            name_to_oktmo.lazy(),
-            left_on="mun_okrug_name_resolved",
-            right_on="mun_okrug_name",
-            how="left",
-        )
-        .with_columns(
-            # OKTMO: ГАР first; else from name bridge.
-            pl.coalesce(
-                pl.col("mun_okrug_oktmo"),
-                pl.col("mun_okrug_oktmo_addr"),
-            ).alias("mun_okrug_oktmo_resolved"),
-        )
+    enriched = enriched.join(
+        name_to_oktmo.lazy(),
+        left_on="mun_okrug_name_resolved",
+        right_on="mun_okrug_name",
+        how="left",
+    ).with_columns(
+        # OKTMO: ГАР first; else from name bridge.
+        pl.coalesce(
+            pl.col("mun_okrug_oktmo"),
+            pl.col("mun_okrug_oktmo_addr"),
+        ).alias("mun_okrug_oktmo_resolved"),
     )
 
     # Source tag: "gar" if mun_okrug_name was set by ГАР join, else "address".

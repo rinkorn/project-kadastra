@@ -76,45 +76,27 @@ class BuildObjectFeatures:
         self._current_year_for_age_features = current_year_for_age_features
 
     def execute(self, region_code: str, asset_classes: list[AssetClass]) -> None:
-        stations = pl.read_csv(
-            io.BytesIO(self._raw_data.read_bytes(self._stations_key))
-        )
-        entrances = pl.read_csv(
-            io.BytesIO(self._raw_data.read_bytes(self._entrances_key))
-        )
+        stations = pl.read_csv(io.BytesIO(self._raw_data.read_bytes(self._stations_key)))
+        entrances = pl.read_csv(io.BytesIO(self._raw_data.read_bytes(self._entrances_key)))
 
-        roads_payload = cast(
-            dict[str, Any], json.loads(self._raw_data.read_bytes(self._roads_key))
-        )
+        roads_payload = cast(dict[str, Any], json.loads(self._raw_data.read_bytes(self._roads_key)))
         elements = roads_payload.get("elements", []) or []
         ways = [e for e in elements if e.get("type") == "way" and e.get("geometry")]
 
         slices = {ac: self._reader.load(region_code, ac) for ac in asset_classes}
         non_empty = [df for df in slices.values() if not df.is_empty()]
-        combined = (
-            pl.concat(non_empty, how="vertical_relaxed")
-            if non_empty
-            else next(iter(slices.values()))
-        )
+        combined = pl.concat(non_empty, how="vertical_relaxed") if non_empty else next(iter(slices.values()))
 
-        enriched = compute_object_metro_features(
-            combined, stations, entrances, road_graph=self._road_graph
-        )
-        enriched = compute_object_road_features(
-            enriched, ways, radius_m=self._road_radius_m
-        )
-        enriched = compute_object_neighbor_features(
-            enriched, radius_m=self._neighbor_radius_m
-        )
+        enriched = compute_object_metro_features(combined, stations, entrances, road_graph=self._road_graph)
+        enriched = compute_object_road_features(enriched, ways, radius_m=self._road_radius_m)
+        enriched = compute_object_neighbor_features(enriched, radius_m=self._neighbor_radius_m)
         # Zonal density at multiple radii (ADR-0013). Layers are built
         # from the same payload: stations/entrances are the loaded CSVs;
         # apartments/houses/commercial come from `enriched` itself,
         # filtered by asset_class with object_id preserved so the helper
         # excludes self-rows in the count.
         zonal_layers = self._build_zonal_layers(enriched, stations, entrances)
-        enriched = compute_object_zonal_features(
-            enriched, layers=zonal_layers, radii_m=self._zonal_radii_m
-        )
+        enriched = compute_object_zonal_features(enriched, layers=zonal_layers, radii_m=self._zonal_radii_m)
         # Poly-area buffer features (ADR-0014). Layers are loaded once
         # from disk; missing files yield empty layers (zero share).
         poly_layers = self._load_poly_area_layers()
@@ -129,12 +111,8 @@ class BuildObjectFeatures:
         # files → empty layer → null dist column. Share + distance
         # blocks carry orthogonal signals; the model weights them.
         if self._geom_distance_layer_paths:
-            distance_layers = self._load_layer_geometries(
-                self._geom_distance_layer_paths
-            )
-            enriched = compute_object_geom_distance_features(
-                enriched, geometries_by_layer=distance_layers
-            )
+            distance_layers = self._load_layer_geometries(self._geom_distance_layer_paths)
+            enriched = compute_object_geom_distance_features(enriched, geometries_by_layer=distance_layers)
         # Territorial / municipality features (ADR-0015). ГАР primary
         # via cad_num→objectid→mun_lookup; NSPD readable_address parse
         # fallback for the ~55–75 % unmatched rows. Skip if either
@@ -178,9 +156,7 @@ class BuildObjectFeatures:
         # Filter feature_columns to those present (allows configuring a
         # superset in Settings — missing ones are simply skipped, not
         # errors, so per-class slices with different schemas don't crash).
-        present_relative_columns = [
-            c for c in self._relative_feature_columns if c in enriched.columns
-        ]
+        present_relative_columns = [c for c in self._relative_feature_columns if c in enriched.columns]
         enriched = compute_relative_features(
             enriched,
             parent_resolutions=self._relative_feature_parent_resolutions,
@@ -247,9 +223,7 @@ class BuildObjectFeatures:
     def _load_poly_area_layers(self) -> dict[str, list[BaseGeometry]]:
         return self._load_layer_geometries(self._poly_area_layer_paths)
 
-    def _load_layer_geometries(
-        self, paths: dict[str, str]
-    ) -> dict[str, list[BaseGeometry]]:
+    def _load_layer_geometries(self, paths: dict[str, str]) -> dict[str, list[BaseGeometry]]:
         """Load each ``{name: path}`` GeoJSON-seq into a geometries list.
 
         Geometry-agnostic: returns whatever ``shape()`` produces from each
@@ -306,17 +280,15 @@ class BuildObjectFeatures:
             elif name in class_layer_map:
                 # Self-exclusion in compute_object_zonal_features kicks in
                 # via object_id so the object's own row never counts.
-                layers[name] = enriched.filter(
-                    pl.col("asset_class") == class_layer_map[name]
-                ).select(["object_id", "lat", "lon"])
+                layers[name] = enriched.filter(pl.col("asset_class") == class_layer_map[name]).select(
+                    ["object_id", "lat", "lon"]
+                )
             elif name in self._geom_distance_layer_paths:
                 # ADR-0019 part 4: OSM-extracted POI layer (school,
                 # bus_stop, ...). Reuse the same GeoJSON-seq file that
                 # geom-distance reads, centroiding non-Point features
                 # so the count helper sees lat/lon points uniformly.
-                layers[name] = self._load_zonal_poi_layer(
-                    self._geom_distance_layer_paths[name]
-                )
+                layers[name] = self._load_zonal_poi_layer(self._geom_distance_layer_paths[name])
         return layers
 
     def _load_zonal_poi_layer(self, path_str: str) -> pl.DataFrame:
