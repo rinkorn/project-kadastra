@@ -418,95 +418,15 @@ const TIPS = {
     osm: 'Стандартная подложка OpenStreetMap: улицы, здания, метро, водоёмы, подписи.',
     off: 'Без подложки — прозрачный тёмный фон, виден только слой данных. Удобно для презентаций и сравнения слоёв друг с другом.',
   },
-  // Per-feature descriptions for the dynamic dropdowns. Generic
-  // patterns below cover the rest by suffix.
-  features: {
-    count: 'Сколько объектов попало в этот гекс. Косвенный индикатор плотности застройки выбранного класса. В пустых гексах остальные показатели смотреть бессмысленно.',
-    median_target_rub_per_m2: 'Медианная цена ₽/м² (из ЕГРН) среди объектов гекса. Главный показатель «средней стоимости в районе». Медиана, а не среднее, чтобы один дорогой объект не искажал картину.',
-    median_pred_oof_rub_per_m2: 'Медианный прогноз выбранной модели по объектам гекса. Сравните с median_target_rub_per_m2, чтобы увидеть, где модель в среднем завышает или занижает цену.',
-    median_residual_rub_per_m2: 'Медианный остаток (прогноз − факт) по гексу. Положительное значение — модель в среднем переоценивает район, отрицательное — недооценивает. Чисто диагностический слой: ноль здесь — идеал.',
-    mean_levels: 'Средняя этажность зданий в гексе. Низкая (1–3) — частный сектор, высокая (15+) — современные жилые комплексы.',
-    mean_flats: 'Среднее число квартир на здание в гексе. Маркер крупности жилых комплексов.',
-    mean_area_m2: 'Средняя площадь объекта (квартиры / дома / участка / помещения) в гексе.',
-    mean_year_built: 'Средний год постройки зданий в гексе. Помогает увидеть «возраст» района: довоенная застройка, послевоенная, новостройки.',
-    mean_age_years: 'Средний возраст зданий в гексе (на текущий год). То же, что mean_year_built, но в количестве лет — иногда удобнее интерпретировать.',
-    area_m2: 'Площадь конкретного объекта, м².',
-    levels: 'Число этажей в здании.',
-    flats: 'Число квартир в доме (для apartment-объектов).',
-    year_built: 'Год постройки здания.',
-    age_years: 'Возраст здания на текущий год.',
-    mean_road_length_500m: 'Сумма длин всех дорог (любого класса) в радиусе 500 м от объекта, усреднённая по гексу. Прокси для транспортной связности района.',
-    road_length_500m: 'Сумма длин всех дорог в радиусе 500 м от объекта. Чем выше — тем плотнее уличная сеть вокруг.',
-  },
-  patterns: [
-    [/^(mean_)?dist_to_(.+?)_m$/, (m) => {
-      const head = `Расстояние до ближайшего объекта «${humanPoiRu(m[2])}», в метрах.`;
-      const useFor = ` ${interpretDistanceRu(m[2])}`;
-      const agg = m[1] ? ' Усреднено по всем объектам внутри гекса.' : '';
-      return head + useFor + agg;
-    }],
-    [/^(mean_)?dist_metro_m$/, (m) => {
-      const base = 'Расстояние до ближайшей станции метро, в метрах. Один из самых сильных факторов цены в крупных городах: близость к метро поднимает стоимость.';
-      return base + (m[1] ? ' Усреднено по объектам гекса.' : '');
-    }],
-    [/^(mean_)?dist_entrance_m$/, (m) => {
-      const base = 'Расстояние до ближайшего входа в метро, в метрах. Уточнение dist_metro_m: важно реальное пешее расстояние до входа, а не до центра станции.';
-      return base + (m[1] ? ' Усреднено по объектам гекса.' : '');
-    }],
-    [/^(mean_)?(.+?)_share_(\d+)m$/, (m) => {
-      const what = humanPoiRu(m[2]);
-      const r = m[3];
-      const head = `Доля площади «${what}» в круге радиуса ${r} м вокруг объекта (0 — нет совсем, 1 — круг полностью покрыт).`;
-      return head + (m[1] ? ' Усреднено по объектам гекса.' : '');
-    }],
-    [/^(mean_)?(.+?)_within_(\d+)m$/, (m) => {
-      const what = humanPoiRu(m[2]);
-      const r = m[3];
-      const head = `Сколько объектов «${what}» попадает в круг радиуса ${r} м вокруг объекта.`;
-      return head + (m[1] ? ' Усреднено по объектам гекса.' : '');
-    }],
-    [/^(mean_)?count_(.+?)_(\d+)(km|m)$/, (m) => {
-      const what = humanPoiRu(m[2]);
-      const head = `Сколько объектов «${what}» в радиусе ${m[3]} ${m[4]} вокруг объекта.`;
-      return head + (m[1] ? ' Усреднено по объектам гекса.' : '');
-    }],
-    [/^dominant_(.+)$/, (m) => `Доминирующее значение административного признака «${m[1].replace(/_/g, ' ')}» в гексе. Категориальный признак — раскраска по дискретным значениям, а не по числовой шкале.`],
-  ],
 };
 
-// Тонкая интерпретация по типу POI: для каких — близость удорожает,
-// для каких — обесценивает (используется в описаниях dist_to_*).
-function interpretDistanceRu(token) {
-  const positive = new Set(['park', 'forest', 'water', 'school', 'kindergarten', 'clinic', 'hospital', 'pharmacy', 'supermarket', 'cafe', 'restaurant', 'bus_stop', 'tram_stop', 'railway_station']);
-  const negative = new Set(['industrial', 'cemetery', 'landfill', 'powerline', 'railway']);
-  if (positive.has(token)) return 'Чем меньше расстояние — тем привлекательнее локация (положительный фактор цены).';
-  if (negative.has(token)) return 'Чем меньше расстояние — тем сильнее негативный фактор (промзона / шум / экология): обычно снижает цену.';
-  return '';
-}
-
-function humanPoiRu(token) {
-  const map = {
-    water: 'водоём', park: 'парк', forest: 'лес',
-    industrial: 'промзона', cemetery: 'кладбище', landfill: 'свалка',
-    powerline: 'ЛЭП', railway: 'ж/д', railway_station: 'ж/д станция',
-    school: 'школа', kindergarten: 'детсад',
-    clinic: 'поликлиника', hospital: 'больница', pharmacy: 'аптека',
-    supermarket: 'супермаркет', cafe: 'кафе', restaurant: 'ресторан',
-    bus_stop: 'автобусная остановка', tram_stop: 'трамвайная остановка',
-    stations: 'станции метро', entrances: 'входы в метро',
-    apartments: 'жилые дома (квартирные)', houses: 'ИЖС',
-    commercial: 'коммерческие объекты',
-  };
-  return map[token] || token.replace(/_/g, ' ');
-}
+// Per-feature descriptions are served by /api/feature_options
+// (single source of truth lives in domain/feature_descriptions.py).
+// Populated by loadFeatureOptions, read by applyFeatureOptionTooltips.
+let featureDescriptions = {};
 
 function describeFeature(name) {
-  if (TIPS.features[name]) return TIPS.features[name];
-  for (const [re, fn] of TIPS.patterns) {
-    const m = name.match(re);
-    if (m) return fn(m);
-  }
-  return null;
+  return featureDescriptions[name] || null;
 }
 
 function applyStaticTooltips() {
@@ -871,6 +791,7 @@ function hslToRgb(h, s, l) {
 async function loadFeatureOptions() {
   const r = await fetch('/api/feature_options');
   featureOptions = await r.json();
+  featureDescriptions = featureOptions.feature_descriptions || {};
   const sel = document.getElementById('hex_feature');
   sel.innerHTML = '';
   for (const f of [...featureOptions.numeric_features, ...featureOptions.categorical_features]) {

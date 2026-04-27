@@ -30,6 +30,7 @@ from fastapi import APIRouter, HTTPException, Query
 from shapely.geometry import mapping
 
 from kadastra.domain.asset_class import AssetClass
+from kadastra.domain.feature_descriptions import describe_feature
 from kadastra.usecases.get_hex_aggregates import (
     ASSET_CLASS_VALUES,
     CATEGORICAL_FEATURES,
@@ -196,12 +197,17 @@ def make_api_router(
 
     @router.get("/feature_options")
     def feature_options() -> dict[str, Any]:
+        all_feature_names = list(NUMERIC_FEATURES) + list(CATEGORICAL_FEATURES) + list(OBJECT_FEATURE_COLUMNS)
         return {
             "asset_classes": list(ASSET_CLASS_VALUES),
             "numeric_features": list(NUMERIC_FEATURES),
             "categorical_features": list(CATEGORICAL_FEATURES),
             "object_features": list(OBJECT_FEATURE_COLUMNS),
             "models": list(QUARTET_MODELS),
+            # Single source of truth for per-feature tooltips. The map UI
+            # reads this dict and falls back to nothing if a key is
+            # missing — see domain/feature_descriptions.py.
+            "feature_descriptions": {name: describe_feature(name) for name in all_feature_names},
         }
 
     return router

@@ -553,6 +553,23 @@ def test_feature_options_lists_choices(client: TestClient) -> None:
     assert {"catboost", "ebm", "grey_tree", "naive_linear"} <= set(payload["models"])
 
 
+def test_feature_options_emits_descriptions_for_every_listed_feature(
+    client: TestClient,
+) -> None:
+    """The map UI builds tooltips from the descriptions dict — if a
+    feature is exposed without a description, it lands in the dropdown
+    as a bare name. Test guards that the API never ships such drift."""
+    response = client.get("/api/feature_options")
+    payload = response.json()
+    descriptions = payload["feature_descriptions"]
+    listed = payload["numeric_features"] + payload["categorical_features"] + payload["object_features"]
+    missing = [f for f in listed if not descriptions.get(f)]
+    assert not missing, f"features without descriptions: {missing}"
+    # Spot-check one explicit + one pattern-driven entry.
+    assert "0 — нет" in descriptions["mean_water_share_500m"]
+    assert "Медианная цена" in descriptions["median_target_rub_per_m2"]
+
+
 def test_market_reference_returns_emiss_anchor_for_apartment(
     client: TestClient,
 ) -> None:
