@@ -37,7 +37,6 @@ class AssetClass(StrEnum):
 ### Доменные сущности
 
 - [`AssetClass`](../../src/kadastra/domain/asset_class.py) — `StrEnum` с тремя членами; единый ключ для маршрутизации (формула таргета, run_name модели, файловая партиция).
-- [`ValuationObject`](../../src/kadastra/domain/valuation_object.py) — `frozen + slots` dataclass с валидацией `__post_init__`. Используется для одиночных операций (per-object inference), массовая ETL идёт через polars.
 - [`classify_asset_class(tag)`](../../src/kadastra/domain/classify_asset_class.py) — чистая функция, регистронезависимая, обрабатывает `None`.
 
 ### ETL transforms (чистые polars-функции)
