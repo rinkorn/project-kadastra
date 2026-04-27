@@ -146,10 +146,12 @@ API-роуты тонкие: парсят запрос, вызывают use cas
 main ← dev-stage ← dev ← feature/xxx
 ```
 
-- **main** — production. Прямые коммиты запрещены. Мерж только через PR из dev-stage. Push в main → CI (lint+test). Автодеплой prod ещё не подключён — сейчас только dev-stage задеплоен на VM.
-- **dev-stage** — staging. Прямые коммиты допускаются для инфра-фиксов; для feature-работы — мерж из dev. **Push в dev-stage → deploy-dev-stage** (rsync + .env + `docker compose up -d --build` на VM).
-- **dev** — интеграционная. Прямые коммиты запрещены. Мерж только из feature-веток. Push в dev → CI (lint+test).
-- **feature/xxx** — ветки под задачу, создаются от dev. **НЕ удаляются после merge** без явной просьбы.
+- **main** — production. Защищён, прямые коммиты запрещены. Мерж только через PR из `dev-stage` после прохождения CI. Push в main → CI (lint+test). Автодеплой prod ещё не подключён — сейчас только `dev-stage` задеплоен на VM.
+- **dev-stage** — staging. Защищён, прямые коммиты запрещены. Мерж только через PR/локальный merge из `dev`. **Push в dev-stage → deploy-dev-stage** (rsync + .env + `docker compose up -d --build` на VM).
+- **dev** — интеграционная. Защищён, прямые коммиты запрещены. Мерж только из feature-веток (через PR или локальный merge + push). Push в dev → CI (lint+test).
+- **feature/xxx** — ветки под задачу, создаются от `dev`. Вся разработка только здесь, **включая инфра-фиксы и docs**. **НЕ удаляются после merge** без явной просьбы.
+
+> Никаких исключений «прямой коммит для инфра-фиксов / hotfix» — всё через `feature/xxx → dev → dev-stage → main`. Если deploy на VM сломан и нужен срочный фикс — он живёт в `feature/hotfix-xxx`, мержится в `dev`, оттуда в `dev-stage`, дальше CI деплоит. Это медленнее на 30 секунд, чем «прямой push», но сохраняет линейность истории и даёт CI прогнать lint+test перед деплоем.
 
 **Именование веток:** название должно конкретно описывать задачу.
 
@@ -223,7 +225,7 @@ GitHub Actions, GitHub-hosted runner (`ubuntu-latest`). Workflow: [.github/workf
 feature/xxx → merge в dev → push в dev-stage → CI (lint+test) → deploy-dev-stage
 ```
 
-Сейчас feature-ветки чаще мержат напрямую в `dev-stage` для интеграционной проверки на VM, потом — в `main` через PR. После подключения prod-деплоя поток будет строже: feature → dev → PR в dev-stage → PR в main.
+Поток строго: feature → PR/merge в `dev` → PR/merge в `dev-stage` (push триггерит deploy) → PR в `main` (после prod-подключения).
 
 ### Деплой механизм (deploy-dev-stage)
 
@@ -387,7 +389,7 @@ dev → merge в dev-stage → push в dev-stage → CI → deploy-dev-stage →
 
 ## Чего НЕ делать
 
-- Не коммитить напрямую в `main` (защищён). В `dev-stage` — только инфра-фиксы, для feature-работы мерж из `dev`.
+- Не коммитить напрямую в `main`, `dev-stage` или `dev` — все три ветки защищены. Любые изменения идут через feature-ветку.
 - Не использовать `git add .` или `git add -A`.
 - Не добавлять Co-Authored-By в коммиты.
 - Не удалять feature-ветки после merge (`git branch -d` запрещён без явной просьбы).
