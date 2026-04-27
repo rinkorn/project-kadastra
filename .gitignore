@@ -13,8 +13,17 @@ wheels/
 .env
 .env.local
 
-# Data and ML artifacts
-data/
+# Data and ML artifacts. The kazan-agglomeration region boundary
+# GeoJSON (3 KB) is the one whitelisted asset under data/ — it's a
+# project config, read at app startup before any S3 pull could
+# complete. Git's gitignore-doesn't-re-include-files-in-excluded-dirs
+# rule forces this verbose pyramid (each level un-excluded explicitly).
+/data/*
+!/data/raw
+/data/raw/*
+!/data/raw/regions
+/data/raw/regions/*
+!/data/raw/regions/kazan-agglomeration.geojson
 mlruns/
 
 

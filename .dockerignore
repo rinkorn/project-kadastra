@@ -31,12 +31,11 @@ notebooks
 # Big data tree. The container either ships with an empty data/ and
 # pulls from S3 on cold-start (PULL_DATA_ON_START=true), or mounts a
 # persistent volume into /app/data — in both modes we never want the
-# host's working copy embedded in the image. The region boundary file
-# is the one exception: it's tiny, version-controlled, and read at app
-# startup before any S3 pull could complete.
+# host's working copy embedded in the image. The region boundary
+# GeoJSON is the one exception: it's tiny, version-controlled, and
+# read at app startup before any S3 pull could complete.
 data
-!data/raw/regions
-!data/raw/regions/**
+!data/raw/regions/kazan-agglomeration.geojson
 
 # Build / docs / logs.
 build

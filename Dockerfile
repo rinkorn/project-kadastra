@@ -28,7 +28,9 @@ FROM deps AS runtime
 
 COPY src/ src/
 COPY scripts/ scripts/
-COPY data/raw/regions/ data/raw/regions/
+# Only the kazan-agglomeration boundary file (3 KB) — the geoBoundaries
+# tile under the same dir is 56 MB and isn't read at runtime.
+COPY data/raw/regions/kazan-agglomeration.geojson data/raw/regions/
 COPY README.md ./
 COPY entrypoint.sh ./
 

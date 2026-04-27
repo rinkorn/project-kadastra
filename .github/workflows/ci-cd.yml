@@ -40,13 +40,17 @@ jobs:
           ssh-keyscan -p ${{ vars.STAGE_PORT }} ${{ vars.STAGE_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
       - name: Sync sources to VM
         run: |
+          # `data/` is gitignored except for the whitelisted region
+          # boundary GeoJSON (see .gitignore) — so the runner's checkout
+          # only contains that one tiny file under data/. Don't blanket-
+          # exclude `data` here: that would also drop the boundary file
+          # the Docker build needs.
           rsync -az --delete \
             -e "ssh -i ~/.ssh/deploy_key -p ${{ vars.STAGE_PORT }}" \
             --exclude '.git' \
             --exclude '.venv' \
             --exclude '__pycache__' \
             --exclude '.env' \
-            --exclude 'data' \
             --exclude '.ruff_cache' \
             --exclude '.pytest_cache' \
             --exclude 'mlruns' \
