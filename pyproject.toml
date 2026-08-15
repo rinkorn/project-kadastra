@@ -33,7 +33,9 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "commitizen>=4.17.0",
     "moto[s3]>=5.1.22",
+    "pre-commit>=4.6.2",
     "pyright>=1.1.409",
     "pytest>=9.0.3",
     "ruff>=0.15.12",
@@ -54,7 +56,10 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 
 [tool.pyright]
 include = ["src", "tests"]
-exclude = [".venv", "**/__pycache__"]
+# scripts/ — one-off ETL/import scripts, intentionally out of the strict
+# type-check scope (see info/dev-rules.md). `exclude` filters them for
+# both `uv run pyright` (uses `include`) and `uv run pyright .`.
+exclude = [".venv", "**/__pycache__", "scripts"]
 pythonVersion = "3.13"
 typeCheckingMode = "strict"
 reportMissingTypeStubs = false
@@ -67,3 +72,10 @@ reportUnusedFunction = "none"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.commitizen]
+name = "cz_conventional_commits"
+# commitizen v4's default `commit_parser` for cz_conventional_commits already
+# accepts the full Angular type list used here (feat/fix/perf/build/ci/docs/
+# style/refactor/test/chore), so no change_type_map override is needed — the
+# pre-commit `commitizen` hook validates messages against that pattern as-is.
