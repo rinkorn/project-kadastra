@@ -825,6 +825,16 @@ async function fetchHex() {
   return await r.json();
 }
 
+// Full aggregate row for a single hex (hex inspector).
+async function fetchHexDetail(h3Index, resolution, assetClass) {
+  const model = document.getElementById('model').value;
+  const r = await fetch(
+    `/api/hex_aggregates/${encodeURIComponent(h3Index)}?resolution=${resolution}&asset_class=${assetClass}&model=${model}`
+  );
+  if (!r.ok) return null;
+  return (await r.json()).data;
+}
+
 async function fetchObjects() {
   const ac = document.getElementById('asset_class').value;
   if (ac === 'all') throw new Error('object scatter does not support "all"; choose a class');
@@ -1125,19 +1135,52 @@ function redrawWithSelection() {
 
 // ---------- inspector panel ----------
 
-function showHexInspector(hex, payload) {
+async function showHexInspector(hex, payload) {
   const panel = document.getElementById('panel');
+  panel.innerHTML = `<h2>Loading hex ${escapeHtml(hex.hex)}…</h2>`;
+  const detail = await fetchHexDetail(hex.hex, payload.resolution, payload.asset_class);
+  if (!detail) {
+    panel.innerHTML = `<h2>Hex inspector</h2><p class="empty">Could not load aggregate for ${escapeHtml(hex.hex)}.</p>`;
+    return;
+  }
+  panel.innerHTML = `<h2>Hex inspector</h2>` + renderHexDetailSections(detail);
+}
+
+// Group the full aggregate row into readable sections. Naming-convention
+// driven, so newly-added aggregate columns land in a sensible bucket (or
+// the "Прочее" fallback) without editing this list by hand.
+function renderHexDetailSections(detail) {
   const sections = [];
-  sections.push(`<h2>Hex inspector</h2>`);
-  sections.push(rowsSection('summary', [
-    ['h3_index', hex.hex],
-    ['resolution', payload.resolution],
-    ['asset_class', payload.asset_class],
-    ['feature', payload.feature],
-    ['value', formatValue(hex.value)],
-  ]));
-  sections.push(`<p style="font-size:11px;color:#9ca3af">For more per-hex stats use the per-object scatter mode and click an individual object.</p>`);
-  panel.innerHTML = sections.join('');
+  const summaryKeys = [
+    'h3_index', 'resolution', 'asset_class', 'count',
+    'median_target_rub_per_m2', 'median_pred_oof_rub_per_m2', 'median_residual_rub_per_m2',
+  ];
+  sections.push(`<h2>Сводка</h2>`);
+  sections.push(rowsSection('summary', summaryKeys
+    .filter(k => k in detail)
+    .map(k => [k, formatValue(detail[k])])));
+
+  const groups = [
+    { title: 'Доминантные категории', match: k => k.startsWith('dominant_') },
+    { title: 'Описатели зданий', match: k => ['mean_levels', 'mean_flats', 'mean_area_m2', 'mean_year_built', 'mean_age_years'].includes(k) },
+    { title: 'Расстояния до ближайшего (м)', match: k => k.startsWith('mean_dist_') },
+    { title: 'Доля в буфере 500 м', match: k => k.endsWith('_share_500m') },
+    { title: 'Плотность и счётчики', match: k => k === 'mean_road_length_500m' || k.startsWith('mean_count_') || k.endsWith('_within_500m') },
+  ];
+  const consumed = new Set(summaryKeys);
+  for (const g of groups) {
+    const keys = Object.keys(detail).filter(k => !consumed.has(k) && g.match(k)).sort();
+    if (!keys.length) continue;
+    keys.forEach(k => consumed.add(k));
+    sections.push(`<h2>${g.title}</h2>`);
+    sections.push(rowsSection('', keys.map(k => [k, formatValue(detail[k])])));
+  }
+  const rest = Object.keys(detail).filter(k => !consumed.has(k)).sort();
+  if (rest.length) {
+    sections.push(`<h2>Прочее</h2>`);
+    sections.push(rowsSection('', rest.map(k => [k, formatValue(detail[k])])));
+  }
+  return sections.join('');
 }
 
 async function showObjectInspector(obj, assetClass) {

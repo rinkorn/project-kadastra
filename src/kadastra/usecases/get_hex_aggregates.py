@@ -13,6 +13,7 @@ map UI colors them by category instead of by gradient.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 
@@ -125,3 +126,25 @@ class GetHexAggregates:
         filtered = df.filter(pl.col("asset_class") == asset_class)
         slim = filtered.select(["h3_index", pl.col(feature).alias("value")]).drop_nulls("value")
         return [{"hex": row["h3_index"], "value": row["value"]} for row in slim.iter_rows(named=True)]
+
+    def get_detail(
+        self,
+        region_code: str,
+        resolution: int,
+        asset_class: str,
+        h3_index: str,
+        *,
+        model: str = "catboost",
+    ) -> dict[str, Any] | None:
+        path = (
+            self._base_path / f"region={region_code}" / f"resolution={resolution}" / f"model={model}" / "data.parquet"
+        )
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"hex aggregates not built for region={region_code} resolution={resolution}: {path}"
+            )
+        df = pl.read_parquet(path)
+        match = df.filter((pl.col("asset_class") == asset_class) & (pl.col("h3_index") == h3_index))
+        if match.is_empty():
+            return None
+        return match.row(0, named=True)

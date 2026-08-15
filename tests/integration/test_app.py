@@ -371,6 +371,66 @@ def test_hex_aggregates_returns_404_for_missing_model_partition(
     assert response.status_code == 404
 
 
+def test_hex_aggregate_detail_returns_full_row(client: TestClient) -> None:
+    """The hex inspector reads the *whole* aggregate row for one hex,
+    not just the single projected feature value."""
+    response = client.get(
+        "/api/hex_aggregates/8810a81015fffff",
+        params={"resolution": 8, "asset_class": "apartment"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["resolution"] == 8
+    assert payload["asset_class"] == "apartment"
+    data = payload["data"]
+    assert data["h3_index"] == "8810a81015fffff"
+    assert data["count"] == 3
+    assert data["median_target_rub_per_m2"] == 100_000.0
+    assert data["median_pred_oof_rub_per_m2"] == 95_000.0
+    assert data["dominant_intra_city_raion"] == "Советский"
+
+
+def test_hex_aggregate_detail_returns_404_for_unknown_hex(
+    client: TestClient,
+) -> None:
+    response = client.get(
+        "/api/hex_aggregates/8810a81ffffffff",
+        params={"resolution": 8, "asset_class": "apartment"},
+    )
+    assert response.status_code == 404
+
+
+def test_hex_aggregate_detail_returns_404_for_wrong_asset_class(
+    client: TestClient,
+) -> None:
+    """The hex exists for apartment, but house has no aggregate row for
+    it in the fixture → 404, not an empty payload."""
+    response = client.get(
+        "/api/hex_aggregates/8810a81015fffff",
+        params={"resolution": 8, "asset_class": "house"},
+    )
+    assert response.status_code == 404
+
+
+def test_hex_aggregate_detail_rejects_unknown_model(client: TestClient) -> None:
+    response = client.get(
+        "/api/hex_aggregates/8810a81015fffff",
+        params={"resolution": 8, "asset_class": "apartment", "model": "magic"},
+    )
+    assert response.status_code == 400
+
+
+def test_hex_aggregate_detail_returns_404_for_missing_model_partition(
+    client: TestClient,
+) -> None:
+    """Fixture seeds only catboost partition → ?model=ebm must 404."""
+    response = client.get(
+        "/api/hex_aggregates/8810a81015fffff",
+        params={"resolution": 8, "asset_class": "apartment", "model": "ebm"},
+    )
+    assert response.status_code == 404
+
+
 def test_inspection_list_joins_oof_predictions(client: TestClient) -> None:
     response = client.get("/api/inspection", params={"asset_class": "apartment"})
     assert response.status_code == 200

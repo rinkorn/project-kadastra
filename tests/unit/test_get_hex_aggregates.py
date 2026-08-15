@@ -207,3 +207,46 @@ def test_missing_model_partition_raises_filenotfound(tmp_path: Path) -> None:
             feature="count",
             model="ebm",
         )
+
+
+def test_get_detail_returns_full_aggregate_row(tmp_path: Path) -> None:
+    """The hex inspector needs the *whole* aggregate row for one hex —
+    not just the single feature value that ``execute`` projects."""
+    _write_aggregates(tmp_path, "RU-KAZAN-AGG", 8)
+    detail = GetHexAggregates(tmp_path).get_detail("RU-KAZAN-AGG", 8, asset_class="apartment", h3_index="8a")
+    assert detail is not None
+    assert detail["h3_index"] == "8a"
+    assert detail["asset_class"] == "apartment"
+    assert detail["resolution"] == 8
+    assert detail["count"] == 10
+    assert detail["median_target_rub_per_m2"] == 100_000.0
+    assert detail["median_pred_oof_rub_per_m2"] == 95_000.0
+    assert detail["dominant_intra_city_raion"] == "Советский"
+
+
+def test_get_detail_unknown_hex_returns_none(tmp_path: Path) -> None:
+    _write_aggregates(tmp_path, "RU-KAZAN-AGG", 8)
+    assert GetHexAggregates(tmp_path).get_detail("RU-KAZAN-AGG", 8, asset_class="apartment", h3_index="8z") is None
+
+
+def test_get_detail_wrong_asset_class_returns_none(tmp_path: Path) -> None:
+    """8a exists for ``apartment`` and ``all`` but not ``house``."""
+    _write_aggregates(tmp_path, "RU-KAZAN-AGG", 8)
+    assert GetHexAggregates(tmp_path).get_detail("RU-KAZAN-AGG", 8, asset_class="house", h3_index="8a") is None
+
+
+def test_get_detail_missing_parquet_raises_filenotfound(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        GetHexAggregates(tmp_path).get_detail("RU-KAZAN-AGG", 8, asset_class="apartment", h3_index="8a")
+
+
+def test_get_detail_respects_model_partition(tmp_path: Path) -> None:
+    _write_aggregates(tmp_path, "RU-KAZAN-AGG", 8, model="catboost", pred_8a=95_000.0)
+    _write_aggregates(tmp_path, "RU-KAZAN-AGG", 8, model="ebm", pred_8a=80_000.0)
+    cb = GetHexAggregates(tmp_path).get_detail(
+        "RU-KAZAN-AGG", 8, asset_class="apartment", h3_index="8a", model="catboost"
+    )
+    ebm = GetHexAggregates(tmp_path).get_detail("RU-KAZAN-AGG", 8, asset_class="apartment", h3_index="8a", model="ebm")
+    assert cb is not None and ebm is not None
+    assert cb["median_pred_oof_rub_per_m2"] == 95_000.0
+    assert ebm["median_pred_oof_rub_per_m2"] == 80_000.0

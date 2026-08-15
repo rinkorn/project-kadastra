@@ -5,6 +5,8 @@ Endpoints:
 - ``GET /api/hex_aggregates`` — return per-hex aggregate values for a
   given (resolution, asset_class, feature) triple. Drives the hex
   layer of the map UI.
+- ``GET /api/hex_aggregates/{h3_index}`` — full aggregate row for a
+  single hex (every aggregate column), powering the hex inspector.
 - ``GET /api/inspection`` — slim per-object scatter payload
   ``{object_id, lat, lon, y_true, y_pred_oof, residual, fold_id}``
   for the requested asset class. Drives the scatter layer.
@@ -103,6 +105,40 @@ def make_api_router(
             "model": model,
             "is_categorical": feature in CATEGORICAL_FEATURES,
             "is_numeric": feature in NUMERIC_FEATURES,
+            "data": data,
+        }
+
+    @router.get("/hex_aggregates/{h3_index}")
+    def hex_aggregate_detail(
+        h3_index: str,
+        resolution: int = Query(..., ge=0, le=15),
+        asset_class: str = Query(...),
+        model: str = Query("catboost"),
+    ) -> dict[str, Any]:
+        """Full aggregate row for a single hex (every aggregate column
+        for that h3_index/asset_class), powering the hex inspector."""
+        if asset_class not in ASSET_CLASS_VALUES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"unknown asset_class: {asset_class!r}; expected one of {ASSET_CLASS_VALUES}",
+            )
+        _validate_model(model)
+        try:
+            data = get_hex_aggregates.get_detail(region_code, resolution, asset_class, h3_index, model=model)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if data is None:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"no hex aggregate for h3_index={h3_index!r} asset_class={asset_class!r} resolution={resolution}"
+                ),
+            )
+        return {
+            "region": region_code,
+            "resolution": resolution,
+            "asset_class": asset_class,
+            "model": model,
             "data": data,
         }
 
