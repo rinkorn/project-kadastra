@@ -60,12 +60,19 @@
       transition: transform 0.22s ease;
     }
     .panel-resizer {
-      position: absolute; left: 0; top: 0; bottom: 0; width: 7px;
-      cursor: ew-resize; z-index: 11;
-      background: rgba(253, 224, 71, 0.14);
-      border-right: 1px solid rgba(253, 224, 71, 0.25);
+      position: absolute; left: 0; top: 0; bottom: 0; width: 11px;
+      cursor: ew-resize; z-index: 12;
+      background: rgba(253, 224, 71, 0.12);
+      border-right: 2px solid rgba(253, 224, 71, 0.4);
     }
-    .panel-resizer:hover { background: rgba(253, 224, 71, 0.4); }
+    .panel-resizer::after {
+      content: '';
+      position: absolute; left: 3px; top: 50%; transform: translateY(-50%);
+      width: 3px; height: 44px;
+      background: radial-gradient(circle, rgba(253, 224, 71, 0.55) 1px, transparent 1.5px);
+      background-size: 3px 9px;
+    }
+    .panel-resizer:hover { background: rgba(253, 224, 71, 0.3); }
     /* Collapsed inspector: the panel slides off-screen right and the map
        reclaims its width. Driven by body.panel-hidden (panel toggle). */
     body.panel-hidden #map { right: 0; }
@@ -90,11 +97,13 @@
     .panel .cmp-a { color: #fde047; }
     .panel .cmp-b { color: #60a5fa; }
     .panel .cmp-section { color: #9ca3af; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin: 10px 0 3px; }
-    .panel .cmp-row { display: grid; grid-template-columns: minmax(0, 1fr) 72px 72px 60px; gap: 4px; padding: 2px 0; border-bottom: 1px solid #1f2937; align-items: baseline; }
+    .panel .cmp-row { display: grid; grid-template-columns: minmax(0, 1fr) 82px 82px 72px; gap: 4px; padding: 2px 0; border-bottom: 1px solid #1f2937; align-items: baseline; }
     .panel .cmp-row.cmp-head { border-bottom-color: #374151; font-weight: 600; }
     .panel .cmp-key { color: #9ca3af; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .panel .cmp-val { font-family: ui-monospace, SFMono-Regular, monospace; text-align: right; }
-    .panel .cmp-delta { font-family: ui-monospace, SFMono-Regular, monospace; text-align: right; }
+    .panel .cmp-val { font-family: ui-monospace, SFMono-Regular, monospace; text-align: right; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .panel .cmp-delta { font-family: ui-monospace, SFMono-Regular, monospace; text-align: right; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .panel .cmp-delta-toggle { cursor: pointer; }
+    .panel .cmp-delta-toggle:hover { color: #fde047; }
     .panel .cmp-delta.pos { color: #4ade80; }
     .panel .cmp-delta.neg { color: #f87171; }
     .panel .cmp-legend { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px; }
@@ -1562,6 +1571,7 @@ let compareA = null; // { kind, label, geometry, center, fetch }
 let compareB = null;
 let compareActive = 'B'; // slot the next new click replaces
 let compareData = null;  // { a, b, da, db } — last rendered comparison
+let deltaSign = 1;       // +1 = B−A, -1 = A−B (toggled by clicking the Δ header)
 
 // Convert an H3 cell index to a GeoJSON Polygon (WGS84 ring) so a selected
 // hex can be outlined on the map the same way an object polygon is.
@@ -1699,11 +1709,21 @@ function renderCompareHeader() {
   el.innerHTML = comparisonHeader(compareData.a, compareData.b);
   const reset = el.querySelector('#cmp-reset');
   if (reset) reset.addEventListener('click', resetCompare);
+  const dt = el.querySelector('#cmp-delta-toggle');
+  if (dt) dt.addEventListener('click', toggleDelta);
+}
+
+function toggleDelta() {
+  deltaSign = -deltaSign;
+  renderCompareHeader();
+  const table = document.getElementById('cmp-table');
+  if (table && compareData) table.innerHTML = comparisonTable(compareData.da, compareData.db, compareData.a.kind);
 }
 
 function comparisonHeader(a, b) {
   const aActive = compareActive === 'A';
   const bActive = compareActive === 'B';
+  const deltaLabel = deltaSign === 1 ? 'Δ B−A' : 'Δ A−B';
   return `<div class="cmp-legend">
       <span class="cmp-legend-item cmp-a${aActive ? ' cmp-active' : ''}">${aActive ? '▸ ' : ''}A: ${escapeHtml(a.label)}</span>
       <span class="cmp-legend-item cmp-b${bActive ? ' cmp-active' : ''}">${bActive ? '▸ ' : ''}B: ${escapeHtml(b.label)}</span>
@@ -1713,7 +1733,7 @@ function comparisonHeader(a, b) {
       <span class="cmp-key">показатель</span>
       <span class="cmp-val">A</span>
       <span class="cmp-val">B</span>
-      <span class="cmp-delta" title="Δ = B − A">Δ</span>
+      <span class="cmp-delta cmp-delta-toggle" id="cmp-delta-toggle" title="Клик — поменять направление (B−A ⇄ A−B)">${deltaLabel}</span>
     </div>`;
 }
 
@@ -1728,6 +1748,8 @@ function comparisonTable(da, db, kind) {
 }
 
 function comparisonRow(key, va, vb) {
+  const fa = formatValue(va);
+  const fb = formatValue(vb);
   const delta = numericDelta(va, vb);
   let deltaCell;
   if (delta === null) {
@@ -1738,15 +1760,15 @@ function comparisonRow(key, va, vb) {
   }
   return `<div class="cmp-row">
       <span class="cmp-key" title="${escapeHtml(key)}">${escapeHtml(key)}</span>
-      <span class="cmp-val">${escapeHtml(formatValue(va))}</span>
-      <span class="cmp-val">${escapeHtml(formatValue(vb))}</span>
+      <span class="cmp-val" title="${escapeHtml(fa)}">${escapeHtml(fa)}</span>
+      <span class="cmp-val" title="${escapeHtml(fb)}">${escapeHtml(fb)}</span>
       ${deltaCell}
     </div>`;
 }
 
 function numericDelta(va, vb) {
   if (typeof va === 'number' && typeof vb === 'number' && Number.isFinite(va) && Number.isFinite(vb)) {
-    return vb - va;
+    return (vb - va) * deltaSign;
   }
   return null;
 }
