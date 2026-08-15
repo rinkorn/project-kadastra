@@ -1,0 +1,24 @@
+# See info/dev-rules.md §Pre-commit hooks.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.12
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/commitizen-tools/commitizen
+    rev: v4.17.0
+    hooks:
+      - id: commitizen
+
+  # pyright ships as the `pyright` dev dep (not a pre-commit repo), so run it
+  # via the local hook. `pass_filenames: false` → whole-project check using the
+  # include/exclude from [tool.pyright] in pyproject.toml.
+  - repo: local
+    hooks:
+      - id: pyright
+        name: pyright
+        entry: uv run pyright
+        language: system
+        pass_filenames: false

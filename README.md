@@ -4,17 +4,22 @@ Cadastral valuation pilot on H3 hexagonal grid (pilot region: Tatarstan / Kazan 
 
 ## Local development
 
-```sh
-uv sync
-uv run python scripts/serve.py
-# → http://127.0.0.1:15777
-```
-
-Or via Docker (rebuilds the image, mounts `./data` from host):
+Run the app through Docker Compose (rebuilds the image, mounts `./data` from host):
 
 ```sh
 docker compose up --build
 # → http://127.0.0.1:15777
+```
+
+Don't launch `scripts/serve.py` / uvicorn directly — local dev runs only via `docker compose up`.
+
+For local checks (lint, types, tests), install dev tooling and run:
+
+```sh
+uv sync
+uv run ruff check .
+uv run pyright
+uv run pytest
 ```
 
 ## Branches
