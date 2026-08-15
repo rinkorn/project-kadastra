@@ -50,14 +50,20 @@
       pointer-events: none;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
     }
-    #map { position: fixed; top: 56px; bottom: 0; left: 0; right: 380px; transition: right 0.22s ease; }
+    :root { --panel-width: 380px; }
+    #map { position: fixed; top: 56px; bottom: 0; left: 0; right: var(--panel-width); transition: right 0.22s ease; }
     .panel {
-      position: fixed; top: 56px; bottom: 0; right: 0; width: 380px;
+      position: fixed; top: 56px; bottom: 0; right: 0; width: var(--panel-width);
       background: #111827; border-left: 1px solid #374151;
       overflow-y: auto; padding: 12px 16px; z-index: 10;
       font-size: 12px;
       transition: transform 0.22s ease;
     }
+    .panel-resizer {
+      position: absolute; left: 0; top: 0; bottom: 0; width: 6px;
+      margin-left: -3px; cursor: ew-resize; z-index: 11;
+    }
+    .panel-resizer:hover { background: rgba(253, 224, 71, 0.3); }
     /* Collapsed inspector: the panel slides off-screen right and the map
        reclaims its width. Driven by body.panel-hidden (panel toggle). */
     body.panel-hidden #map { right: 0; }
@@ -355,6 +361,7 @@
   <div id="map"></div>
 
   <aside class="panel" id="panel">
+    <div class="panel-resizer" id="panel-resizer" title="Потяните, чтобы изменить ширину"></div>
     <h2>Inspector</h2>
     <p class="empty">Click on a hex or object to inspect.</p>
   </aside>
@@ -507,7 +514,8 @@ function initTooltipToggle() {
 // ---------- inspector panel show/hide ----------
 const PANEL_STORAGE_KEY = 'kadastra_panel_hidden';
 function panelHidden() {
-  return localStorage.getItem(PANEL_STORAGE_KEY) === 'true';
+  // Default to collapsed; an explicit 'false' keeps it open across reloads.
+  return localStorage.getItem(PANEL_STORAGE_KEY) !== 'false';
 }
 function applyPanelState() {
   const hidden = panelHidden();
@@ -534,6 +542,51 @@ function initPanelToggle() {
     applyPanelState();
   });
   applyPanelState();
+}
+
+// ---------- inspector panel resize ----------
+const PANEL_WIDTH_STORAGE_KEY = 'kadastra_panel_width';
+const PANEL_MIN_WIDTH = 300;
+const PANEL_MAX_WIDTH = 800;
+
+function savedPanelWidth() {
+  const w = parseInt(localStorage.getItem(PANEL_WIDTH_STORAGE_KEY) || '', 10);
+  return (w >= PANEL_MIN_WIDTH && w <= PANEL_MAX_WIDTH) ? w : 380;
+}
+
+function applyPanelWidth() {
+  document.documentElement.style.setProperty('--panel-width', savedPanelWidth() + 'px');
+}
+
+function setPanelWidth(width) {
+  const w = Math.min(PANEL_MAX_WIDTH, Math.max(PANEL_MIN_WIDTH, Math.round(width)));
+  document.documentElement.style.setProperty('--panel-width', w + 'px');
+  localStorage.setItem(PANEL_WIDTH_STORAGE_KEY, String(w));
+}
+
+function initPanelResizer() {
+  const resizer = document.getElementById('panel-resizer');
+  if (!resizer) return;
+  let dragging = false;
+  let raf = 0;
+  resizer.addEventListener('mousedown', (e) => {
+    dragging = true;
+    e.preventDefault();
+    document.body.style.userSelect = 'none';
+    document.getElementById('map').style.transition = 'none';
+  });
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    setPanelWidth(window.innerWidth - e.clientX);
+    if (!raf) raf = requestAnimationFrame(() => { map.resize(); raf = 0; });
+  });
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.userSelect = '';
+    document.getElementById('map').style.transition = '';
+    map.resize();
+  });
 }
 
 const map = new maplibregl.Map({
@@ -1452,7 +1505,9 @@ function formatValue(v) {
     if (!Number.isFinite(v)) return String(v);
     if (Math.abs(v) >= 1000) return Math.round(v).toLocaleString();
     if (Math.abs(v) >= 1) return v.toFixed(2);
-    return v.toString();
+    // Small magnitudes (shares ~0.13, tiny deltas): cap to a few
+    // significant digits so long floats don't overflow the columns.
+    return String(Number(v.toPrecision(4)));
   }
   return String(v);
 }
@@ -1601,7 +1656,7 @@ function numericDelta(va, vb) {
 
 function formatDelta(d) {
   const m = Math.abs(d);
-  const s = m >= 1000 ? Math.round(m).toLocaleString() : (m >= 1 ? m.toFixed(2) : m.toString());
+  const s = m >= 1000 ? Math.round(m).toLocaleString() : (m >= 1 ? m.toFixed(2) : String(Number(m.toPrecision(4))));
   if (d > 0) return '+' + s;
   if (d < 0) return '-' + s;
   return '0';
@@ -2001,7 +2056,9 @@ document.getElementById('legend-color-reset').addEventListener('click', () => {
 map.on('load', async () => {
   applyStaticTooltips();
   initTooltipToggle();
+  applyPanelWidth();
   initPanelToggle();
+  initPanelResizer();
   initCompareToggle();
   await loadFeatureOptions();
   applyFeatureOptionTooltips();
