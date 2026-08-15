@@ -79,6 +79,20 @@
     .panel .qcell { font-family: ui-monospace, SFMono-Regular, monospace; }
     .panel .qcell.qmodel { color: #93c5fd; }
     .panel .qcell.qval { text-align: right; }
+    .panel .cmp-a { color: #60a5fa; }
+    .panel .cmp-b { color: #fde047; }
+    .panel .cmp-section { color: #9ca3af; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin: 10px 0 3px; }
+    .panel .cmp-row { display: grid; grid-template-columns: minmax(0, 1fr) 72px 72px 60px; gap: 4px; padding: 2px 0; border-bottom: 1px solid #1f2937; align-items: baseline; }
+    .panel .cmp-row.cmp-head { border-bottom-color: #374151; font-weight: 600; }
+    .panel .cmp-key { color: #9ca3af; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .panel .cmp-val { font-family: ui-monospace, SFMono-Regular, monospace; text-align: right; }
+    .panel .cmp-delta { font-family: ui-monospace, SFMono-Regular, monospace; text-align: right; }
+    .panel .cmp-delta.pos { color: #4ade80; }
+    .panel .cmp-delta.neg { color: #f87171; }
+    .panel .cmp-legend { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px; }
+    .panel .cmp-legend-item { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; }
+    .panel .cmp-legend button { margin-left: auto; background: #111827; color: #9ca3af; border: 1px solid #4b5563; border-radius: 4px; padding: 1px 7px; cursor: pointer; font-size: 11px; }
+    .panel .cmp-legend button:hover { border-color: #fde047; color: #fde047; }
     .legend {
       position: fixed; bottom: 16px; left: 16px;
       background: rgba(31, 41, 55, 0.92); color: #fff;
@@ -332,6 +346,9 @@
     <button id="panel-toggle" class="tip-toggle"
             title="Скрыть/показать панель инспектора"
             type="button">⮞ панель</button>
+    <button id="compare-toggle" class="tip-toggle off"
+            title="Режим сравнения: выбери два гекса/объекта"
+            type="button">⇄ сравнить</button>
     <span class="stat" id="stat"></span>
   </div>
 
@@ -971,7 +988,7 @@ function renderHex(payload) {
     lineWidthMinPixels: 0.5,
     extruded: false,
     pickable: true,
-    onClick: ({ object }) => object && showHexInspector(object, payload),
+    onClick: ({ object }) => object && handleHexClick(object, payload),
   });
   deckOverlay.setProps({
     layers: [layer, ...selectionOverlayLayers()],
@@ -1090,7 +1107,7 @@ function renderObjects(payload) {
       stroked: true,
       filled: true,
       pickable: true,
-      onClick: ({ object }) => object && showObjectInspector(object, payload.asset_class),
+      onClick: ({ object }) => object && handleObjectClick(object, payload.asset_class),
     }));
   }
   if (withoutPolygon.length > 0) {
@@ -1109,7 +1126,7 @@ function renderObjects(payload) {
       getLineColor: lineFromFill,
       updateTriggers: colorTriggers,
       pickable: true,
-      onClick: ({ object }) => object && showObjectInspector(object, payload.asset_class),
+      onClick: ({ object }) => object && handleObjectClick(object, payload.asset_class),
     }));
   }
   deckOverlay.setProps({
@@ -1135,15 +1152,24 @@ function renderObjects(payload) {
 // polygon stays visible across mode/scale changes until another
 // object is clicked.
 function selectionOverlayLayers() {
+  // Compare mode: two highlights — A (blue) and B (amber).
+  if (compareMode) {
+    const layers = [];
+    if (compareA && compareA.geometry) layers.push(...selectionHighlight(compareA.geometry.coordinates[0], [96, 165, 250], 'cmp-a'));
+    if (compareB && compareB.geometry) layers.push(...selectionHighlight(compareB.geometry.coordinates[0], [253, 224, 71], 'cmp-b'));
+    return layers;
+  }
   if (!selectedGeometry) return [];
-  // Two stacked polygons: a thick dark halo so the selection stands
-  // out against any base-layer fill (now that scatter renders objects
-  // as polygons too, a single amber outline blends in), and a brighter
-  // amber outline + fill on top. Halo is rendered first → sits below.
-  const ring = selectedGeometry.coordinates[0];
+  return selectionHighlight(selectedGeometry.coordinates[0], [253, 224, 71], 'selection');
+}
+
+// Two stacked polygons per highlight: a thick dark halo so the selection
+// stands out against any base-layer fill, and a brighter outline + fill on
+// top. Halo renders first → sits below.
+function selectionHighlight(ring, color, id) {
   return [
     new deck.PolygonLayer({
-      id: 'selection-halo',
+      id: id + '-halo',
       data: [{ ring }],
       getPolygon: d => d.ring,
       getFillColor: [0, 0, 0, 0],      // halo carries no fill
@@ -1154,11 +1180,11 @@ function selectionOverlayLayers() {
       pickable: false,
     }),
     new deck.PolygonLayer({
-      id: 'selection-polygon',
+      id: id + '-poly',
       data: [{ ring }],
       getPolygon: d => d.ring,
-      getFillColor: [253, 224, 71, 130],   // amber-300 @ 51 %
-      getLineColor: [253, 224, 71, 255],   // amber-300 full
+      getFillColor: [color[0], color[1], color[2], 130],
+      getLineColor: [color[0], color[1], color[2], 255],
       lineWidthMinPixels: 3,
       stroked: true,
       filled: true,
@@ -1189,19 +1215,15 @@ async function showHexInspector(hex, payload) {
 
 // Group the full aggregate row into readable sections. Naming-convention
 // driven, so newly-added aggregate columns land in a sensible bucket (or
-// the "Прочее" fallback) without editing this list by hand.
-function renderHexDetailSections(detail) {
-  const sections = [];
+// the "Прочее" fallback) without editing this list by hand. Shared by the
+// single-hex inspector and the two-hex comparison table.
+function hexGroupedKeys(detail) {
   const summaryKeys = [
     'h3_index', 'resolution', 'asset_class', 'count',
     'median_target_rub_per_m2', 'median_pred_oof_rub_per_m2', 'median_residual_rub_per_m2',
   ];
-  sections.push(`<h2>Сводка</h2>`);
-  sections.push(rowsSection('summary', summaryKeys
-    .filter(k => k in detail)
-    .map(k => [k, formatValue(detail[k])])));
-
-  const groups = [
+  const groups = [{ title: 'Сводка', keys: summaryKeys.filter(k => k in detail) }];
+  const defs = [
     { title: 'Доминантные категории', match: k => k.startsWith('dominant_') },
     { title: 'Описатели зданий', match: k => ['mean_levels', 'mean_flats', 'mean_area_m2', 'mean_year_built', 'mean_age_years'].includes(k) },
     { title: 'Расстояния до ближайшего (м)', match: k => k.startsWith('mean_dist_') },
@@ -1209,19 +1231,21 @@ function renderHexDetailSections(detail) {
     { title: 'Плотность и счётчики', match: k => k === 'mean_road_length_500m' || k.startsWith('mean_count_') || k.endsWith('_within_500m') },
   ];
   const consumed = new Set(summaryKeys);
-  for (const g of groups) {
+  for (const g of defs) {
     const keys = Object.keys(detail).filter(k => !consumed.has(k) && g.match(k)).sort();
     if (!keys.length) continue;
     keys.forEach(k => consumed.add(k));
-    sections.push(`<h2>${g.title}</h2>`);
-    sections.push(rowsSection('', keys.map(k => [k, formatValue(detail[k])])));
+    groups.push({ title: g.title, keys });
   }
   const rest = Object.keys(detail).filter(k => !consumed.has(k)).sort();
-  if (rest.length) {
-    sections.push(`<h2>Прочее</h2>`);
-    sections.push(rowsSection('', rest.map(k => [k, formatValue(detail[k])])));
-  }
-  return sections.join('');
+  if (rest.length) groups.push({ title: 'Прочее', keys: rest });
+  return groups;
+}
+
+function renderHexDetailSections(detail) {
+  return hexGroupedKeys(detail)
+    .map(g => `<h2>${g.title}</h2>` + rowsSection(g.title === 'Сводка' ? 'summary' : '', g.keys.map(k => [k, formatValue(detail[k])])))
+    .join('');
 }
 
 async function showObjectInspector(obj, assetClass) {
@@ -1306,6 +1330,24 @@ const GEOMETRY_FIELDS = [
   'polygon_orientation_deg',
   'polygon_n_vertices',
 ];
+
+// Group an object detail dict into comparison sections (summary + geometry
+// + everything else). Mirrors the single-inspector layout so the two-item
+// diff reads the same way.
+function objectGroupedKeys(detail) {
+  const summary = ['object_id', 'asset_class', 'lat', 'lon', 'cad_num', 'readable_address',
+    'mun_okrug_name', 'intra_city_raion', 'settlement_name', 'mun_source',
+    'y_true', 'y_pred_oof', 'residual', 'fold_id'];
+  const groups = [];
+  const s = summary.filter(k => k in detail);
+  if (s.length) groups.push({ title: 'Сводка', keys: s });
+  const geo = GEOMETRY_FIELDS.filter(k => k in detail);
+  if (geo.length) groups.push({ title: 'Геометрия объекта', keys: geo });
+  const consumed = new Set([...s, ...geo]);
+  const rest = Object.keys(detail).filter(k => !consumed.has(k)).sort();
+  if (rest.length) groups.push({ title: 'Прочее', keys: rest });
+  return groups;
+}
 
 function renderGeometrySection(detail) {
   const present = GEOMETRY_FIELDS.filter(k => k in detail);
@@ -1413,6 +1455,166 @@ function formatValue(v) {
     return v.toString();
   }
   return String(v);
+}
+
+// ---------- compare mode (two items side by side) ----------
+let compareMode = false;
+let compareA = null; // { kind: 'hex'|'object', label, geometry, fetch }
+let compareB = null;
+
+// Convert an H3 cell index to a GeoJSON Polygon (WGS84 ring) so a selected
+// hex can be outlined on the map the same way an object polygon is.
+function h3BoundaryGeometry(h3Index) {
+  if (typeof h3 === 'undefined' || !h3.cellToBoundary) return null;
+  try {
+    const ring = h3.cellToBoundary(h3Index).map(([lat, lng]) => [lng, lat]);
+    if (!ring.length) return null;
+    ring.push(ring[0]);
+    return { type: 'Polygon', coordinates: [ring] };
+  } catch (err) {
+    return null;
+  }
+}
+
+function hexSelection(hex, payload) {
+  return {
+    kind: 'hex',
+    label: hex.hex,
+    geometry: h3BoundaryGeometry(hex.hex),
+    fetch: () => fetchHexDetail(hex.hex, payload.resolution, payload.asset_class),
+  };
+}
+
+function objectSelection(obj, assetClass) {
+  const geometry = obj.geometry && obj.geometry.type === 'Polygon' ? obj.geometry : null;
+  return {
+    kind: 'object',
+    label: obj.object_id,
+    geometry,
+    fetch: async () => {
+      const detail = await fetchObjectDetail(obj.object_id, assetClass);
+      if (detail) delete detail.geometry; // structured, not a scalar — skip in the diff
+      return detail;
+    },
+  };
+}
+
+function clearCompareSelections() {
+  compareA = null;
+  compareB = null;
+}
+
+function resetCompare() {
+  clearCompareSelections();
+  selectedGeometry = null;
+  redrawWithSelection();
+  document.getElementById('panel').innerHTML =
+    `<h2>Inspector</h2><p class="empty">Click on a hex or object to inspect.</p>`;
+}
+
+function handleHexClick(hex, payload) {
+  if (compareMode) compareSelect(hexSelection(hex, payload));
+  else showHexInspector(hex, payload);
+}
+
+function handleObjectClick(obj, assetClass) {
+  if (compareMode) compareSelect(objectSelection(obj, assetClass));
+  else showObjectInspector(obj, assetClass);
+}
+
+function compareSelect(sel) {
+  showPanel();
+  if (!compareA) {
+    compareA = sel;
+    compareB = null;
+    redrawWithSelection();
+    document.getElementById('panel').innerHTML =
+      `<h2>Сравнение</h2><p class="empty">Выбран <span class="cmp-a">A</span>: ${escapeHtml(sel.label)}.<br>Кликните второй элемент.</p>`;
+    return;
+  }
+  compareB = sel;
+  redrawWithSelection();
+  renderComparison();
+}
+
+async function renderComparison() {
+  const panel = document.getElementById('panel');
+  const a = compareA;
+  const b = compareB;
+  panel.innerHTML = `<h2>Сравнение</h2><p class="empty">Загрузка…</p>`;
+  const [da, db] = await Promise.all([a.fetch(), b.fetch()]);
+  if (!da || !db) {
+    panel.innerHTML = `<h2>Сравнение</h2><p class="empty">Не удалось загрузить данные для сравнения.</p>`;
+    return;
+  }
+  panel.innerHTML = comparisonHeader(a, b) + comparisonTable(da, db, a.kind);
+  document.getElementById('cmp-reset').addEventListener('click', resetCompare);
+}
+
+function comparisonHeader(a, b) {
+  return `<div class="cmp-legend">
+      <span class="cmp-legend-item cmp-a">A: ${escapeHtml(a.label)}</span>
+      <span class="cmp-legend-item cmp-b">B: ${escapeHtml(b.label)}</span>
+      <button id="cmp-reset" type="button" title="Сбросить сравнение">✕</button>
+    </div>
+    <div class="cmp-row cmp-head">
+      <span class="cmp-key">показатель</span>
+      <span class="cmp-val">A</span>
+      <span class="cmp-val">B</span>
+      <span class="cmp-delta" title="Δ = B − A">Δ</span>
+    </div>`;
+}
+
+function comparisonTable(da, db, kind) {
+  const groups = kind === 'hex' ? hexGroupedKeys(da) : objectGroupedKeys(da);
+  const out = [];
+  for (const g of groups) {
+    out.push(`<div class="cmp-section">${escapeHtml(g.title)}</div>`);
+    for (const k of g.keys) out.push(comparisonRow(k, da[k], db[k]));
+  }
+  return out.join('');
+}
+
+function comparisonRow(key, va, vb) {
+  const delta = numericDelta(va, vb);
+  let deltaCell;
+  if (delta === null) {
+    deltaCell = '<span class="cmp-delta"></span>';
+  } else {
+    const cls = delta > 0 ? 'pos' : (delta < 0 ? 'neg' : '');
+    deltaCell = `<span class="cmp-delta ${cls}">${formatDelta(delta)}</span>`;
+  }
+  return `<div class="cmp-row">
+      <span class="cmp-key" title="${escapeHtml(key)}">${escapeHtml(key)}</span>
+      <span class="cmp-val">${escapeHtml(formatValue(va))}</span>
+      <span class="cmp-val">${escapeHtml(formatValue(vb))}</span>
+      ${deltaCell}
+    </div>`;
+}
+
+function numericDelta(va, vb) {
+  if (typeof va === 'number' && typeof vb === 'number' && Number.isFinite(va) && Number.isFinite(vb)) {
+    return vb - va;
+  }
+  return null;
+}
+
+function formatDelta(d) {
+  const m = Math.abs(d);
+  const s = m >= 1000 ? Math.round(m).toLocaleString() : (m >= 1 ? m.toFixed(2) : m.toString());
+  if (d > 0) return '+' + s;
+  if (d < 0) return '-' + s;
+  return '0';
+}
+
+function initCompareToggle() {
+  const btn = document.getElementById('compare-toggle');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    compareMode = !compareMode;
+    btn.classList.toggle('off', !compareMode);
+    if (!compareMode) resetCompare();
+  });
 }
 
 // ---------- legend ----------
@@ -1608,6 +1810,7 @@ document.addEventListener('click', (ev) => {
 // ---------- main ----------
 
 async function refresh() {
+  clearCompareSelections();
   const layer = document.getElementById('layer').value;
   document.getElementById('hex-feature-wrap').style.display = layer === 'hex' ? '' : 'none';
   document.getElementById('hex-resolution-wrap').style.display = layer === 'hex' ? '' : 'none';
@@ -1799,6 +2002,7 @@ map.on('load', async () => {
   applyStaticTooltips();
   initTooltipToggle();
   initPanelToggle();
+  initCompareToggle();
   await loadFeatureOptions();
   applyFeatureOptionTooltips();
   await refresh();
