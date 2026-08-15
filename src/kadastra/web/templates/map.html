@@ -50,13 +50,18 @@
       pointer-events: none;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
     }
-    #map { position: fixed; top: 56px; bottom: 0; left: 0; right: 380px; }
+    #map { position: fixed; top: 56px; bottom: 0; left: 0; right: 380px; transition: right 0.22s ease; }
     .panel {
       position: fixed; top: 56px; bottom: 0; right: 0; width: 380px;
       background: #111827; border-left: 1px solid #374151;
       overflow-y: auto; padding: 12px 16px; z-index: 10;
       font-size: 12px;
+      transition: transform 0.22s ease;
     }
+    /* Collapsed inspector: the panel slides off-screen right and the map
+       reclaims its width. Driven by body.panel-hidden (panel toggle). */
+    body.panel-hidden #map { right: 0; }
+    body.panel-hidden .panel { transform: translateX(100%); }
     .panel h2 { font-size: 14px; margin: 4px 0 8px; color: #f3f4f6; }
     .panel .empty { color: #6b7280; font-style: italic; }
     .panel .row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; border-bottom: 1px solid #1f2937; }
@@ -324,6 +329,9 @@
     <button id="tip-toggle" class="tip-toggle"
             title="Показывать/скрывать всплывающие подсказки"
             type="button">💡 подсказки</button>
+    <button id="panel-toggle" class="tip-toggle"
+            title="Скрыть/показать панель инспектора"
+            type="button">⮞ панель</button>
     <span class="stat" id="stat"></span>
   </div>
 
@@ -477,6 +485,38 @@ function initTooltipToggle() {
     applyTooltipState();
   });
   applyTooltipState();
+}
+
+// ---------- inspector panel show/hide ----------
+const PANEL_STORAGE_KEY = 'kadastra_panel_hidden';
+function panelHidden() {
+  return localStorage.getItem(PANEL_STORAGE_KEY) === 'true';
+}
+function applyPanelState() {
+  const hidden = panelHidden();
+  document.body.classList.toggle('panel-hidden', hidden);
+  const btn = document.getElementById('panel-toggle');
+  if (btn) {
+    btn.textContent = hidden ? '⮜ панель' : '⮞ панель';
+    btn.classList.toggle('off', hidden);
+  }
+  // The #map container width animates together with `right`; reflow the
+  // map once the transition settles so the canvas fills the new width.
+  setTimeout(() => map.resize(), 230);
+}
+function showPanel() {
+  if (!panelHidden()) return;
+  localStorage.setItem(PANEL_STORAGE_KEY, 'false');
+  applyPanelState();
+}
+function initPanelToggle() {
+  const btn = document.getElementById('panel-toggle');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    localStorage.setItem(PANEL_STORAGE_KEY, String(!panelHidden()));
+    applyPanelState();
+  });
+  applyPanelState();
 }
 
 const map = new maplibregl.Map({
@@ -825,6 +865,16 @@ async function fetchHex() {
   return await r.json();
 }
 
+// Full aggregate row for a single hex (hex inspector).
+async function fetchHexDetail(h3Index, resolution, assetClass) {
+  const model = document.getElementById('model').value;
+  const r = await fetch(
+    `/api/hex_aggregates/${encodeURIComponent(h3Index)}?resolution=${resolution}&asset_class=${assetClass}&model=${model}`
+  );
+  if (!r.ok) return null;
+  return (await r.json()).data;
+}
+
 async function fetchObjects() {
   const ac = document.getElementById('asset_class').value;
   if (ac === 'all') throw new Error('object scatter does not support "all"; choose a class');
@@ -1125,22 +1175,57 @@ function redrawWithSelection() {
 
 // ---------- inspector panel ----------
 
-function showHexInspector(hex, payload) {
+async function showHexInspector(hex, payload) {
+  showPanel();
   const panel = document.getElementById('panel');
+  panel.innerHTML = `<h2>Loading hex ${escapeHtml(hex.hex)}…</h2>`;
+  const detail = await fetchHexDetail(hex.hex, payload.resolution, payload.asset_class);
+  if (!detail) {
+    panel.innerHTML = `<h2>Hex inspector</h2><p class="empty">Could not load aggregate for ${escapeHtml(hex.hex)}.</p>`;
+    return;
+  }
+  panel.innerHTML = `<h2>Hex inspector</h2>` + renderHexDetailSections(detail);
+}
+
+// Group the full aggregate row into readable sections. Naming-convention
+// driven, so newly-added aggregate columns land in a sensible bucket (or
+// the "Прочее" fallback) without editing this list by hand.
+function renderHexDetailSections(detail) {
   const sections = [];
-  sections.push(`<h2>Hex inspector</h2>`);
-  sections.push(rowsSection('summary', [
-    ['h3_index', hex.hex],
-    ['resolution', payload.resolution],
-    ['asset_class', payload.asset_class],
-    ['feature', payload.feature],
-    ['value', formatValue(hex.value)],
-  ]));
-  sections.push(`<p style="font-size:11px;color:#9ca3af">For more per-hex stats use the per-object scatter mode and click an individual object.</p>`);
-  panel.innerHTML = sections.join('');
+  const summaryKeys = [
+    'h3_index', 'resolution', 'asset_class', 'count',
+    'median_target_rub_per_m2', 'median_pred_oof_rub_per_m2', 'median_residual_rub_per_m2',
+  ];
+  sections.push(`<h2>Сводка</h2>`);
+  sections.push(rowsSection('summary', summaryKeys
+    .filter(k => k in detail)
+    .map(k => [k, formatValue(detail[k])])));
+
+  const groups = [
+    { title: 'Доминантные категории', match: k => k.startsWith('dominant_') },
+    { title: 'Описатели зданий', match: k => ['mean_levels', 'mean_flats', 'mean_area_m2', 'mean_year_built', 'mean_age_years'].includes(k) },
+    { title: 'Расстояния до ближайшего (м)', match: k => k.startsWith('mean_dist_') },
+    { title: 'Доля в буфере 500 м', match: k => k.endsWith('_share_500m') },
+    { title: 'Плотность и счётчики', match: k => k === 'mean_road_length_500m' || k.startsWith('mean_count_') || k.endsWith('_within_500m') },
+  ];
+  const consumed = new Set(summaryKeys);
+  for (const g of groups) {
+    const keys = Object.keys(detail).filter(k => !consumed.has(k) && g.match(k)).sort();
+    if (!keys.length) continue;
+    keys.forEach(k => consumed.add(k));
+    sections.push(`<h2>${g.title}</h2>`);
+    sections.push(rowsSection('', keys.map(k => [k, formatValue(detail[k])])));
+  }
+  const rest = Object.keys(detail).filter(k => !consumed.has(k)).sort();
+  if (rest.length) {
+    sections.push(`<h2>Прочее</h2>`);
+    sections.push(rowsSection('', rest.map(k => [k, formatValue(detail[k])])));
+  }
+  return sections.join('');
 }
 
 async function showObjectInspector(obj, assetClass) {
+  showPanel();
   const panel = document.getElementById('panel');
   panel.innerHTML = `<h2>Loading inspector for ${escapeHtml(obj.object_id)}…</h2>`;
   // Three parallel requests: per-active-model detail (geometry + full
@@ -1713,6 +1798,7 @@ document.getElementById('legend-color-reset').addEventListener('click', () => {
 map.on('load', async () => {
   applyStaticTooltips();
   initTooltipToggle();
+  initPanelToggle();
   await loadFeatureOptions();
   applyFeatureOptionTooltips();
   await refresh();
