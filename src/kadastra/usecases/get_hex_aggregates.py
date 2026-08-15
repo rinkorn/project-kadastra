@@ -136,4 +136,15 @@ class GetHexAggregates:
         *,
         model: str = "catboost",
     ) -> dict[str, Any] | None:
-        raise NotImplementedError
+        path = (
+            self._base_path / f"region={region_code}" / f"resolution={resolution}" / f"model={model}" / "data.parquet"
+        )
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"hex aggregates not built for region={region_code} resolution={resolution}: {path}"
+            )
+        df = pl.read_parquet(path)
+        match = df.filter((pl.col("asset_class") == asset_class) & (pl.col("h3_index") == h3_index))
+        if match.is_empty():
+            return None
+        return match.row(0, named=True)
