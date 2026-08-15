@@ -60,10 +60,12 @@
       transition: transform 0.22s ease;
     }
     .panel-resizer {
-      position: absolute; left: 0; top: 0; bottom: 0; width: 6px;
-      margin-left: -3px; cursor: ew-resize; z-index: 11;
+      position: absolute; left: 0; top: 0; bottom: 0; width: 7px;
+      cursor: ew-resize; z-index: 11;
+      background: rgba(253, 224, 71, 0.14);
+      border-right: 1px solid rgba(253, 224, 71, 0.25);
     }
-    .panel-resizer:hover { background: rgba(253, 224, 71, 0.3); }
+    .panel-resizer:hover { background: rgba(253, 224, 71, 0.4); }
     /* Collapsed inspector: the panel slides off-screen right and the map
        reclaims its width. Driven by body.panel-hidden (panel toggle). */
     body.panel-hidden #map { right: 0; }
@@ -85,8 +87,8 @@
     .panel .qcell { font-family: ui-monospace, SFMono-Regular, monospace; }
     .panel .qcell.qmodel { color: #93c5fd; }
     .panel .qcell.qval { text-align: right; }
-    .panel .cmp-a { color: #60a5fa; }
-    .panel .cmp-b { color: #fde047; }
+    .panel .cmp-a { color: #fde047; }
+    .panel .cmp-b { color: #60a5fa; }
     .panel .cmp-section { color: #9ca3af; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin: 10px 0 3px; }
     .panel .cmp-row { display: grid; grid-template-columns: minmax(0, 1fr) 72px 72px 60px; gap: 4px; padding: 2px 0; border-bottom: 1px solid #1f2937; align-items: baseline; }
     .panel .cmp-row.cmp-head { border-bottom-color: #374151; font-weight: 600; }
@@ -1209,10 +1211,10 @@ function selectionOverlayLayers() {
   // Compare mode: A (blue) and B (amber) outlines + center badges.
   if (compareMode) {
     const layers = [];
-    if (compareA && compareA.geometry) layers.push(...selectionHighlight(compareA.geometry.coordinates[0], [96, 165, 250], 'cmp-a'));
-    if (compareA && compareA.center) layers.push(selectionLabel(compareA.center, 'A', [37, 99, 235], 'cmp-a-label'));
-    if (compareB && compareB.geometry) layers.push(...selectionHighlight(compareB.geometry.coordinates[0], [253, 224, 71], 'cmp-b'));
-    if (compareB && compareB.center) layers.push(selectionLabel(compareB.center, 'B', [202, 138, 4], 'cmp-b-label'));
+    if (compareA && compareA.geometry) layers.push(...selectionHighlight(compareA.geometry.coordinates[0], [253, 224, 71], 'cmp-a'));
+    if (compareA && compareA.center) layers.push(selectionLabel(compareA.center, 'A', [202, 138, 4], 'cmp-a-label'));
+    if (compareB && compareB.geometry) layers.push(...selectionHighlight(compareB.geometry.coordinates[0], [96, 165, 250], 'cmp-b'));
+    if (compareB && compareB.center) layers.push(selectionLabel(compareB.center, 'B', [37, 99, 235], 'cmp-b-label'));
     return layers;
   }
   if (!selectedItem) return [];
@@ -1297,7 +1299,7 @@ function redrawWithSelection() {
 
 async function showHexInspector(hex, payload) {
   showPanel();
-  selectedItem = { geometry: h3BoundaryGeometry(hex.hex), center: h3Center(hex.hex) };
+  selectedItem = hexSelection(hex, payload);
   redrawWithSelection();
   const panel = document.getElementById('panel');
   panel.innerHTML = `<h2>Loading hex ${escapeHtml(hex.hex)}…</h2>`;
@@ -1363,12 +1365,8 @@ async function showObjectInspector(obj, assetClass) {
   // Pull geometry off the dict before rendering rows: it's a structured
   // GeoJSON object, not a scalar — listing its raw JSON in the side
   // panel adds nothing for the human reader.
-  const geometry = detail.geometry || null;
   delete detail.geometry;
-  selectedItem = {
-    geometry: geometry && geometry.type === 'Polygon' ? geometry : null,
-    center: (obj.lon != null && obj.lat != null) ? [obj.lon, obj.lat] : null,
-  };
+  selectedItem = objectSelection(obj, assetClass);
   redrawWithSelection();
   const activeModel = document.getElementById('model').value;
 
@@ -1767,7 +1765,24 @@ function initCompareToggle() {
   btn.addEventListener('click', () => {
     compareMode = !compareMode;
     btn.classList.toggle('off', !compareMode);
-    if (!compareMode) resetCompare();
+    if (compareMode) {
+      // Seamless: the current single selection becomes A (same amber).
+      if (selectedItem) {
+        compareA = selectedItem;
+        compareActive = 'B';
+        selectedItem = null;
+        redrawWithSelection();
+        document.getElementById('panel').innerHTML =
+          `<h2>Сравнение</h2><p class="empty">Выбран <span class="cmp-a">A</span>: ${escapeHtml(compareA.label)}.<br>Кликните второй элемент.</p>`;
+      }
+    } else {
+      // Seamless: A (amber) stays as the single selection; B is dropped.
+      if (compareA) selectedItem = compareA;
+      clearCompareSelections();
+      redrawWithSelection();
+      document.getElementById('panel').innerHTML =
+        `<h2>Inspector</h2><p class="empty">Click on a hex or object to inspect.</p>`;
+    }
   });
 }
 
