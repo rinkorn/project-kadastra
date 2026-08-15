@@ -97,6 +97,7 @@
     .panel .cmp-delta.neg { color: #f87171; }
     .panel .cmp-legend { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px; }
     .panel .cmp-legend-item { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; }
+    .panel .cmp-legend-item.cmp-active { text-decoration: underline; }
     .panel .cmp-legend button { margin-left: auto; background: #111827; color: #9ca3af; border: 1px solid #4b5563; border-radius: 4px; padding: 1px 7px; cursor: pointer; font-size: 11px; }
     .panel .cmp-legend button:hover { border-color: #fde047; color: #fde047; }
     .legend {
@@ -613,7 +614,7 @@ map.addControl(deckOverlay);
 let featureOptions = null; // populated from /api/feature_options
 let lastDataset = null;    // last fetched payload (for re-color on scale change)
 let categoricalPalette = {};
-let selectedGeometry = null; // GeoJSON Polygon (WGS84) of the currently inspected object
+let selectedItem = null; // { geometry, center } — single (non-compare) selection
 
 // ---------- color helpers ----------
 
@@ -1205,15 +1206,20 @@ function renderObjects(payload) {
 // polygon stays visible across mode/scale changes until another
 // object is clicked.
 function selectionOverlayLayers() {
-  // Compare mode: two highlights — A (blue) and B (amber).
+  // Compare mode: A (blue) and B (amber) outlines + center badges.
   if (compareMode) {
     const layers = [];
     if (compareA && compareA.geometry) layers.push(...selectionHighlight(compareA.geometry.coordinates[0], [96, 165, 250], 'cmp-a'));
+    if (compareA && compareA.center) layers.push(selectionLabel(compareA.center, 'A', [37, 99, 235], 'cmp-a-label'));
     if (compareB && compareB.geometry) layers.push(...selectionHighlight(compareB.geometry.coordinates[0], [253, 224, 71], 'cmp-b'));
+    if (compareB && compareB.center) layers.push(selectionLabel(compareB.center, 'B', [202, 138, 4], 'cmp-b-label'));
     return layers;
   }
-  if (!selectedGeometry) return [];
-  return selectionHighlight(selectedGeometry.coordinates[0], [253, 224, 71], 'selection');
+  if (!selectedItem) return [];
+  const layers = [];
+  if (selectedItem.geometry) layers.push(...selectionHighlight(selectedItem.geometry.coordinates[0], [253, 224, 71], 'selection'));
+  else if (selectedItem.center) layers.push(selectionDot(selectedItem.center, 'selection-dot'));
+  return layers;
 }
 
 // Two stacked polygons per highlight: a thick dark halo so the selection
@@ -1246,6 +1252,41 @@ function selectionHighlight(ring, color, id) {
   ];
 }
 
+// A/B badge drawn at the item's center so the two selections can't be
+// confused. Background colour matches the outline (A blue, B amber).
+function selectionLabel(position, text, bg, id) {
+  return new deck.TextLayer({
+    id,
+    data: [{ position, text }],
+    getPosition: d => d.position,
+    getText: d => d.text,
+    getSize: 14,
+    getColor: [255, 255, 255, 255],
+    getBackgroundColor: [bg[0], bg[1], bg[2], 235],
+    getPadding: [4, 4],
+    getTextAnchor: 'middle',
+    getAlignmentBaseline: 'center',
+    pickable: false,
+  });
+}
+
+// Ring marker for a selected object that has no polygon footprint.
+function selectionDot(center, id) {
+  return new deck.ScatterplotLayer({
+    id,
+    data: [{ position: center }],
+    getPosition: d => d.position,
+    radiusUnits: 'meters',
+    getRadius: 50,
+    stroked: true,
+    filled: false,
+    getLineColor: [253, 224, 71, 255],
+    getFillColor: [0, 0, 0, 0],
+    lineWidthMinPixels: 3,
+    pickable: false,
+  });
+}
+
 function redrawWithSelection() {
   if (!lastDataset) return;
   if (lastDataset.kind === 'hex') renderHex(lastDataset.payload);
@@ -1256,6 +1297,8 @@ function redrawWithSelection() {
 
 async function showHexInspector(hex, payload) {
   showPanel();
+  selectedItem = { geometry: h3BoundaryGeometry(hex.hex), center: h3Center(hex.hex) };
+  redrawWithSelection();
   const panel = document.getElementById('panel');
   panel.innerHTML = `<h2>Loading hex ${escapeHtml(hex.hex)}…</h2>`;
   const detail = await fetchHexDetail(hex.hex, payload.resolution, payload.asset_class);
@@ -1322,7 +1365,10 @@ async function showObjectInspector(obj, assetClass) {
   // panel adds nothing for the human reader.
   const geometry = detail.geometry || null;
   delete detail.geometry;
-  selectedGeometry = geometry && geometry.type === 'Polygon' ? geometry : null;
+  selectedItem = {
+    geometry: geometry && geometry.type === 'Polygon' ? geometry : null,
+    center: (obj.lon != null && obj.lat != null) ? [obj.lon, obj.lat] : null,
+  };
   redrawWithSelection();
   const activeModel = document.getElementById('model').value;
 
@@ -1339,8 +1385,8 @@ async function showObjectInspector(obj, assetClass) {
   // map highlight comes from a real polygon or just a fallback dot.
   summaryRows.push([
     'geometry',
-    selectedGeometry
-      ? `Polygon (${selectedGeometry.coordinates[0].length - 1} vertices)`
+    selectedItem.geometry
+      ? `Polygon (${selectedItem.geometry.coordinates[0].length - 1} vertices)`
       : '— (no silver polygon)',
   ]);
   sections.push(rowsSection('summary', summaryRows));
@@ -1514,8 +1560,10 @@ function formatValue(v) {
 
 // ---------- compare mode (two items side by side) ----------
 let compareMode = false;
-let compareA = null; // { kind: 'hex'|'object', label, geometry, fetch }
+let compareA = null; // { kind, label, geometry, center, fetch }
 let compareB = null;
+let compareActive = 'B'; // slot the next new click replaces
+let compareData = null;  // { a, b, da, db } — last rendered comparison
 
 // Convert an H3 cell index to a GeoJSON Polygon (WGS84 ring) so a selected
 // hex can be outlined on the map the same way an object polygon is.
@@ -1531,11 +1579,22 @@ function h3BoundaryGeometry(h3Index) {
   }
 }
 
+function h3Center(h3Index) {
+  if (typeof h3 === 'undefined' || !h3.cellToLatLng) return null;
+  try {
+    const [lat, lng] = h3.cellToLatLng(h3Index);
+    return [lng, lat];
+  } catch (err) {
+    return null;
+  }
+}
+
 function hexSelection(hex, payload) {
   return {
     kind: 'hex',
     label: hex.hex,
     geometry: h3BoundaryGeometry(hex.hex),
+    center: h3Center(hex.hex),
     fetch: () => fetchHexDetail(hex.hex, payload.resolution, payload.asset_class),
   };
 }
@@ -1546,6 +1605,7 @@ function objectSelection(obj, assetClass) {
     kind: 'object',
     label: obj.object_id,
     geometry,
+    center: (obj.lon != null && obj.lat != null) ? [obj.lon, obj.lat] : null,
     fetch: async () => {
       const detail = await fetchObjectDetail(obj.object_id, assetClass);
       if (detail) delete detail.geometry; // structured, not a scalar — skip in the diff
@@ -1557,11 +1617,13 @@ function objectSelection(obj, assetClass) {
 function clearCompareSelections() {
   compareA = null;
   compareB = null;
+  compareActive = 'B';
+  compareData = null;
 }
 
 function resetCompare() {
   clearCompareSelections();
-  selectedGeometry = null;
+  selectedItem = null;
   redrawWithSelection();
   document.getElementById('panel').innerHTML =
     `<h2>Inspector</h2><p class="empty">Click on a hex or object to inspect.</p>`;
@@ -1582,34 +1644,71 @@ function compareSelect(sel) {
   if (!compareA) {
     compareA = sel;
     compareB = null;
+    compareActive = 'B';
     redrawWithSelection();
     document.getElementById('panel').innerHTML =
       `<h2>Сравнение</h2><p class="empty">Выбран <span class="cmp-a">A</span>: ${escapeHtml(sel.label)}.<br>Кликните второй элемент.</p>`;
     return;
   }
-  compareB = sel;
+  if (!compareB) {
+    compareB = sel;
+    compareActive = 'B';
+    redrawWithSelection();
+    renderComparison();
+    return;
+  }
+  // Both set. Clicking an already-selected item makes it the active slot
+  // (the one the next new click replaces); a new item replaces the active.
+  const key = selKey(sel);
+  if (key === selKey(compareA)) {
+    compareActive = 'A';
+    renderCompareHeader();
+    return;
+  }
+  if (key === selKey(compareB)) {
+    compareActive = 'B';
+    renderCompareHeader();
+    return;
+  }
+  if (compareActive === 'A') compareA = sel; else compareB = sel;
   redrawWithSelection();
   renderComparison();
+}
+
+function selKey(sel) {
+  return sel.kind + ':' + sel.label;
 }
 
 async function renderComparison() {
   const panel = document.getElementById('panel');
   const a = compareA;
   const b = compareB;
-  panel.innerHTML = `<h2>Сравнение</h2><p class="empty">Загрузка…</p>`;
+  panel.innerHTML = `<h2>Сравнение</h2><div id="cmp-header"></div><div id="cmp-table"><p class="empty">Загрузка…</p></div>`;
   const [da, db] = await Promise.all([a.fetch(), b.fetch()]);
   if (!da || !db) {
     panel.innerHTML = `<h2>Сравнение</h2><p class="empty">Не удалось загрузить данные для сравнения.</p>`;
     return;
   }
-  panel.innerHTML = comparisonHeader(a, b) + comparisonTable(da, db, a.kind);
-  document.getElementById('cmp-reset').addEventListener('click', resetCompare);
+  compareData = { a, b, da, db };
+  renderCompareHeader();
+  document.getElementById('cmp-table').innerHTML = comparisonTable(da, db, a.kind);
+}
+
+function renderCompareHeader() {
+  if (!compareData) return;
+  const el = document.getElementById('cmp-header');
+  if (!el) return;
+  el.innerHTML = comparisonHeader(compareData.a, compareData.b);
+  const reset = el.querySelector('#cmp-reset');
+  if (reset) reset.addEventListener('click', resetCompare);
 }
 
 function comparisonHeader(a, b) {
+  const aActive = compareActive === 'A';
+  const bActive = compareActive === 'B';
   return `<div class="cmp-legend">
-      <span class="cmp-legend-item cmp-a">A: ${escapeHtml(a.label)}</span>
-      <span class="cmp-legend-item cmp-b">B: ${escapeHtml(b.label)}</span>
+      <span class="cmp-legend-item cmp-a${aActive ? ' cmp-active' : ''}">${aActive ? '▸ ' : ''}A: ${escapeHtml(a.label)}</span>
+      <span class="cmp-legend-item cmp-b${bActive ? ' cmp-active' : ''}">${bActive ? '▸ ' : ''}B: ${escapeHtml(b.label)}</span>
       <button id="cmp-reset" type="button" title="Сбросить сравнение">✕</button>
     </div>
     <div class="cmp-row cmp-head">
