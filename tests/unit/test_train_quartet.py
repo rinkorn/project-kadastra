@@ -121,7 +121,7 @@ def test_quartet_runs_and_logs_full_metrics() -> None:
     for model in ("catboost", "ebm", "grey_tree", "naive_linear"):
         assert model in payload["models"]
         m = payload["models"][model]
-        for key in ("mean_mae", "mean_rmse", "mean_mape", "mean_spearman"):
+        for key in ("mean_mae", "mean_rmse", "mean_mape", "mean_spearman", "wape"):
             assert key in m
             assert isinstance(m[key], (int, float))
     # Grey carries a fidelity-to-black field.
@@ -164,14 +164,14 @@ def test_default_keeps_all_simplifier_final_fit_pkl_artifacts() -> None:
 
 
 def test_skip_final_simplifier_fits_omits_pkl_artifacts() -> None:
-    """S2: when skip_final_simplifier_fits=True, the EBM/Grey/Naive
-    full-data refit step is skipped — they are not used by any consumer
-    (inspector reads OOFs only) and dominate landplot training time.
-    CatBoost final fit stays because the registry contract still
-    requires a primary model.
+    """S2: when skip_final_simplifier_fits=True, the Grey/Naive full-data
+    refits are skipped (no consumer reads their *_model.pkl). The EBM
+    (White Box) final fit is ALWAYS kept — the inspector's explanation
+    endpoint loads ebm_model.pkl. CatBoost final fit stays because the
+    registry contract still requires a primary model.
 
     OOF parquets and quartet_metrics.json must remain identical in
-    structure — only the *_model.pkl artifacts are dropped.
+    structure — only the Grey/Naive *_model.pkl artifacts are dropped.
     """
     reader = _FakeReader(_synth_gold())
     registry = _FakeRegistry()
@@ -188,7 +188,7 @@ def test_skip_final_simplifier_fits_omits_pkl_artifacts() -> None:
     )
     usecase.execute("RU-KAZAN-AGG", AssetClass.APARTMENT)
     artifacts = registry.runs[0]["artifacts"]
-    assert "ebm_model.pkl" not in artifacts
+    assert "ebm_model.pkl" in artifacts
     assert "grey_tree_model.pkl" not in artifacts
     assert "naive_linear_model.pkl" not in artifacts
     # OOF parquets and metrics still produced.
@@ -224,3 +224,30 @@ def test_parallel_folds_smoke_runs_and_produces_oof_for_all_models() -> None:
         df = pl.read_parquet(io.BytesIO(artifacts[name]))
         assert set(df.columns) >= {"object_id", "lat", "lon", "fold_id", "y_true", "y_pred_oof"}
         assert df.height == 240
+
+
+def test_landplot_uses_log_target_and_reports_rmse_log() -> None:
+    """ADR-0026: landplot trains on log(₽/м²) and stores OOF back in the
+    original scale; the metrics JSON records ``target_transform='log'``
+    and a per-model ``rmse_log`` (the stable relative metric)."""
+    reader = _FakeReader(_synth_gold())
+    registry = _FakeRegistry()
+    usecase = TrainQuartet(
+        reader=reader,
+        model_registry=registry,
+        catboost_params=CatBoostParams(iterations=40, learning_rate=0.1, depth=4, seed=42),
+        ebm_max_bins=32,
+        ebm_interactions=0,
+        grey_tree_max_depth=6,
+        n_splits=3,
+        parent_resolution=6,
+    )
+    usecase.execute("RU-KAZAN-AGG", AssetClass.LANDPLOT)
+    artifacts = registry.runs[0]["artifacts"]
+    payload = json.loads(artifacts["quartet_metrics.json"].decode("utf-8"))
+    assert payload["target_transform"] == "log"
+    for model in ("catboost", "ebm", "grey_tree", "naive_linear"):
+        assert "rmse_log" in payload["models"][model]
+    # OOF is exp'd back to ₽/м² — positive and same magnitude as target.
+    df = pl.read_parquet(io.BytesIO(artifacts["catboost_oof_predictions.parquet"]))
+    assert (df["y_pred_oof"] > 0).all()

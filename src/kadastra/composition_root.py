@@ -2,6 +2,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 
+from kadastra.adapters.local_ebm_model_loader import LocalEbmModelLoader
 from kadastra.adapters.local_geojson_region_boundary import LocalGeoJsonRegionBoundary
 from kadastra.adapters.local_model_loader import LocalModelLoader
 from kadastra.adapters.local_model_registry import LocalModelRegistry
@@ -300,6 +301,7 @@ class Container:
         return LoadObjectInspection(
             reader=ParquetValuationObjectStore(s.valuation_object_store_path),
             oof_reader=LocalOofPredictionsReader(s.model_registry_path),
+            ebm_loader=LocalEbmModelLoader(s.model_registry_path),
         )
 
 

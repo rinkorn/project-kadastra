@@ -23,7 +23,7 @@ def _write_aggregates(
     region: str,
     resolution: int,
     *,
-    model: str = "catboost",
+    model: str = "ebm",
     pred_8a: float | None = 95_000.0,
 ) -> None:
     path = tmp_path / f"region={region}" / f"resolution={resolution}" / f"model={model}" / "data.parquet"
@@ -152,11 +152,10 @@ def test_model_param_routes_to_correct_partition(tmp_path: Path) -> None:
     assert ebm_by_hex["8a"] == 80_000.0
 
 
-def test_default_model_is_catboost(tmp_path: Path) -> None:
-    """No ``model=`` kwarg → must read ``model=catboost`` partition.
-    Keeps the existing UI working before it's wired to send
-    ``?model=…`` to the API."""
-    _write_aggregates(tmp_path, "RU-KAZAN-AGG", 8, model="catboost", pred_8a=42_000.0)
+def test_default_model_is_ebm(tmp_path: Path) -> None:
+    """No ``model=`` kwarg → must read ``model=ebm`` (White Box) partition,
+    since EBM is the default everywhere."""
+    _write_aggregates(tmp_path, "RU-KAZAN-AGG", 8, model="ebm", pred_8a=42_000.0)
     out = GetHexAggregates(tmp_path).execute(
         "RU-KAZAN-AGG",
         8,
