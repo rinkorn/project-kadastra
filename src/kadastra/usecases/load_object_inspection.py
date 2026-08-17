@@ -111,7 +111,7 @@ class LoadObjectInspection:
         region_code: str,
         asset_class: AssetClass,
         *,
-        model: str = "catboost",
+        model: str = "ebm",
     ) -> list[dict[str, Any]]:
         joined = self._load_joined(region_code, asset_class, model=model)
         if joined.is_empty():
@@ -140,7 +140,7 @@ class LoadObjectInspection:
         asset_class: AssetClass,
         object_id: str,
         *,
-        model: str = "catboost",
+        model: str = "ebm",
     ) -> dict[str, Any] | None:
         joined = self._load_joined(region_code, asset_class, model=model)
         if joined.is_empty():

@@ -36,11 +36,11 @@ class _FakeOofReader:
         self._by_model = by_model or {}
         self.model_calls: list[tuple[AssetClass, str]] = []
 
-    def load_latest(self, asset_class: AssetClass, *, model: str = "catboost") -> pl.DataFrame:
+    def load_latest(self, asset_class: AssetClass, *, model: str = "ebm") -> pl.DataFrame:
         self.model_calls.append((asset_class, model))
         if (asset_class, model) in self._by_model:
             return self._by_model[(asset_class, model)]
-        if model == "catboost" and asset_class in self._by_class:
+        if model == "ebm" and asset_class in self._by_class:
             return self._by_class[asset_class]
         return pl.DataFrame(
             schema={

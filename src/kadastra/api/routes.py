@@ -46,8 +46,8 @@ from kadastra.usecases.load_object_inspection import (
 )
 
 # ADR-0016 quartet — model selector accepted by /api/inspection and
-# /api/hex_aggregates. The map UI defaults to ``ebm`` (White Box); the
-# API query param default stays ``catboost`` for back-compat.
+# /api/hex_aggregates. ``ebm`` (White Box) is the default everywhere, so
+# the map and the inspector center the interpretable model by default.
 QUARTET_MODELS = ("catboost", "ebm", "grey_tree", "naive_linear")
 
 # ADR-0017 geometry — converted once per detail request. Constructed once
@@ -83,7 +83,7 @@ def make_api_router(
         resolution: int = Query(..., ge=0, le=15),
         asset_class: str = Query(...),
         feature: str = Query(...),
-        model: str = Query("catboost"),
+        model: str = Query("ebm"),
     ) -> dict[str, Any]:
         if asset_class not in ASSET_CLASS_VALUES:
             raise HTTPException(
@@ -113,7 +113,7 @@ def make_api_router(
         h3_index: str,
         resolution: int = Query(..., ge=0, le=15),
         asset_class: str = Query(...),
-        model: str = Query("catboost"),
+        model: str = Query("ebm"),
     ) -> dict[str, Any]:
         """Full aggregate row for a single hex (every aggregate column
         for that h3_index/asset_class), powering the hex inspector."""
@@ -145,7 +145,7 @@ def make_api_router(
     @router.get("/inspection")
     def inspection_list(
         asset_class: str = Query(...),
-        model: str = Query("catboost"),
+        model: str = Query("ebm"),
     ) -> dict[str, Any]:
         ac = _parse_asset_class(asset_class)
         _validate_model(model)
@@ -209,7 +209,7 @@ def make_api_router(
     def inspection_detail(
         object_id: str,
         asset_class: str = Query(...),
-        model: str = Query("catboost"),
+        model: str = Query("ebm"),
     ) -> dict[str, Any]:
         ac = _parse_asset_class(asset_class)
         _validate_model(model)
