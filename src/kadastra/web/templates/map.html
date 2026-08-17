@@ -1762,7 +1762,7 @@ function comparisonRow(key, va, vb) {
     deltaCell = `<span class="cmp-delta ${cls}">${formatDelta(delta)}</span>`;
   }
   return `<div class="cmp-row">
-      <span class="cmp-key" title="${escapeHtml(key)}">${escapeHtml(key)}</span>
+      <span class="cmp-key" title="${escapeHtml(featureDescription(key) || key)}">${escapeHtml(key)}</span>
       <span class="cmp-val" title="${escapeHtml(fa)}">${escapeHtml(fa)}</span>
       <span class="cmp-val" title="${escapeHtml(fb)}">${escapeHtml(fb)}</span>
       ${deltaCell}
