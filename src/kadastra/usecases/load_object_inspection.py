@@ -26,6 +26,9 @@ from typing import Any
 import polars as pl
 
 from kadastra.domain.asset_class import AssetClass
+from kadastra.ml.object_feature_columns import select_object_feature_columns
+from kadastra.ml.object_feature_matrix import build_object_feature_matrix
+from kadastra.ports.ebm_model_loader import EbmModelLoaderPort
 from kadastra.ports.oof_predictions_reader import OofPredictionsReaderPort
 from kadastra.ports.valuation_object_reader import ValuationObjectReaderPort
 
@@ -97,9 +100,11 @@ class LoadObjectInspection:
         self,
         reader: ValuationObjectReaderPort,
         oof_reader: OofPredictionsReaderPort,
+        ebm_loader: EbmModelLoaderPort | None = None,
     ) -> None:
         self._reader = reader
         self._oof_reader = oof_reader
+        self._ebm_loader = ebm_loader
 
     def list_for_map(
         self,
@@ -181,6 +186,40 @@ class LoadObjectInspection:
 
         gold_row["models"] = models_payload
         return gold_row
+
+    def get_explanation(
+        self,
+        region_code: str,
+        asset_class: AssetClass,
+        object_id: str,
+    ) -> dict[str, Any] | None:
+        """EBM (White Box) per-feature contribution breakdown for one object.
+
+        Rebuilds the object's feature vector exactly as training saw it
+        (``select_object_feature_columns`` + ``build_object_feature_matrix``)
+        and asks the EBM to explain it. Returns ``None`` when the object is
+        absent or no EBM model artifact exists for the class.
+        """
+        if self._ebm_loader is None:
+            return None
+        objects = self._reader.load(region_code, asset_class)
+        if objects.is_empty():
+            return None
+        match = objects.filter(pl.col("object_id") == object_id)
+        if match.is_empty():
+            return None
+        numeric_cols, categorical_cols = select_object_feature_columns(objects)
+        X = build_object_feature_matrix(
+            match,
+            numeric_cols=numeric_cols,
+            categorical_cols=categorical_cols,
+        )
+        feature_names = numeric_cols + categorical_cols
+        try:
+            model = self._ebm_loader.load_latest(asset_class)
+        except FileNotFoundError:
+            return None
+        return model.explain(X, feature_names)
 
     def _load_joined(self, region_code: str, asset_class: AssetClass, *, model: str) -> pl.DataFrame:
         objects = self._reader.load(region_code, asset_class)

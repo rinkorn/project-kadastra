@@ -601,6 +601,18 @@ def test_inspection_detail_quartet_returns_404_for_unknown_object(
     assert response.status_code == 404
 
 
+def test_inspection_explain_returns_404_without_ebm_model(
+    client: TestClient,
+) -> None:
+    """The explain endpoint needs a fitted EBM artifact; the fixture only
+    seeds CatBoost OOF, so it must surface 404 rather than an empty payload."""
+    response = client.get(
+        "/api/inspection/way/1/explain",
+        params={"asset_class": "apartment"},
+    )
+    assert response.status_code == 404
+
+
 def test_feature_options_lists_choices(client: TestClient) -> None:
     response = client.get("/api/feature_options")
     assert response.status_code == 200

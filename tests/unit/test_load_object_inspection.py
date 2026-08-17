@@ -6,6 +6,8 @@ for map rendering and a full dict for the inspector side panel.
 
 from __future__ import annotations
 
+from typing import Any
+
 import polars as pl
 
 from kadastra.domain.asset_class import AssetClass
@@ -50,6 +52,24 @@ class _FakeOofReader:
                 "y_pred_oof": pl.Float64,
             }
         )
+
+
+class _FakeEbmLoader:
+    def __init__(self, explanation: Any = None) -> None:
+        self._explanation = explanation
+        self.calls: list[AssetClass] = []
+
+    def load_latest(self, asset_class: AssetClass) -> _FakeExplainer:
+        self.calls.append(asset_class)
+        return _FakeExplainer(self._explanation)
+
+
+class _FakeExplainer:
+    def __init__(self, explanation: Any) -> None:
+        self._explanation = explanation
+
+    def explain(self, X: Any, feature_names: list[str]) -> Any:
+        return self._explanation
 
 
 def _objects(rows: list[dict[str, object]]) -> pl.DataFrame:
@@ -622,3 +642,55 @@ def test_get_detail_threads_model_param_to_oof_reader() -> None:
     assert detail is not None
     assert detail["y_pred_oof"] == 91_500.0
     assert (AssetClass.APARTMENT, "grey_tree") in fake_oof.model_calls
+
+
+def test_get_explanation_returns_none_without_loader() -> None:
+    """Explanation is an optional capability — without an EBM loader the
+    usecase must degrade to None rather than crash."""
+    objects = _objects(
+        [
+            {
+                "object_id": "a1",
+                "asset_class": "apartment",
+                "lat": 55.78,
+                "lon": 49.12,
+                "synthetic_target_rub_per_m2": 100_000.0,
+                "intra_city_raion": "Советский",
+                "levels": 5,
+            }
+        ]
+    )
+    usecase = LoadObjectInspection(
+        reader=_FakeReader({AssetClass.APARTMENT: objects}),
+        oof_reader=_FakeOofReader({}),
+    )
+    assert usecase.get_explanation("RU-KAZAN-AGG", AssetClass.APARTMENT, "a1") is None
+
+
+def test_get_explanation_returns_contributions() -> None:
+    objects = _objects(
+        [
+            {
+                "object_id": "a1",
+                "asset_class": "apartment",
+                "lat": 55.78,
+                "lon": 49.12,
+                "synthetic_target_rub_per_m2": 100_000.0,
+                "intra_city_raion": "Советский",
+                "levels": 5,
+            }
+        ]
+    )
+    explanation = {
+        "intercept": 50_000.0,
+        "terms": [{"feature": "levels", "value": 5, "contribution": 12_000.0}],
+    }
+    loader = _FakeEbmLoader(explanation)
+    usecase = LoadObjectInspection(
+        reader=_FakeReader({AssetClass.APARTMENT: objects}),
+        oof_reader=_FakeOofReader({}),
+        ebm_loader=loader,
+    )
+    out = usecase.get_explanation("RU-KAZAN-AGG", AssetClass.APARTMENT, "a1")
+    assert out == explanation
+    assert loader.calls == [AssetClass.APARTMENT]

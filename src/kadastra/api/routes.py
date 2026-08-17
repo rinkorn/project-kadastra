@@ -46,8 +46,8 @@ from kadastra.usecases.load_object_inspection import (
 )
 
 # ADR-0016 quartet — model selector accepted by /api/inspection and
-# (later) /api/hex_aggregates. ``catboost`` is the default to keep the
-# UI working before any quartet run lands.
+# /api/hex_aggregates. The map UI defaults to ``ebm`` (White Box); the
+# API query param default stays ``catboost`` for back-compat.
 QUARTET_MODELS = ("catboost", "ebm", "grey_tree", "naive_linear")
 
 # ADR-0017 geometry — converted once per detail request. Constructed once
@@ -181,6 +181,28 @@ def make_api_router(
             "region": region_code,
             "asset_class": ac.value,
             "data": detail,
+        }
+
+    @router.get("/inspection/{object_id:path}/explain")
+    def inspection_detail_explain(
+        object_id: str,
+        asset_class: str = Query(...),
+    ) -> dict[str, Any]:
+        """EBM (White Box) per-feature contribution breakdown for one
+        object: ``{intercept, terms: [{feature, value, contribution}]}``.
+        ``intercept + Σ contribution`` equals the EBM prediction."""
+        ac = _parse_asset_class(asset_class)
+        explanation = load_inspection.get_explanation(region_code, ac, object_id)
+        if explanation is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"no EBM explanation for object {object_id!r} asset_class={ac.value}",
+            )
+        return {
+            "region": region_code,
+            "asset_class": ac.value,
+            "model": "ebm",
+            "data": explanation,
         }
 
     @router.get("/inspection/{object_id:path}")
