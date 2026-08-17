@@ -24,6 +24,7 @@ from kadastra.ml.quartet_metrics import (
     percentile_asymmetry,
     simplification_loss_pp,
     spearman_corr,
+    wape,
 )
 
 
@@ -109,3 +110,28 @@ def test_simplification_loss_pp_can_be_negative() -> None:
     white_mape = 0.45
     loss = simplification_loss_pp(black_mape, white_mape)
     assert math.isclose(loss, -5.0, abs_tol=1e-6)
+
+
+def test_wape_is_sum_normalized() -> None:
+    """WAPE divides the total absolute error by the total target, so a
+    small-target row doesn't dominate the metric the way MAPE would."""
+    y_true = np.array([100_000.0, 200.0])
+    y_pred = np.array([110_000.0, 300.0])
+    # Total error = 10_000 + 100 = 10_100; total target = 100_200.
+    assert math.isclose(wape(y_true, y_pred), 10_100.0 / 100_200.0, rel_tol=1e-12)
+
+
+def test_wape_is_stable_when_single_row_is_tiny() -> None:
+    """Contrast: MAPE on [100000, 200] with these errors is dominated by
+    the tiny 200-row (50%), while WAPE stays ~10% because it's aggregate."""
+    y_true = np.array([100_000.0, 200.0])
+    y_pred = np.array([110_000.0, 300.0])
+    mape = float(np.mean(np.abs(y_pred - y_true) / y_true))
+    # MAPE: (10000/100000 + 100/200) / 2 = (0.10 + 0.50) / 2 = 0.30
+    assert math.isclose(mape, 0.30, rel_tol=1e-12)
+    # WAPE: 10100 / 100200 ≈ 0.1008 — stays near the 10% of the bulk.
+    assert wape(y_true, y_pred) < 0.11
+
+
+def test_wape_nan_on_zero_total() -> None:
+    assert math.isnan(wape(np.array([0.0, 0.0]), np.array([1.0, 2.0])))
