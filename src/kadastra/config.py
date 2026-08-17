@@ -155,9 +155,10 @@ class Settings(BaseSettings):
     # the n_splits per-fold fits are dispatched concurrently via joblib;
     # this collapses landplot wall time from hours to tens of minutes
     # at the cost of memory (n_splits × X). When skip_final_simplifier_fits
-    # is True, the EBM/Grey/Naive full-data refits at the end of execute()
-    # are skipped — no current consumer reads those *_model.pkl artifacts
-    # (inspector reads OOFs only).
+    # is True, the Grey/Naive full-data refits at the end of execute()
+    # are skipped — no consumer reads their *_model.pkl artifacts. The
+    # EBM (White Box) final fit is ALWAYS kept: the inspector's
+    # explanation endpoint loads ebm_model.pkl.
     quartet_parallel_folds: bool = True
     quartet_skip_final_simplifier_fits: bool = True
 

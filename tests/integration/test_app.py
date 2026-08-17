@@ -48,7 +48,7 @@ def _seed_hex_aggregates(settings: Settings) -> None:
         settings.hex_aggregates_base_path
         / f"region={settings.region_code}"
         / "resolution=8"
-        / "model=catboost"
+        / "model=ebm"
         / "data.parquet"
     )
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -152,10 +152,10 @@ def _seed_valuation_objects(settings: Settings) -> None:
 
 
 def _seed_oof_predictions(settings: Settings) -> None:
-    """Drop a single ``catboost-object-apartment_<ts>/oof_predictions.parquet``
-    so the inspector / hex_aggregates can pick up OOF columns."""
+    """Drop a single ``quartet-object-apartment_<ts>/ebm_oof_predictions.parquet``
+    so the inspector / hex_aggregates can pick up the default (EBM) OOF."""
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-    run_dir = settings.model_registry_path / f"catboost-object-apartment_{timestamp}"
+    run_dir = settings.model_registry_path / f"quartet-object-apartment_{timestamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
     pl.DataFrame(
         [
@@ -184,7 +184,7 @@ def _seed_oof_predictions(settings: Settings) -> None:
             "y_true": pl.Float64,
             "y_pred_oof": pl.Float64,
         },
-    ).write_parquet(run_dir / "oof_predictions.parquet")
+    ).write_parquet(run_dir / "ebm_oof_predictions.parquet")
 
 
 def _seed_emiss(settings: Settings) -> None:
@@ -330,15 +330,15 @@ def test_hex_aggregates_returns_404_for_missing_resolution(
     assert response.status_code == 404
 
 
-def test_hex_aggregates_default_model_is_catboost(client: TestClient) -> None:
-    """Without ``?model=…`` the endpoint must return the catboost
-    partition (so the existing UI keeps working before it's wired)."""
+def test_hex_aggregates_default_model_is_ebm(client: TestClient) -> None:
+    """Without ``?model=…`` the endpoint must return the ebm (White Box)
+    partition, since EBM is the default everywhere."""
     response = client.get(
         "/api/hex_aggregates",
         params={"resolution": 8, "asset_class": "apartment", "feature": "count"},
     )
     assert response.status_code == 200
-    assert response.json()["model"] == "catboost"
+    assert response.json()["model"] == "ebm"
 
 
 def test_hex_aggregates_rejects_unknown_model(client: TestClient) -> None:
@@ -357,7 +357,7 @@ def test_hex_aggregates_rejects_unknown_model(client: TestClient) -> None:
 def test_hex_aggregates_returns_404_for_missing_model_partition(
     client: TestClient,
 ) -> None:
-    """Test fixture seeds only catboost partition, so ?model=ebm
+    """Test fixture seeds only ebm partition, so ?model=catboost
     must surface as 404, not silently fall back."""
     response = client.get(
         "/api/hex_aggregates",
@@ -365,7 +365,7 @@ def test_hex_aggregates_returns_404_for_missing_model_partition(
             "resolution": 8,
             "asset_class": "apartment",
             "feature": "count",
-            "model": "ebm",
+            "model": "catboost",
         },
     )
     assert response.status_code == 404
@@ -423,10 +423,10 @@ def test_hex_aggregate_detail_rejects_unknown_model(client: TestClient) -> None:
 def test_hex_aggregate_detail_returns_404_for_missing_model_partition(
     client: TestClient,
 ) -> None:
-    """Fixture seeds only catboost partition → ?model=ebm must 404."""
+    """Fixture seeds only ebm partition → ?model=catboost must 404."""
     response = client.get(
         "/api/hex_aggregates/8810a81015fffff",
-        params={"resolution": 8, "asset_class": "apartment", "model": "ebm"},
+        params={"resolution": 8, "asset_class": "apartment", "model": "catboost"},
     )
     assert response.status_code == 404
 
@@ -570,7 +570,7 @@ def test_inspection_detail_quartet_returns_per_model_breakdown(
 ) -> None:
     """Side-panel comparison endpoint: shared gold features +
     geometry at top level + ``models`` dict with one entry per
-    ADR-0016 model. Test fixture seeds only catboost OOF, so ebm /
+    ADR-0016 model. Test fixture seeds only ebm OOF, so catboost /
     grey_tree / naive_linear must come back as null entries — the
     UI relies on the column existing to render an empty cell."""
     response = client.get("/api/inspection/way/1/quartet", params={"asset_class": "apartment"})
@@ -583,10 +583,10 @@ def test_inspection_detail_quartet_returns_per_model_breakdown(
     assert detail["geometry"]["type"] == "Polygon"
     models = detail["models"]
     assert set(models.keys()) == {"catboost", "ebm", "grey_tree", "naive_linear"}
-    assert models["catboost"]["y_pred_oof"] == 95_000.0
-    assert models["catboost"]["fold_id"] == 0
-    assert models["catboost"]["residual"] == -5_000.0
-    assert models["ebm"]["y_pred_oof"] is None
+    assert models["ebm"]["y_pred_oof"] == 95_000.0
+    assert models["ebm"]["fold_id"] == 0
+    assert models["ebm"]["residual"] == -5_000.0
+    assert models["catboost"]["y_pred_oof"] is None
     assert models["grey_tree"]["y_pred_oof"] is None
     assert models["naive_linear"]["y_pred_oof"] is None
 
@@ -596,6 +596,18 @@ def test_inspection_detail_quartet_returns_404_for_unknown_object(
 ) -> None:
     response = client.get(
         "/api/inspection/way/missing/quartet",
+        params={"asset_class": "apartment"},
+    )
+    assert response.status_code == 404
+
+
+def test_inspection_explain_returns_404_without_ebm_model(
+    client: TestClient,
+) -> None:
+    """The explain endpoint needs a fitted EBM artifact; the fixture only
+    seeds CatBoost OOF, so it must surface 404 rather than an empty payload."""
+    response = client.get(
+        "/api/inspection/way/1/explain",
         params={"asset_class": "apartment"},
     )
     assert response.status_code == 404
@@ -692,12 +704,12 @@ def test_inspection_rejects_unknown_model(client: TestClient) -> None:
     assert response.status_code == 400
 
 
-def test_inspection_default_model_is_catboost(client: TestClient) -> None:
-    """Without ``?model=…`` the endpoint must keep returning the
-    CatBoost OOF (so the existing UI doesn't break)."""
+def test_inspection_default_model_is_ebm(client: TestClient) -> None:
+    """Without ``?model=…`` the endpoint must return the ebm (White Box)
+    OOF, since EBM is the default everywhere."""
     response = client.get("/api/inspection", params={"asset_class": "apartment"})
     assert response.status_code == 200
-    assert response.json()["model"] == "catboost"
+    assert response.json()["model"] == "ebm"
 
 
 def test_index_serves_html_shell(client: TestClient) -> None:

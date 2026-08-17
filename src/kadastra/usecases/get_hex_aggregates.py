@@ -109,7 +109,7 @@ class GetHexAggregates:
         asset_class: str,
         feature: str,
         *,
-        model: str = "catboost",
+        model: str = "ebm",
     ) -> list[dict[str, object]]:
         path = (
             self._base_path / f"region={region_code}" / f"resolution={resolution}" / f"model={model}" / "data.parquet"
@@ -134,7 +134,7 @@ class GetHexAggregates:
         asset_class: str,
         h3_index: str,
         *,
-        model: str = "catboost",
+        model: str = "ebm",
     ) -> dict[str, Any] | None:
         path = (
             self._base_path / f"region={region_code}" / f"resolution={resolution}" / f"model={model}" / "data.parquet"

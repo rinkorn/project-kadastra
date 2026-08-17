@@ -105,6 +105,16 @@
     .panel .cmp-delta { font-family: ui-monospace, SFMono-Regular, monospace; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .panel .cmp-delta-toggle { cursor: pointer; }
     .panel .cmp-delta-toggle:hover { color: #fde047; }
+    .panel .exp-total { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; color: #fde68a; margin: 2px 0 6px; }
+    .panel .exp-row { display: grid; grid-template-columns: minmax(0, 1fr) 76px 96px; gap: 6px; padding: 2px 0; border-bottom: 1px solid #1f2937; align-items: center; }
+    .panel .exp-key { color: #9ca3af; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .panel .exp-contrib { font-family: ui-monospace, SFMono-Regular, monospace; text-align: right; }
+    .panel .exp-contrib.pos { color: #4ade80; }
+    .panel .exp-contrib.neg { color: #f87171; }
+    .panel .exp-bar-track { height: 8px; background: #1f2937; border-radius: 4px; overflow: hidden; }
+    .panel .exp-bar { display: block; height: 100%; border-radius: 4px; }
+    .panel .exp-bar.pos { background: #4ade80; }
+    .panel .exp-bar.neg { background: #f87171; }
     .panel .cmp-delta.pos { color: #4ade80; }
     .panel .cmp-delta.neg { color: #f87171; }
     .panel .cmp-legend { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px; }
@@ -340,8 +350,8 @@
     </label>
     <label id="model-wrap">Model
       <select id="model">
-        <option value="catboost" selected>catboost (Black Box)</option>
-        <option value="ebm">ebm (White Box)</option>
+        <option value="catboost">catboost (Black Box)</option>
+        <option value="ebm" selected>ebm (White Box)</option>
         <option value="grey_tree">grey_tree (Grey Box)</option>
         <option value="naive_linear">naive_linear (baseline)</option>
       </select>
@@ -1003,6 +1013,15 @@ async function fetchMarketReference(assetClass) {
   return await r.json();
 }
 
+// EBM (White Box) per-feature contribution breakdown for one object.
+async function fetchObjectExplanation(objectId, assetClass) {
+  const r = await fetch(
+    `/api/inspection/${encodeURIComponent(objectId)}/explain?asset_class=${assetClass}`
+  );
+  if (!r.ok) return null;
+  return (await r.json()).data;
+}
+
 // ---------- rendering ----------
 
 function renderHex(payload) {
@@ -1365,10 +1384,11 @@ async function showObjectInspector(obj, assetClass) {
   // Three parallel requests: per-active-model detail (geometry + full
   // gold features), quartet (4-model y_pred_oof for comparison), and
   // EMISS market reference (apartments only — null for other classes).
-  const [detail, quartet, marketRef] = await Promise.all([
+  const [detail, quartet, marketRef, explanation] = await Promise.all([
     fetchObjectDetail(obj.object_id, assetClass),
     fetchObjectQuartet(obj.object_id, assetClass),
     fetchMarketReference(assetClass),
+    fetchObjectExplanation(obj.object_id, assetClass),
   ]);
   if (!detail) {
     panel.innerHTML = `<h2>Inspector</h2><p class="empty">Could not load detail for ${escapeHtml(obj.object_id)}.</p>`;
@@ -1416,6 +1436,9 @@ async function showObjectInspector(obj, assetClass) {
     sections.push(`<h2>Сравнение моделей</h2>`);
     sections.push(quartetSection(quartet, marketRef));
   }
+  // EBM White Box explanation — why this object's price is what it is.
+  const explanationBlock = explanationSection(explanation);
+  if (explanationBlock) sections.push(explanationBlock);
   // Everything else — sorted alphabetically. Geometry-derived columns
   // are promoted to their own section above; exclude them here so they
   // don't show twice.
@@ -1517,6 +1540,30 @@ function quartetSection(quartet, marketRef) {
   </div>`;
   const marketRows = marketRefRows(marketRef, yTrue);
   return `<div class="section quartet">${headerRow}${dataRows}${yTrueRow}${marketRows}</div>`;
+}
+
+// EBM (White Box) explanation: top feature contributions as signed bars.
+// intercept + Σ contribution == the EBM prediction for the object.
+function explanationSection(explanation) {
+  if (!explanation || !explanation.terms || !explanation.terms.length) return '';
+  const intercept = explanation.intercept;
+  const terms = [...explanation.terms].sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution));
+  const top = terms.slice(0, 12);
+  const maxAbs = Math.max(...top.map(t => Math.abs(t.contribution))) || 1;
+  const total = intercept + terms.reduce((s, t) => s + t.contribution, 0);
+  const rows = top.map(t => {
+    const width = Math.round((Math.abs(t.contribution) / maxAbs) * 100);
+    const pos = t.contribution >= 0;
+    const tooltip = describeFeature(t.feature) || t.feature;
+    return `<div class="exp-row">
+        <span class="exp-key" title="${escapeHtml(tooltip)}">${escapeHtml(t.feature)}</span>
+        <span class="exp-contrib ${pos ? 'pos' : 'neg'}">${escapeHtml(formatDelta(t.contribution))}</span>
+        <span class="exp-bar-track"><span class="exp-bar ${pos ? 'pos' : 'neg'}" style="width:${width}%"></span></span>
+      </div>`;
+  }).join('');
+  return `<h2>Объяснение цены (EBM)</h2>
+    <div class="exp-total">y_pred = ${escapeHtml(formatValue(total))} ₽/м²</div>
+    ${rows}`;
 }
 
 function marketRefRows(marketRef, yTrue) {

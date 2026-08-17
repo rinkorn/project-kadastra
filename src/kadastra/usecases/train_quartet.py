@@ -35,6 +35,7 @@ from kadastra.ml.quartet_metrics import (
     percentile_asymmetry,
     simplification_loss_pp,
     spearman_corr,
+    wape,
 )
 from kadastra.ml.spatial_kfold import spatial_kfold_split
 from kadastra.ml.train import CatBoostParams
@@ -86,6 +87,12 @@ class TrainQuartet:
         df = self._reader.load(region_code, asset_class).drop_nulls(subset=[_TARGET_COLUMN])
         n = df.height
         y = df[_TARGET_COLUMN].to_numpy().astype(np.float64)
+        # ADR-0026: landplot trains on log(₽/м²) — the per-m² price is tiny
+        # and heavily right-skewed, so a log-target gives the models a
+        # symmetric relative-error objective and a stable relative metric.
+        # OOF predictions are exp'd back to ₽/м² before being stored.
+        use_log = asset_class == AssetClass.LANDPLOT
+        y_model = np.log(y) if use_log else y
 
         # Full X: same matrix the per-class CatBoost training uses.
         full_numeric, full_categorical = select_object_feature_columns(df)
@@ -154,7 +161,7 @@ class TrainQuartet:
                 np.array(val_idx_list, dtype=np.int64),
                 X_full,
                 X_naive,
-                y,
+                y_model,
                 full_cat_idx,
                 naive_cat_idx,
                 self._catboost_params,
@@ -193,7 +200,7 @@ class TrainQuartet:
                 np.array(val_idx_list, dtype=np.int64),
                 X_full,
                 oof["catboost"],
-                y,
+                y_model,
                 full_cat_idx,
                 self._grey_tree_max_depth,
                 self._catboost_params.seed,
@@ -227,23 +234,23 @@ class TrainQuartet:
             depth=self._catboost_params.depth,
             seed=self._catboost_params.seed,
         )
-        bb_final.fit(X_full, y, cat_feature_indices=full_cat_idx or None)
+        bb_final.fit(X_full, y_model, cat_feature_indices=full_cat_idx or None)
 
-        # The three simplifiers' full-data refits are not consumed by
-        # any current code path (inspector reads OOFs only). On
-        # landplot they dominate wall time, so they're skippable.
-        wb_final: EbmQuartetModel | None = None
+        # EBM (White Box) is always fit + saved — the inspector's
+        # explanation endpoint loads ebm_model.pkl. Grey/Naive full-data
+        # refits are not consumed (inspector reads OOFs only) and dominate
+        # landplot wall time, so they stay skippable.
+        wb_final = EbmQuartetModel(
+            max_bins=self._ebm_max_bins,
+            interactions=self._ebm_interactions,
+        )
+        wb_final.fit(X_full, y_model, cat_feature_indices=full_cat_idx or None)
+
         nl_final: NaiveLinearQuartetModel | None = None
         grey_final: GreyTreeQuartetModel | None = None
         if not self._skip_final_simplifier_fits:
-            wb_final = EbmQuartetModel(
-                max_bins=self._ebm_max_bins,
-                interactions=self._ebm_interactions,
-            )
-            wb_final.fit(X_full, y, cat_feature_indices=full_cat_idx or None)
-
             nl_final = NaiveLinearQuartetModel()
-            nl_final.fit(X_naive, y, cat_feature_indices=naive_cat_idx or None)
+            nl_final.fit(X_naive, y_model, cat_feature_indices=naive_cat_idx or None)
 
             grey_final = GreyTreeQuartetModel(
                 max_depth=self._grey_tree_max_depth,
@@ -255,6 +262,10 @@ class TrainQuartet:
                 cat_feature_indices=full_cat_idx or None,
             )
 
+        # Convert OOF back to ₽/м² (land trained on log) so downstream
+        # consumers and cross-class metrics see the original scale.
+        oof_orig = {m: (np.exp(oof[m]) if use_log else oof[m]) for m in oof}
+
         # Aggregate metrics + Spearman + percentile asymmetry per model.
         models_payload: dict[str, dict[str, float]] = {}
         for model_name, fold_metrics in per_fold.items():
@@ -262,9 +273,12 @@ class TrainQuartet:
                 "mean_mae": float(np.mean(fold_metrics["mae"])),
                 "mean_rmse": float(np.mean(fold_metrics["rmse"])),
                 "mean_mape": float(np.nanmean(fold_metrics["mape"])),
-                "mean_spearman": spearman_corr(y, oof[model_name]),
+                "mean_spearman": spearman_corr(y, oof_orig[model_name]),
+                "wape": wape(y, oof_orig[model_name]),
             }
-            agg.update(percentile_asymmetry(y, oof[model_name]))
+            agg.update(percentile_asymmetry(y, oof_orig[model_name]))
+            if use_log:
+                agg["rmse_log"] = float(np.sqrt(np.mean((oof[model_name] - y_model) ** 2)))
             models_payload[model_name] = agg
 
         # Grey fidelity to Black — R² on (catboost_oof, grey_oof).
@@ -286,19 +300,19 @@ class TrainQuartet:
             "n_samples": n,
             "n_splits": self._n_splits,
             "parent_resolution": self._parent_resolution,
+            "target_transform": "log" if use_log else "identity",
             "models": models_payload,
             "loss_on_simplification": loss_payload,
         }
 
         artifacts: dict[str, bytes] = {
             "quartet_metrics.json": json.dumps(quartet_metrics, ensure_ascii=False, indent=2).encode("utf-8"),
-            "catboost_oof_predictions.parquet": _build_oof_parquet(df, fold_ids, y, oof["catboost"]),
-            "ebm_oof_predictions.parquet": _build_oof_parquet(df, fold_ids, y, oof["ebm"]),
-            "grey_tree_oof_predictions.parquet": _build_oof_parquet(df, fold_ids, y, oof["grey_tree"]),
-            "naive_linear_oof_predictions.parquet": _build_oof_parquet(df, fold_ids, y, oof["naive_linear"]),
+            "catboost_oof_predictions.parquet": _build_oof_parquet(df, fold_ids, y, oof_orig["catboost"]),
+            "ebm_oof_predictions.parquet": _build_oof_parquet(df, fold_ids, y, oof_orig["ebm"]),
+            "grey_tree_oof_predictions.parquet": _build_oof_parquet(df, fold_ids, y, oof_orig["grey_tree"]),
+            "naive_linear_oof_predictions.parquet": _build_oof_parquet(df, fold_ids, y, oof_orig["naive_linear"]),
         }
-        if wb_final is not None:
-            artifacts["ebm_model.pkl"] = wb_final.serialize()
+        artifacts["ebm_model.pkl"] = wb_final.serialize()
         if grey_final is not None:
             artifacts["grey_tree_model.pkl"] = grey_final.serialize()
         if nl_final is not None:

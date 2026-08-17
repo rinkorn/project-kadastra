@@ -75,3 +75,20 @@ def test_ebm_serialize_round_trip() -> None:
     assert isinstance(blob, bytes)
     restored = EbmQuartetModel.deserialize(blob)
     np.testing.assert_allclose(model.predict(X), restored.predict(X))
+
+
+def test_ebm_explain_returns_intercept_and_terms() -> None:
+    """explain must decompose a prediction into intercept + per-term
+    contributions that sum back to predict(X), with real feature names
+    mapped from the matrix column order."""
+    rng = np.random.default_rng(5)
+    X = rng.normal(size=(100, 2))
+    y = X[:, 0] * 1.5 + X[:, 1] * 0.5
+    model = EbmQuartetModel(max_bins=32, interactions=0)
+    model.fit(X, y, cat_feature_indices=None)
+    feature_names = ["area_m2", "dist_metro_m"]
+    out = model.explain(X[:1], feature_names)
+    assert set(out) == {"intercept", "terms"}
+    assert {t["feature"] for t in out["terms"]} == {"area_m2", "dist_metro_m"}
+    total = out["intercept"] + sum(t["contribution"] for t in out["terms"])
+    np.testing.assert_allclose(total, model.predict(X[:1])[0], rtol=1e-4)

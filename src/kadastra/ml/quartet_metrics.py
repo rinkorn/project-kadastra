@@ -59,6 +59,20 @@ def percentile_asymmetry(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, fl
     return out
 
 
+def wape(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    """Weighted absolute percentage error — ``Σ|y_true − y_pred| / Σ|y_true|``.
+
+    Unlike MAPE (per-row ``|error| / |y|`` then mean), WAPE divides the
+    *sum* of absolute errors by the *sum* of targets, so small targets
+    (e.g. landplot ₽/м²) no longer blow up individual rows. Returns a
+    fraction (0.10 == 10 %).
+    """
+    denom = float(np.sum(np.abs(y_true)))
+    if denom == 0.0:
+        return float("nan")
+    return float(np.sum(np.abs(y_pred - y_true)) / denom)
+
+
 def simplification_loss_pp(black_mape: float, simpler_mape: float) -> float:
     """Cost of using the simpler model in percentage points.
 

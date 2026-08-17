@@ -11,6 +11,7 @@ categories without explicit imputation/encoding.
 from __future__ import annotations
 
 import pickle
+from typing import Any, cast
 
 import numpy as np
 from interpret.glassbox import ExplainableBoostingRegressor
@@ -58,6 +59,29 @@ class EbmQuartetModel:
             raise RuntimeError("EbmQuartetModel.predict before fit")
         preds = self._model.predict(X)
         return np.asarray(preds, dtype=np.float64)
+
+    def explain(self, X: np.ndarray, feature_names: list[str]) -> dict[str, Any]:
+        """Per-sample feature contributions via interpret-ml ``explain_local``.
+
+        Returns ``{"intercept": float, "terms": [{"feature", "value",
+        "contribution"}]}``. The model was fit on a raw NumPy matrix with no
+        feature names, so term indices are mapped back through ``feature_names``
+        (numeric then categorical — the same order ``build_object_feature_matrix``
+        emits). ``intercept + sum(contribution) == predict(X)``.
+        """
+        if self._model is None:
+            raise RuntimeError("EbmQuartetModel.explain before fit")
+        raw = self._model.explain_local(X).data(key=0)
+        if raw is None:
+            raise RuntimeError("EBM explain_local returned no data for key=0")
+        data = cast(dict[str, Any], raw)
+        intercept = float(data["extra"]["scores"][0])
+        terms: list[dict[str, Any]] = []
+        for idx, (score, value) in enumerate(zip(data["scores"], data["values"], strict=True)):
+            indices = self._model.term_features_[idx]
+            name = " & ".join(feature_names[i] for i in indices)
+            terms.append({"feature": name, "value": value, "contribution": float(score)})
+        return {"intercept": intercept, "terms": terms}
 
     def serialize(self) -> bytes:
         if self._model is None:
