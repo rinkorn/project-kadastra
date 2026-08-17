@@ -527,33 +527,33 @@ function initTooltipToggle() {
 }
 
 // ---------- inspector panel show/hide ----------
-const PANEL_STORAGE_KEY = 'kadastra_panel_hidden';
-function panelHidden() {
-  // Default to collapsed; an explicit 'false' keeps it open across reloads.
-  return localStorage.getItem(PANEL_STORAGE_KEY) !== 'false';
-}
+// Collapsed by default on every load — not persisted, so a reload always
+// starts with the panel hidden (open it via a click or the ⮞ toggle).
+let panelHiddenState = true;
+
 function applyPanelState() {
-  const hidden = panelHidden();
-  document.body.classList.toggle('panel-hidden', hidden);
+  document.body.classList.toggle('panel-hidden', panelHiddenState);
   const btn = document.getElementById('panel-toggle');
   if (btn) {
-    btn.textContent = hidden ? '⮜ панель' : '⮞ панель';
-    btn.classList.toggle('off', hidden);
+    btn.textContent = panelHiddenState ? '⮜ панель' : '⮞ панель';
+    btn.classList.toggle('off', panelHiddenState);
   }
   // The #map container width animates together with `right`; reflow the
   // map once the transition settles so the canvas fills the new width.
   setTimeout(() => map.resize(), 230);
 }
+
 function showPanel() {
-  if (!panelHidden()) return;
-  localStorage.setItem(PANEL_STORAGE_KEY, 'false');
+  if (!panelHiddenState) return;
+  panelHiddenState = false;
   applyPanelState();
 }
+
 function initPanelToggle() {
   const btn = document.getElementById('panel-toggle');
   if (!btn) return;
   btn.addEventListener('click', () => {
-    localStorage.setItem(PANEL_STORAGE_KEY, String(!panelHidden()));
+    panelHiddenState = !panelHiddenState;
     applyPanelState();
   });
   applyPanelState();
@@ -1726,7 +1726,7 @@ function toggleDelta() {
 function comparisonHeader(a, b) {
   const aActive = compareActive === 'A';
   const bActive = compareActive === 'B';
-  const deltaLabel = deltaSign === 1 ? 'Δ B−A' : 'Δ A−B';
+  const deltaLabel = deltaSign === 1 ? 'B−A' : 'A−B';
   return `<div class="cmp-legend">
       <span class="cmp-legend-item cmp-a${aActive ? ' cmp-active' : ''}">${aActive ? '▸ ' : ''}A: ${escapeHtml(a.label)}</span>
       <span class="cmp-legend-item cmp-b${bActive ? ' cmp-active' : ''}">${bActive ? '▸ ' : ''}B: ${escapeHtml(b.label)}</span>
@@ -1762,7 +1762,7 @@ function comparisonRow(key, va, vb) {
     deltaCell = `<span class="cmp-delta ${cls}">${formatDelta(delta)}</span>`;
   }
   return `<div class="cmp-row">
-      <span class="cmp-key" title="${escapeHtml(featureDescription(key) || key)}">${escapeHtml(key)}</span>
+      <span class="cmp-key" title="${escapeHtml(describeFeature(key) || key)}">${escapeHtml(key)}</span>
       <span class="cmp-val" title="${escapeHtml(fa)}">${escapeHtml(fa)}</span>
       <span class="cmp-val" title="${escapeHtml(fb)}">${escapeHtml(fb)}</span>
       ${deltaCell}
