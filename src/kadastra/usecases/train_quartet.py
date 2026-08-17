@@ -236,19 +236,19 @@ class TrainQuartet:
         )
         bb_final.fit(X_full, y_model, cat_feature_indices=full_cat_idx or None)
 
-        # The three simplifiers' full-data refits are not consumed by
-        # any current code path (inspector reads OOFs only). On
-        # landplot they dominate wall time, so they're skippable.
-        wb_final: EbmQuartetModel | None = None
+        # EBM (White Box) is always fit + saved — the inspector's
+        # explanation endpoint loads ebm_model.pkl. Grey/Naive full-data
+        # refits are not consumed (inspector reads OOFs only) and dominate
+        # landplot wall time, so they stay skippable.
+        wb_final = EbmQuartetModel(
+            max_bins=self._ebm_max_bins,
+            interactions=self._ebm_interactions,
+        )
+        wb_final.fit(X_full, y_model, cat_feature_indices=full_cat_idx or None)
+
         nl_final: NaiveLinearQuartetModel | None = None
         grey_final: GreyTreeQuartetModel | None = None
         if not self._skip_final_simplifier_fits:
-            wb_final = EbmQuartetModel(
-                max_bins=self._ebm_max_bins,
-                interactions=self._ebm_interactions,
-            )
-            wb_final.fit(X_full, y_model, cat_feature_indices=full_cat_idx or None)
-
             nl_final = NaiveLinearQuartetModel()
             nl_final.fit(X_naive, y_model, cat_feature_indices=naive_cat_idx or None)
 
@@ -312,8 +312,7 @@ class TrainQuartet:
             "grey_tree_oof_predictions.parquet": _build_oof_parquet(df, fold_ids, y, oof_orig["grey_tree"]),
             "naive_linear_oof_predictions.parquet": _build_oof_parquet(df, fold_ids, y, oof_orig["naive_linear"]),
         }
-        if wb_final is not None:
-            artifacts["ebm_model.pkl"] = wb_final.serialize()
+        artifacts["ebm_model.pkl"] = wb_final.serialize()
         if grey_final is not None:
             artifacts["grey_tree_model.pkl"] = grey_final.serialize()
         if nl_final is not None:

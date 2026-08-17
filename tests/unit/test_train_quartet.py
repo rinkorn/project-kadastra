@@ -164,14 +164,14 @@ def test_default_keeps_all_simplifier_final_fit_pkl_artifacts() -> None:
 
 
 def test_skip_final_simplifier_fits_omits_pkl_artifacts() -> None:
-    """S2: when skip_final_simplifier_fits=True, the EBM/Grey/Naive
-    full-data refit step is skipped — they are not used by any consumer
-    (inspector reads OOFs only) and dominate landplot training time.
-    CatBoost final fit stays because the registry contract still
-    requires a primary model.
+    """S2: when skip_final_simplifier_fits=True, the Grey/Naive full-data
+    refits are skipped (no consumer reads their *_model.pkl). The EBM
+    (White Box) final fit is ALWAYS kept — the inspector's explanation
+    endpoint loads ebm_model.pkl. CatBoost final fit stays because the
+    registry contract still requires a primary model.
 
     OOF parquets and quartet_metrics.json must remain identical in
-    structure — only the *_model.pkl artifacts are dropped.
+    structure — only the Grey/Naive *_model.pkl artifacts are dropped.
     """
     reader = _FakeReader(_synth_gold())
     registry = _FakeRegistry()
@@ -188,7 +188,7 @@ def test_skip_final_simplifier_fits_omits_pkl_artifacts() -> None:
     )
     usecase.execute("RU-KAZAN-AGG", AssetClass.APARTMENT)
     artifacts = registry.runs[0]["artifacts"]
-    assert "ebm_model.pkl" not in artifacts
+    assert "ebm_model.pkl" in artifacts
     assert "grey_tree_model.pkl" not in artifacts
     assert "naive_linear_model.pkl" not in artifacts
     # OOF parquets and metrics still produced.
