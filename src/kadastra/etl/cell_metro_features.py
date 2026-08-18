@@ -2,9 +2,9 @@
 
 Re-points ``compute_object_metro_features`` to the cell grid: walking
 distance (OSM pedestrian graph) from each cell centre to the nearest
-station/entrance, plus graph-distance counts. Supersedes the legacy
-haversine ``compute_metro_features`` for the object pipeline — the
-methodology (§7.2) treats "nearest" as by travel path, not geometry.
+station/entrance, plus graph-distance counts. Supersedes the retired
+per-cell haversine metro feature — the methodology (§7.2) treats
+"nearest" as by travel path, not geometry.
 """
 
 from __future__ import annotations

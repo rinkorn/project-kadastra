@@ -27,7 +27,7 @@ ADR-0010 §1 фиксирует: «Используется ~5% методоло
 
 | Путь | Что делает | Ключ | Статус |
 | --- | --- | --- | --- |
-| **Сетка (Слой 1)** | `build_region_coverage` строит покрытие H3; `build_metro_features` / `build_buildings_features` / `build_road_features` считают фичи по ячейке; `build_gold_features` джойнит их в hex-gold | `h3_index` | **Legacy/retired.** Питал старую hex-модель (`train_valuation_model`, synthetic target) и эндпоинт `/api/hex_features`; после перехода на per-object пайплайн не пересобирался и отключён (см. `api/routes.py`). |
+| **Сетка (Слой 1)** | ~~`build_region_coverage` → `build_metro_features` / `build_buildings_features` / `build_road_features` → `build_gold_features` → synthetic target → hex-модель~~ | `h3_index` | **Удалён** (dead code после перехода на per-object пайплайн). От старого пути остался только `build_region_coverage` — писатель покрытия, который читают новые `BuildCell*Features`. |
 | **Объект** | `build_object_features` считает **все** ЦОФ локации per-object (`object_metro/road/neighbor/zonal/polygon/geom_distance/municipality_features`) + относительные | `object_id` | **Канонический.** Это вход моделей квартета, карты и инспектора. |
 
 Разрыв: модель получает ЦОФ локации из **объектного** пути, где они пересчитываются для каждого объекта заново; **сеточный** путь (Слой 1) существует как наследие, но не подключён к объектам.

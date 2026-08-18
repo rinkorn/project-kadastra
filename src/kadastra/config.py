@@ -25,13 +25,8 @@ class Settings(BaseSettings):
     buildings_key: str = "Kadatastr/osm/osm_buildings_kazan_agglomeration.csv"
     roads_key: str = "Kadatastr/tatarstan_major_roads/tatarstan_major_roads.json"
 
-    gold_store_path: Path = Path("data/gold/features")
-    gold_feature_sets: list[str] = ["metro", "buildings", "roads"]
-
-    synthetic_target_store_path: Path = Path("data/gold/targets")
     synthetic_target_seed: int = 42
 
-    predictions_store_path: Path = Path("data/gold/predictions")
     valuation_object_store_path: Path = Path("data/gold/valuation_objects")
     object_predictions_store_path: Path = Path("data/gold/object_predictions")
     object_neighbor_radius_m: float = 500.0
