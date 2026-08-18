@@ -110,7 +110,7 @@
     .panel .exp-legend { color: #6b7280; font-size: 11px; line-height: 1.4; margin: 0 0 8px; }
     .panel .exp-row { display: grid; grid-template-columns: minmax(0, 1fr) 76px 96px; gap: 6px; padding: 2px 0; border-bottom: 1px solid #1f2937; align-items: center; }
     .panel .exp-key { color: #9ca3af; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .panel .exp-contrib { font-family: ui-monospace, SFMono-Regular, monospace; text-align: right; }
+    .panel .exp-contrib { font-family: ui-monospace, SFMono-Regular, monospace; text-align: right; white-space: nowrap; }
     .panel .exp-contrib.pos { color: #4ade80; }
     .panel .exp-contrib.neg { color: #f87171; }
     .panel .exp-contrib.exp-neutral { color: #93c5fd; }
@@ -1625,23 +1625,23 @@ function explanationSection(explanation) {
     ? `<button class="exp-toggle" id="exp-toggle" type="button" data-total="${terms.length}">Показать все (${terms.length})</button>`
     : '';
   const net = total - intercept;
-  const baseTip = 'Формула EBM: y_pred = константа + Σ вкладов. Константа (intercept) — базовый уровень, от которого отталкиваются признаки: прогноз при «средних» значениях всех признаков, примерно средняя цена за м² по этому классу. Каждый вклад добавляет (зелёный) или убавляет (красный) от этой базы.';
-  const yPredTip = 'Итоговый прогноз: y_pred = константа + Σ всех вкладов. То, что модель предсказала для этого объекта (₽/м²).';
-  // Neutral head rows — y_pred (total) then константа (baseline) — no sign,
-  // no green/red, so the accounting reads top-down before the features.
+  const baseTip = 'Среднее (intercept) — базовая средняя цена за м² по этому классу, от которой отталкиваются признаки: зелёный вклад прибавляет, красный — убавляет. Формула: y_pred = среднее + Σ вкладов.';
+  const yPredTip = 'Итоговый прогноз: y_pred = среднее + Σ всех вкладов. То, что модель предсказала для этого объекта (₽/м²).';
+  // Neutral head rows — y_pred (total) then среднее (baseline) — no sign,
+  // no green/red, both with the centre line the diverging bars reference.
   const head = `<div class="exp-row exp-row-base" data-tip="${escapeHtml(yPredTip)}">
       <span class="exp-key">y_pred</span>
-      <span class="exp-contrib exp-neutral">${escapeHtml(formatValue(total))} ₽/м²</span>
-      <span class="exp-bar-track"></span>
+      <span class="exp-contrib exp-neutral">${escapeHtml(formatValue(total))}</span>
+      <span class="exp-bar-track"><span class="exp-bar-zero"></span></span>
     </div>
     <div class="exp-row exp-row-base" data-tip="${escapeHtml(baseTip)}">
-      <span class="exp-key">константа</span>
-      <span class="exp-contrib exp-neutral">${escapeHtml(formatValue(intercept))} ₽/м²</span>
+      <span class="exp-key">среднее</span>
+      <span class="exp-contrib exp-neutral">${escapeHtml(formatValue(intercept))}</span>
       <span class="exp-bar-track"><span class="exp-bar-zero"></span></span>
     </div>`;
   return `<h2>Объяснение цены (EBM)</h2>
-    <div class="exp-base" data-tip="${escapeHtml(baseTip)}">y_pred = константа + Σ вкладов = ${escapeHtml(formatValue(intercept))} + (${escapeHtml(formatDelta(net))})</div>
-    <div class="exp-legend">Каждый вклад — насколько признак двигает цену от константы (₽/м²): <span class="exp-contrib pos">зелёный</span> прибавляет, <span class="exp-contrib neg">красный</span> убавляет.</div>
+    <div class="exp-base" data-tip="${escapeHtml(baseTip)}">y_pred = среднее + Σ вкладов = ${escapeHtml(formatValue(intercept))} + (${escapeHtml(formatDelta(net))})</div>
+    <div class="exp-legend">Каждый вклад — насколько признак двигает цену от среднего (₽/м²): <span class="exp-contrib pos">зелёный</span> прибавляет, <span class="exp-contrib neg">красный</span> убавляет.</div>
     <div class="exp-list" id="exp-top">${head}${rowsHtml(top)}</div>
     <div class="exp-list exp-all" id="exp-all" style="display:none">${head}${rowsHtml(terms)}</div>
     ${toggle}`;
