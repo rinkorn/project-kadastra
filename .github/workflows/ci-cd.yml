@@ -82,7 +82,7 @@ jobs:
           ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
             ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
             "cd ${{ env.DEPLOY_PATH }} && \
-             docker compose -p kadastra-dev-stage -f docker-compose.dev-stage.yml up -d --build --remove-orphans"
+             docker compose -p kadastra-dev-stage -f docker-compose.dev-stage.yml up -d --build --force-recreate --remove-orphans"
       - name: Wait for healthcheck
         run: |
           ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
