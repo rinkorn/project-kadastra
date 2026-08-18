@@ -116,8 +116,8 @@
     .panel .exp-bar { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
     .panel .exp-bar.pos { background: #4ade80; }
     .panel .exp-bar.neg { background: #f87171; }
-    .panel .exp-all { max-height: 440px; overflow-y: auto; margin-top: 2px; }
-    .panel .exp-toggle { background: #111827; color: #9ca3af; border: 1px solid #4b5563; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-size: 11px; margin-top: 8px; }
+    .panel .exp-all { margin-top: 2px; }
+    .panel .exp-toggle { background: #111827; color: #9ca3af; border: 1px solid #4b5563; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-size: 11px; margin: 2px 0 8px; }
     .panel .exp-toggle:hover { border-color: #fde047; color: #fde047; }
     .panel .cmp-delta.pos { color: #4ade80; }
     .panel .cmp-delta.neg { color: #f87171; }
@@ -1582,9 +1582,9 @@ function explanationSection(explanation) {
     : '';
   return `<h2>Объяснение цены (EBM)</h2>
     <div class="exp-total">y_pred = ${escapeHtml(formatValue(total))} ₽/м²</div>
+    ${toggle}
     <div class="exp-list" id="exp-top">${rowsHtml(top)}</div>
-    <div class="exp-list exp-all" id="exp-all" style="display:none">${rowsHtml(terms)}</div>
-    ${toggle}`;
+    <div class="exp-list exp-all" id="exp-all" style="display:none">${rowsHtml(terms)}</div>`;
 }
 
 function wireExplanationToggle() {
