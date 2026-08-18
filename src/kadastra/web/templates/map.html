@@ -106,6 +106,7 @@
     .panel .cmp-delta-toggle { cursor: pointer; }
     .panel .cmp-delta-toggle:hover { color: #fde047; }
     .panel .exp-total { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; color: #fde68a; margin: 2px 0 6px; }
+    .panel .exp-base { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; color: #93c5fd; margin: 0 0 6px; }
     .panel .exp-legend { color: #6b7280; font-size: 11px; line-height: 1.4; margin: 0 0 8px; }
     .panel .exp-row { display: grid; grid-template-columns: minmax(0, 1fr) 76px 96px; gap: 6px; padding: 2px 0; border-bottom: 1px solid #1f2937; align-items: center; }
     .panel .exp-key { color: #9ca3af; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1592,9 +1593,11 @@ function explanationSection(explanation) {
   const toggle = more > 0
     ? `<button class="exp-toggle" id="exp-toggle" type="button" data-total="${terms.length}">Показать все (${terms.length})</button>`
     : '';
+  const net = total - intercept;
   return `<h2>Объяснение цены (EBM)</h2>
     <div class="exp-total">y_pred = ${escapeHtml(formatValue(total))} ₽/м²</div>
-    <div class="exp-legend">Каждый вклад — насколько признак меняет прогноз (₽/м²): <span class="exp-contrib pos">зелёный</span> прибавляет, <span class="exp-contrib neg">красный</span> убавляет. Константа + Σ всех вкладов = y_pred.</div>
+    <div class="exp-base">константа = ${escapeHtml(formatValue(intercept))} ₽/м² · Σ вкладов = ${escapeHtml(formatDelta(net))} ₽/м²</div>
+    <div class="exp-legend">Каждый вклад — насколько признак двигает цену от константы (₽/м²): <span class="exp-contrib pos">зелёный</span> прибавляет, <span class="exp-contrib neg">красный</span> убавляет.</div>
     ${toggle}
     <div class="exp-list" id="exp-top">${rowsHtml(top)}</div>
     <div class="exp-list exp-all" id="exp-all" style="display:none">${rowsHtml(terms)}</div>`;
