@@ -56,6 +56,7 @@ class BuildObjectFeatures:
         osm_raions_geojson_path: Path | None = None,
         current_year_for_age_features: int = 2026,
         cell_geom_distance_reader: FeatureReaderPort | None = None,
+        cell_polygon_reader: FeatureReaderPort | None = None,
         cell_tsorf_resolution: int = 10,
     ) -> None:
         self._reader = reader
@@ -80,6 +81,7 @@ class BuildObjectFeatures:
         self._osm_raions_geojson_path = osm_raions_geojson_path
         self._current_year_for_age_features = current_year_for_age_features
         self._cell_geom_distance_reader = cell_geom_distance_reader
+        self._cell_polygon_reader = cell_polygon_reader
         self._cell_tsorf_resolution = cell_tsorf_resolution
 
     def execute(self, region_code: str, asset_classes: list[AssetClass]) -> None:
@@ -104,14 +106,19 @@ class BuildObjectFeatures:
         # excludes self-rows in the count.
         zonal_layers = self._build_zonal_layers(enriched, stations, entrances)
         enriched = compute_object_zonal_features(enriched, layers=zonal_layers, radii_m=self._zonal_radii_m)
-        # Poly-area buffer features (ADR-0014). Layers are loaded once
-        # from disk; missing files yield empty layers (zero share).
-        poly_layers = self._load_poly_area_layers()
-        enriched = compute_object_polygon_features(
-            enriched,
-            polygons_by_layer=poly_layers,
-            radii_m=self._poly_area_radii_m,
-        )
+        # Poly-area buffer features (ADR-0014 → ADR-0027). When the cell
+        # grid store is wired in, share comes from Слой 1 (computed at
+        # cell centres); otherwise the per-object fallback applies.
+        if self._cell_polygon_reader is not None:
+            cell_share = self._cell_polygon_reader.load(region_code, self._cell_tsorf_resolution, "poly_area")
+            enriched = self._join_cell_tsorf(enriched, cell_share)
+        else:
+            poly_layers = self._load_poly_area_layers()
+            enriched = compute_object_polygon_features(
+                enriched,
+                polygons_by_layer=poly_layers,
+                radii_m=self._poly_area_radii_m,
+            )
         # Geom-distance features (ADR-0019). Each entry is a path to an
         # OSM-extracted GeoJSON-seq with arbitrary geometries (Polygon /
         # LineString / Point); the helper handles all three. Missing
@@ -119,7 +126,7 @@ class BuildObjectFeatures:
         # blocks carry orthogonal signals; the model weights them.
         if self._cell_geom_distance_reader is not None:
             cell_dist = self._cell_geom_distance_reader.load(region_code, self._cell_tsorf_resolution, "geom_distance")
-            enriched = self._join_cell_distances(enriched, cell_dist)
+            enriched = self._join_cell_tsorf(enriched, cell_dist)
         elif self._geom_distance_layer_paths:
             distance_layers = self._load_layer_geometries(self._geom_distance_layer_paths)
             enriched = compute_object_geom_distance_features(enriched, geometries_by_layer=distance_layers)
@@ -236,16 +243,16 @@ class BuildObjectFeatures:
     def _load_layer_geometries(self, paths: dict[str, str]) -> dict[str, list[BaseGeometry]]:
         return load_geojsonseq_geometries(paths)
 
-    def _join_cell_distances(self, objects: pl.DataFrame, cell_dist: pl.DataFrame) -> pl.DataFrame:
-        """Join objects to cell-level distance ЦОФ on their res cell.
+    def _join_cell_tsorf(self, objects: pl.DataFrame, cell_tsorf: pl.DataFrame) -> pl.DataFrame:
+        """Join objects to cell-level ЦОФ on their res cell (ADR-0027).
 
         Computes each object's ``h3_index`` at ``_cell_tsorf_resolution``
-        and left-joins the Слой 1 distance store; objects whose cell has
-        no store row get null distances (mirrors per-object missing-layer
+        and left-joins a Слой 1 feature set; objects whose cell has no
+        store row get null values (mirrors per-object missing-layer
         semantics).
         """
         with_index = add_h3_index(objects, resolution=self._cell_tsorf_resolution)
-        right = cell_dist.drop("resolution") if "resolution" in cell_dist.columns else cell_dist
+        right = cell_tsorf.drop("resolution") if "resolution" in cell_tsorf.columns else cell_tsorf
         return with_index.join(right, on="h3_index", how="left").drop("h3_index")
 
     def _build_zonal_layers(

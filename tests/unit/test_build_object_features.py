@@ -158,6 +158,7 @@ def _usecase(
     geom_distance_layer_paths: dict[str, str] | None = None,
     current_year_for_age_features: int = 2026,
     cell_geom_distance_reader: FeatureReaderPort | None = None,
+    cell_polygon_reader: FeatureReaderPort | None = None,
     cell_tsorf_resolution: int = 10,
 ) -> BuildObjectFeatures:
     return BuildObjectFeatures(
@@ -187,6 +188,7 @@ def _usecase(
         geom_distance_layer_paths=(geom_distance_layer_paths if geom_distance_layer_paths is not None else {}),
         current_year_for_age_features=current_year_for_age_features,
         cell_geom_distance_reader=cell_geom_distance_reader,
+        cell_polygon_reader=cell_polygon_reader,
         cell_tsorf_resolution=cell_tsorf_resolution,
     )
 
@@ -719,3 +721,32 @@ def test_joins_cell_geom_distance_from_grid_store() -> None:
     assert float(df["dist_to_water_m"][0]) == 123.0
     assert "h3_index" not in df.columns  # join key dropped
     assert "resolution" not in df.columns  # store bookkeeping column dropped
+
+
+def test_joins_cell_polygon_share_from_grid_store() -> None:
+    """ADR-0027: when a cell_polygon_reader is wired, share comes from the
+    cell grid store via join, not per-object computation."""
+    cell = h3.latlng_to_cell(KAZAN_LAT, KAZAN_LON, 10)
+    reader = _FakeCellDistReader(pl.DataFrame({"h3_index": [cell], "resolution": [10], "water_share_500m": [0.42]}))
+
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        cell_polygon_reader=reader,
+        cell_tsorf_resolution=10,
+        poly_area_layer_paths={},
+        poly_area_radii_m=[500],
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "water_share_500m" in df.columns
+    assert float(df["water_share_500m"][0]) == 0.42
+    assert "h3_index" not in df.columns
