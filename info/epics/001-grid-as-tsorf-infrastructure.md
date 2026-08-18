@@ -70,7 +70,7 @@ ADR-0010 §1 фиксирует: «Используется ~5% методоло
 | --- | --- |
 | Дистанционные (`dist_to_*_m`) | ✅ на сетке: `compute_cell_geom_distance_features` + `BuildCellGeomDistanceFeatures` + join за `cell_tsorf_enabled` |
 | Поли-площадные (`*_share_{R}m`) | ✅ на сетке: `compute_cell_polygon_features` + `BuildCellPolygonFeatures` + join |
-| Зональные / плотность (`*_within_{R}m`, `count_*`) | ⏳ нужен шаг про self-exclusion (объект исключает себя; у ячейки «себя» нет) |
+| Зональные / плотность (`*_within_{R}m`, `count_*`) | ✅ на сетке, **self-free** (`compute_cell_zonal_features` + `BuildCellZonalFeatures` + join) |
 | Дорожная плотность (`road_length_500m`) | ⏳ не начато |
 | Метро (`dist_metro_m` через road-graph) | ⏳ объектная версия — walking distance от точной точки объекта |
 | A/B против per-object baseline | ⏳ требует сборки данных + обучения |
