@@ -1594,9 +1594,10 @@ function explanationSection(explanation) {
     ? `<button class="exp-toggle" id="exp-toggle" type="button" data-total="${terms.length}">Показать все (${terms.length})</button>`
     : '';
   const net = total - intercept;
+  const baseTip = 'Формула EBM: y_pred = константа + Σ вкладов. Константа (intercept) — базовый уровень, от которого отталкиваются признаки: прогноз при «средних» значениях всех признаков, примерно средняя цена за м² по этому классу. Каждый вклад добавляет (зелёный) или убавляет (красный) от этой базы.';
   return `<h2>Объяснение цены (EBM)</h2>
     <div class="exp-total">y_pred = ${escapeHtml(formatValue(total))} ₽/м²</div>
-    <div class="exp-base">константа = ${escapeHtml(formatValue(intercept))} ₽/м² · Σ вкладов = ${escapeHtml(formatDelta(net))} ₽/м²</div>
+    <div class="exp-base" data-tip="${escapeHtml(baseTip)}">y_pred = константа + Σ вкладов = ${escapeHtml(formatValue(intercept))} + (${escapeHtml(formatDelta(net))})</div>
     <div class="exp-legend">Каждый вклад — насколько признак двигает цену от константы (₽/м²): <span class="exp-contrib pos">зелёный</span> прибавляет, <span class="exp-contrib neg">красный</span> убавляет.</div>
     ${toggle}
     <div class="exp-list" id="exp-top">${rowsHtml(top)}</div>
