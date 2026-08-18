@@ -1,5 +1,6 @@
 import json
 from dataclasses import dataclass
+from typing import Protocol
 
 import h3
 import numpy as np
@@ -9,6 +10,8 @@ from kadastra.domain.asset_class import AssetClass
 from kadastra.etl.haversine import haversine_meters
 from kadastra.ports.feature_reader import FeatureReaderPort
 from kadastra.ports.road_graph import RoadGraphPort
+from kadastra.ports.valuation_object_reader import ValuationObjectReaderPort
+from kadastra.ports.valuation_object_store import ValuationObjectStorePort
 from kadastra.usecases.build_object_features import BuildObjectFeatures
 
 KAZAN_LAT, KAZAN_LON = 55.7887, 49.1221
@@ -107,6 +110,14 @@ class _FakeStore:
         return self._initial[asset_class]
 
 
+class _ReaderStore(ValuationObjectReaderPort, ValuationObjectStorePort, Protocol):
+    """Contract BuildObjectFeatures actually depends on: one object
+    wired into both ``reader=`` and ``store=``. Mirrors the real
+    ParquetValuationObjectStore, which is read-write-same-path — the
+    design the idempotency test exercises. Fakes satisfy this
+    structurally; no inheritance needed."""
+
+
 def _stations_csv(rows: list[tuple[float, float]]) -> bytes:
     header = "name,lat,lon\n"
     body = "".join(f"s,{lat},{lon}\n" for lat, lon in rows)
@@ -153,7 +164,7 @@ class _FakeCellDistReader:
 
 
 def _usecase(
-    store: _FakeStore,
+    store: _ReaderStore,
     raw: _FakeRawData,
     *,
     relative_feature_parent_resolutions: list[int] | None = None,
@@ -893,18 +904,18 @@ def test_joins_cell_metro_from_grid_store() -> None:
     assert "h3_index" not in df.columns
 
 
-class _WriteThroughStore(_FakeStore):
-    """Store that persists saves — so a second execute() reads the
-    enriched output of the first. Mirrors ParquetValuationObjectStore's
-    read-write-same-path design, which is the root of the ``_right``
-    contamination bug."""
+class _WriteThroughStore:
+    """Read-write store that persists saves — so a second execute()
+    reads the enriched output of the first. Mirrors
+    ParquetValuationObjectStore's read-write-same-path design, the root
+    of the ``_right`` contamination bug the idempotency test guards."""
 
     def __init__(self, initial: dict[AssetClass, pl.DataFrame]) -> None:
-        super().__init__(initial)
         self._data = dict(initial)
+        self.calls: list[_StoreCall] = []
 
     def save(self, region_code: str, asset_class: AssetClass, df: pl.DataFrame) -> None:
-        super().save(region_code, asset_class, df)
+        self.calls.append(_StoreCall(region_code, asset_class, df))
         self._data[asset_class] = df
 
     def load(self, region_code: str, asset_class: AssetClass) -> pl.DataFrame:
