@@ -58,6 +58,7 @@ class BuildObjectFeatures:
         cell_geom_distance_reader: FeatureReaderPort | None = None,
         cell_polygon_reader: FeatureReaderPort | None = None,
         cell_zonal_reader: FeatureReaderPort | None = None,
+        cell_road_reader: FeatureReaderPort | None = None,
         cell_tsorf_resolution: int = 10,
     ) -> None:
         self._reader = reader
@@ -84,6 +85,7 @@ class BuildObjectFeatures:
         self._cell_geom_distance_reader = cell_geom_distance_reader
         self._cell_polygon_reader = cell_polygon_reader
         self._cell_zonal_reader = cell_zonal_reader
+        self._cell_road_reader = cell_road_reader
         self._cell_tsorf_resolution = cell_tsorf_resolution
 
     def execute(self, region_code: str, asset_classes: list[AssetClass]) -> None:
@@ -99,7 +101,11 @@ class BuildObjectFeatures:
         combined = pl.concat(non_empty, how="vertical_relaxed") if non_empty else next(iter(slices.values()))
 
         enriched = compute_object_metro_features(combined, stations, entrances, road_graph=self._road_graph)
-        enriched = compute_object_road_features(enriched, ways, radius_m=self._road_radius_m)
+        if self._cell_road_reader is not None:
+            cell_road = self._cell_road_reader.load(region_code, self._cell_tsorf_resolution, "road_density")
+            enriched = self._join_cell_tsorf(enriched, cell_road)
+        else:
+            enriched = compute_object_road_features(enriched, ways, radius_m=self._road_radius_m)
         enriched = compute_object_neighbor_features(enriched, radius_m=self._neighbor_radius_m)
         # Zonal density at multiple radii (ADR-0013). Layers are built
         # from the same payload: stations/entrances are the loaded CSVs;

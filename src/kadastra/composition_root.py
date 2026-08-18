@@ -33,6 +33,9 @@ from kadastra.usecases.build_cell_geom_distance_features import (
 from kadastra.usecases.build_cell_polygon_features import (
     BuildCellPolygonFeatures,
 )
+from kadastra.usecases.build_cell_road_features import (
+    BuildCellRoadFeatures,
+)
 from kadastra.usecases.build_cell_zonal_features import (
     BuildCellZonalFeatures,
 )
@@ -142,6 +145,16 @@ class Container:
             radii_m=s.zonal_radii_m,
             zonal_layer_names=s.zonal_layer_names,
             geom_distance_layer_paths=s.geom_distance_layer_paths,
+        )
+
+    def build_cell_road_features(self) -> BuildCellRoadFeatures:
+        s = self._settings
+        return BuildCellRoadFeatures(
+            coverage_reader=ParquetCoverageStore(s.coverage_store_path),
+            feature_store=ParquetFeatureStore(s.feature_store_path),
+            raw_data=self.build_s3_raw_data(),
+            roads_key=s.roads_key,
+            radius_m=s.object_road_radius_m,
         )
 
     def build_gold_features(self) -> BuildGoldFeatures:
@@ -265,6 +278,7 @@ class Container:
             cell_geom_distance_reader=(ParquetFeatureStore(s.feature_store_path) if s.cell_tsorf_enabled else None),
             cell_polygon_reader=(ParquetFeatureStore(s.feature_store_path) if s.cell_tsorf_enabled else None),
             cell_zonal_reader=(ParquetFeatureStore(s.feature_store_path) if s.cell_tsorf_enabled else None),
+            cell_road_reader=(ParquetFeatureStore(s.feature_store_path) if s.cell_tsorf_enabled else None),
             cell_tsorf_resolution=s.cell_tsorf_resolution,
         )
 
