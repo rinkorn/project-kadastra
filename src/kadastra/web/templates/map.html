@@ -113,6 +113,8 @@
     .panel .exp-contrib { font-family: ui-monospace, SFMono-Regular, monospace; text-align: right; }
     .panel .exp-contrib.pos { color: #4ade80; }
     .panel .exp-contrib.neg { color: #f87171; }
+    .panel .exp-contrib.exp-neutral { color: #93c5fd; }
+    .panel .exp-row-base { border-bottom-color: #374151; }
     .panel .exp-bar-track { position: relative; height: 8px; background: #1f2937; border-radius: 4px; overflow: hidden; }
     .panel .exp-bar-zero { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: #6b7280; }
     .panel .exp-bar { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
@@ -1595,13 +1597,20 @@ function explanationSection(explanation) {
     : '';
   const net = total - intercept;
   const baseTip = 'Формула EBM: y_pred = константа + Σ вкладов. Константа (intercept) — базовый уровень, от которого отталкиваются признаки: прогноз при «средних» значениях всех признаков, примерно средняя цена за м² по этому классу. Каждый вклад добавляет (зелёный) или убавляет (красный) от этой базы.';
+  // The intercept is the neutral baseline row — listed first, no sign,
+  // no green/red, its bar is just the zero line the other bars diverge from.
+  const baseRow = `<div class="exp-row exp-row-base" data-tip="${escapeHtml(baseTip)}">
+      <span class="exp-key">константа</span>
+      <span class="exp-contrib exp-neutral">${escapeHtml(formatValue(intercept))}</span>
+      <span class="exp-bar-track"><span class="exp-bar-zero"></span></span>
+    </div>`;
   return `<h2>Объяснение цены (EBM)</h2>
     <div class="exp-total">y_pred = ${escapeHtml(formatValue(total))} ₽/м²</div>
     <div class="exp-base" data-tip="${escapeHtml(baseTip)}">y_pred = константа + Σ вкладов = ${escapeHtml(formatValue(intercept))} + (${escapeHtml(formatDelta(net))})</div>
     <div class="exp-legend">Каждый вклад — насколько признак двигает цену от константы (₽/м²): <span class="exp-contrib pos">зелёный</span> прибавляет, <span class="exp-contrib neg">красный</span> убавляет.</div>
     ${toggle}
-    <div class="exp-list" id="exp-top">${rowsHtml(top)}</div>
-    <div class="exp-list exp-all" id="exp-all" style="display:none">${rowsHtml(terms)}</div>`;
+    <div class="exp-list" id="exp-top">${baseRow}${rowsHtml(top)}</div>
+    <div class="exp-list exp-all" id="exp-all" style="display:none">${baseRow}${rowsHtml(terms)}</div>`;
 }
 
 function wireExplanationToggle() {
