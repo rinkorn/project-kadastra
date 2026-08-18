@@ -27,6 +27,9 @@ from kadastra.usecases.assemble_nspd_valuation_objects import (
     AssembleNspdValuationObjects,
 )
 from kadastra.usecases.build_buildings_features import BuildBuildingsFeatures
+from kadastra.usecases.build_cell_geom_distance_features import (
+    BuildCellGeomDistanceFeatures,
+)
 from kadastra.usecases.build_gold_features import BuildGoldFeatures
 from kadastra.usecases.build_hex_aggregates import BuildHexAggregates
 from kadastra.usecases.build_metro_features import BuildMetroFeatures
@@ -102,6 +105,14 @@ class Container:
             raw_data=self.build_s3_raw_data(),
             feature_store=ParquetFeatureStore(s.feature_store_path),
             roads_key=s.roads_key,
+        )
+
+    def build_cell_geom_distance_features(self) -> BuildCellGeomDistanceFeatures:
+        s = self._settings
+        return BuildCellGeomDistanceFeatures(
+            coverage_reader=ParquetCoverageStore(s.coverage_store_path),
+            feature_store=ParquetFeatureStore(s.feature_store_path),
+            geom_distance_layer_paths=s.geom_distance_layer_paths,
         )
 
     def build_gold_features(self) -> BuildGoldFeatures:

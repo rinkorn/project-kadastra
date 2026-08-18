@@ -8,6 +8,7 @@ from shapely.geometry import shape
 from shapely.geometry.base import BaseGeometry
 
 from kadastra.domain.asset_class import AssetClass
+from kadastra.etl.load_geometries import load_geojsonseq_geometries
 from kadastra.etl.object_age_features import compute_object_age_features
 from kadastra.etl.object_geom_distance_features import (
     compute_object_geom_distance_features,
@@ -224,39 +225,7 @@ class BuildObjectFeatures:
         return self._load_layer_geometries(self._poly_area_layer_paths)
 
     def _load_layer_geometries(self, paths: dict[str, str]) -> dict[str, list[BaseGeometry]]:
-        """Load each ``{name: path}`` GeoJSON-seq into a geometries list.
-
-        Geometry-agnostic: returns whatever ``shape()`` produces from each
-        feature (Point / LineString / Polygon and Multi* variants). The
-        share helper still expects polygons only and is fed via
-        ``poly_area_layer_paths``, while the distance helper accepts any
-        type and is fed via ``geom_distance_layer_paths``.
-
-        Missing files yield empty layers — downstream produces
-        zero/null columns rather than failing, so the pipeline stays
-        composable while OSM extractions are still being run.
-        """
-        layers: dict[str, list[BaseGeometry]] = {}
-        for name, path_str in paths.items():
-            path = Path(path_str)
-            if not path.is_file():
-                layers[name] = []
-                continue
-            geoms: list[BaseGeometry] = []
-            with path.open("r", encoding="utf-8") as f:
-                for raw_line in f:
-                    line = raw_line.strip()
-                    if not line or line.startswith("\x1e"):
-                        line = line.lstrip("\x1e").strip()
-                        if not line:
-                            continue
-                    feature = json.loads(line)
-                    geom = feature.get("geometry")
-                    if geom is None:
-                        continue
-                    geoms.append(shape(geom))
-            layers[name] = geoms
-        return layers
+        return load_geojsonseq_geometries(paths)
 
     def _build_zonal_layers(
         self,
