@@ -121,7 +121,7 @@
     .panel .exp-bar.pos { background: #4ade80; }
     .panel .exp-bar.neg { background: #f87171; }
     .panel .exp-all { margin-top: 2px; }
-    .panel .exp-toggle { background: #111827; color: #9ca3af; border: 1px solid #4b5563; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-size: 11px; margin: 2px 0 8px; }
+    .panel .exp-toggle { background: #111827; color: #9ca3af; border: 1px solid #4b5563; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-size: 11px; margin-top: 8px; }
     .panel .exp-toggle:hover { border-color: #fde047; color: #fde047; }
     .panel .cmp-delta.pos { color: #4ade80; }
     .panel .cmp-delta.neg { color: #f87171; }
@@ -490,6 +490,22 @@ const TIPS = {
 // Populated by loadFeatureOptions, read by applyFeatureOptionTooltips.
 let featureDescriptions = {};
 
+// English POI tokens → Russian, mirroring domain/feature_descriptions.py
+// so non-curated radii/POIs in the EBM explanation get the same wording.
+const POI_RU = {
+  water: 'водоём', park: 'парк', forest: 'лес', industrial: 'промзона',
+  cemetery: 'кладбище', landfill: 'свалка', powerline: 'ЛЭП', railway: 'ж/д',
+  railway_station: 'ж/д станция', school: 'школа', kindergarten: 'детский сад',
+  clinic: 'поликлиника', hospital: 'больница', pharmacy: 'аптека',
+  supermarket: 'супермаркет', cafe: 'кафе', restaurant: 'ресторан',
+  bus_stop: 'автобусная остановка', tram_stop: 'трамвайная остановка',
+  stations: 'станции метро', entrances: 'входы в метро',
+  apartments: 'жилые дома (МКД)', houses: 'ИЖС', commercial: 'коммерческие объекты',
+};
+function humanizePoi(token) {
+  return POI_RU[token] || token.replace(/_/g, ' ');
+}
+
 function describeFeature(name) {
   if (featureDescriptions[name]) return featureDescriptions[name];
   // EBM pair-interaction terms ("a & b") aren't in the API's description
@@ -508,6 +524,19 @@ function describeFeature(name) {
     }[rel[3]];
     return `Признак «${rel[1].replace(/_/g, ' ')}» относительно родительского гекса H3 разрешения ${rel[2]}: ${statRu}. Ловит «дороже/больше, чем соседи», а не абсолютный уровень.`;
   }
+  // The families below mirror domain/feature_descriptions.py's regex
+  // coverage so non-curated radii/POIs (water_share_800m etc.) also get a
+  // description even though they're not in the static API dict.
+  const dist = name.match(/^dist_to_(.+?)_m$/);
+  if (dist) return `Расстояние до ближайшего объекта «${humanizePoi(dist[1])}», в метрах.`;
+  const share = name.match(/^(.+?)_share_(\d+)m$/);
+  if (share) return `Доля площади «${humanizePoi(share[1])}» в круге радиуса ${share[2]} м вокруг объекта (0 — нет, 1 — полностью).`;
+  const within = name.match(/^(.+?)_within_(\d+)m$/);
+  if (within) return `Сколько объектов «${humanizePoi(within[1])}» в радиусе ${within[2]} м вокруг объекта.`;
+  const count = name.match(/^count_(.+?)_(\d+)(km|m)$/);
+  if (count) return `Сколько объектов «${humanizePoi(count[1])}» в радиусе ${count[2]} ${count[3]} вокруг объекта.`;
+  const countp = name.match(/^count_p(\d+)$/);
+  if (countp) return `Сколько объектов этого класса в родительском гексе H3 разрешения ${countp[1]}. Укрупнённый счётчик плотности.`;
   return null;
 }
 
@@ -1597,20 +1626,25 @@ function explanationSection(explanation) {
     : '';
   const net = total - intercept;
   const baseTip = 'Формула EBM: y_pred = константа + Σ вкладов. Константа (intercept) — базовый уровень, от которого отталкиваются признаки: прогноз при «средних» значениях всех признаков, примерно средняя цена за м² по этому классу. Каждый вклад добавляет (зелёный) или убавляет (красный) от этой базы.';
-  // The intercept is the neutral baseline row — listed first, no sign,
-  // no green/red, its bar is just the zero line the other bars diverge from.
-  const baseRow = `<div class="exp-row exp-row-base" data-tip="${escapeHtml(baseTip)}">
+  const yPredTip = 'Итоговый прогноз: y_pred = константа + Σ всех вкладов. То, что модель предсказала для этого объекта (₽/м²).';
+  // Neutral head rows — y_pred (total) then константа (baseline) — no sign,
+  // no green/red, so the accounting reads top-down before the features.
+  const head = `<div class="exp-row exp-row-base" data-tip="${escapeHtml(yPredTip)}">
+      <span class="exp-key">y_pred</span>
+      <span class="exp-contrib exp-neutral">${escapeHtml(formatValue(total))} ₽/м²</span>
+      <span class="exp-bar-track"></span>
+    </div>
+    <div class="exp-row exp-row-base" data-tip="${escapeHtml(baseTip)}">
       <span class="exp-key">константа</span>
-      <span class="exp-contrib exp-neutral">${escapeHtml(formatValue(intercept))}</span>
+      <span class="exp-contrib exp-neutral">${escapeHtml(formatValue(intercept))} ₽/м²</span>
       <span class="exp-bar-track"><span class="exp-bar-zero"></span></span>
     </div>`;
   return `<h2>Объяснение цены (EBM)</h2>
-    <div class="exp-total">y_pred = ${escapeHtml(formatValue(total))} ₽/м²</div>
     <div class="exp-base" data-tip="${escapeHtml(baseTip)}">y_pred = константа + Σ вкладов = ${escapeHtml(formatValue(intercept))} + (${escapeHtml(formatDelta(net))})</div>
     <div class="exp-legend">Каждый вклад — насколько признак двигает цену от константы (₽/м²): <span class="exp-contrib pos">зелёный</span> прибавляет, <span class="exp-contrib neg">красный</span> убавляет.</div>
-    ${toggle}
-    <div class="exp-list" id="exp-top">${baseRow}${rowsHtml(top)}</div>
-    <div class="exp-list exp-all" id="exp-all" style="display:none">${baseRow}${rowsHtml(terms)}</div>`;
+    <div class="exp-list" id="exp-top">${head}${rowsHtml(top)}</div>
+    <div class="exp-list exp-all" id="exp-all" style="display:none">${head}${rowsHtml(terms)}</div>
+    ${toggle}`;
 }
 
 function wireExplanationToggle() {
