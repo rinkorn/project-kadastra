@@ -226,10 +226,11 @@ def test_parallel_folds_smoke_runs_and_produces_oof_for_all_models() -> None:
         assert df.height == 240
 
 
-def test_landplot_uses_log_target_and_reports_rmse_log() -> None:
-    """ADR-0026: landplot trains on log(₽/м²) and stores OOF back in the
-    original scale; the metrics JSON records ``target_transform='log'``
-    and a per-model ``rmse_log`` (the stable relative metric)."""
+def test_landplot_trains_on_identity_and_reports_wape() -> None:
+    """ADR-0026: WAPE is the cross-class relative metric for landplot —
+    stable on the tiny ₽/м² denominator that breaks MAPE. The class trains
+    on the raw target (no log transform; log-target was reverted after an
+    A/B showed no ranking/aggregate gain)."""
     reader = _FakeReader(_synth_gold())
     registry = _FakeRegistry()
     usecase = TrainQuartet(
@@ -245,9 +246,8 @@ def test_landplot_uses_log_target_and_reports_rmse_log() -> None:
     usecase.execute("RU-KAZAN-AGG", AssetClass.LANDPLOT)
     artifacts = registry.runs[0]["artifacts"]
     payload = json.loads(artifacts["quartet_metrics.json"].decode("utf-8"))
-    assert payload["target_transform"] == "log"
+    # No target transform — metrics are in the original ₽/м² scale.
+    assert "target_transform" not in payload
     for model in ("catboost", "ebm", "grey_tree", "naive_linear"):
-        assert "rmse_log" in payload["models"][model]
-    # OOF is exp'd back to ₽/м² — positive and same magnitude as target.
-    df = pl.read_parquet(io.BytesIO(artifacts["catboost_oof_predictions.parquet"]))
-    assert (df["y_pred_oof"] > 0).all()
+        assert "wape" in payload["models"][model]
+        assert "rmse_log" not in payload["models"][model]
