@@ -42,6 +42,7 @@ from kadastra.usecases.get_hex_aggregates import (
 from kadastra.usecases.get_market_reference import GetMarketReference
 from kadastra.usecases.load_object_inspection import (
     OBJECT_FEATURE_COLUMNS,
+    RAW_OBJECT_FEATURE_COLUMNS,
     LoadObjectInspection,
 )
 
@@ -255,7 +256,12 @@ def make_api_router(
 
     @router.get("/feature_options")
     def feature_options() -> dict[str, Any]:
-        all_feature_names = list(NUMERIC_FEATURES) + list(CATEGORICAL_FEATURES) + list(OBJECT_FEATURE_COLUMNS)
+        all_feature_names = (
+            list(NUMERIC_FEATURES)
+            + list(CATEGORICAL_FEATURES)
+            + list(OBJECT_FEATURE_COLUMNS)
+            + list(RAW_OBJECT_FEATURE_COLUMNS)
+        )
         return {
             "asset_classes": list(ASSET_CLASS_VALUES),
             "numeric_features": list(NUMERIC_FEATURES),

@@ -94,6 +94,32 @@ OBJECT_FEATURE_COLUMNS: tuple[str, ...] = (
     "railway_station_within_500m",
 )
 
+# Raw object-level columns that the EBM uses as features but which are
+# deliberately kept out of the curated map-mode dropdown (OBJECT_FEATURE_COLUMNS)
+# — geometry (ADR-0018), parent-hex counts, age², and admin categoricals.
+# They still surface in the EBM explanation, so the API describes them too.
+RAW_OBJECT_FEATURE_COLUMNS: tuple[str, ...] = (
+    "count_p7",
+    "count_p8",
+    "polygon_area_m2",
+    "polygon_perimeter_m",
+    "polygon_compactness",
+    "polygon_convexity",
+    "bbox_aspect_ratio",
+    "polygon_orientation_deg",
+    "polygon_n_vertices",
+    "age_years_sq",
+    "materials",
+    "era_category",
+    "mun_okrug_name",
+    "mun_okrug_oktmo",
+    "settlement_name",
+    "intra_city_raion",
+    "oktmo_full",
+    "okato",
+    "postal_index",
+)
+
 
 class LoadObjectInspection:
     def __init__(

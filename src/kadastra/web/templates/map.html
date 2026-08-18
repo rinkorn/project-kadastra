@@ -106,6 +106,7 @@
     .panel .cmp-delta-toggle { cursor: pointer; }
     .panel .cmp-delta-toggle:hover { color: #fde047; }
     .panel .exp-total { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; color: #fde68a; margin: 2px 0 6px; }
+    .panel .exp-legend { color: #6b7280; font-size: 11px; line-height: 1.4; margin: 0 0 8px; }
     .panel .exp-row { display: grid; grid-template-columns: minmax(0, 1fr) 76px 96px; gap: 6px; padding: 2px 0; border-bottom: 1px solid #1f2937; align-items: center; }
     .panel .exp-key { color: #9ca3af; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .panel .exp-contrib { font-family: ui-monospace, SFMono-Regular, monospace; text-align: right; }
@@ -492,6 +493,17 @@ function describeFeature(name) {
   // dict (they're formed at explain time) — give them a generic hint.
   if (name.includes(' & ')) {
     return 'Совместный вклад пары признаков: влияние каждого из них зависит от уровня другого. EBM отобрал эту пару как значимое взаимодействие.';
+  }
+  // ADR-0012 relative-to-parent features are dynamic (base × resolution),
+  // so they're not in the static dict — describe them inline.
+  const rel = name.match(/^(.+)__rel_p(\d+)_(diff_med|ratio_med|z_iqr)$/);
+  if (rel) {
+    const statRu = {
+      diff_med: 'отклонение от медианы родительского гекса (в единицах признака)',
+      ratio_med: 'отношение к медиане родительского гекса (во сколько раз)',
+      z_iqr: 'робастный z-score: на сколько межквартильных размахов выше/ниже медианы родительского гекса',
+    }[rel[3]];
+    return `Признак «${rel[1].replace(/_/g, ' ')}» относительно родительского гекса H3 разрешения ${rel[2]}: ${statRu}. Ловит «дороже/больше, чем соседи», а не абсолютный уровень.`;
   }
   return null;
 }
@@ -1582,6 +1594,7 @@ function explanationSection(explanation) {
     : '';
   return `<h2>Объяснение цены (EBM)</h2>
     <div class="exp-total">y_pred = ${escapeHtml(formatValue(total))} ₽/м²</div>
+    <div class="exp-legend">Каждый вклад — насколько признак меняет прогноз (₽/м²): <span class="exp-contrib pos">зелёный</span> прибавляет, <span class="exp-contrib neg">красный</span> убавляет. Константа + Σ всех вкладов = y_pred.</div>
     ${toggle}
     <div class="exp-list" id="exp-top">${rowsHtml(top)}</div>
     <div class="exp-list exp-all" id="exp-all" style="display:none">${rowsHtml(terms)}</div>`;
