@@ -233,6 +233,8 @@ class Container:
             gar_lookup_object_params_path=s.gar_lookup_object_params_path,
             osm_raions_geojson_path=s.osm_raions_geojson_path,
             current_year_for_age_features=s.current_year_for_age_features,
+            cell_geom_distance_reader=(ParquetFeatureStore(s.feature_store_path) if s.cell_tsorf_enabled else None),
+            cell_tsorf_resolution=s.cell_tsorf_resolution,
         )
 
     def build_object_synthetic_target(self) -> BuildObjectSyntheticTarget:

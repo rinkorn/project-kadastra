@@ -8,6 +8,7 @@ from shapely.geometry import shape
 from shapely.geometry.base import BaseGeometry
 
 from kadastra.domain.asset_class import AssetClass
+from kadastra.etl.h3_coverage import add_h3_index
 from kadastra.etl.load_geometries import load_geojsonseq_geometries
 from kadastra.etl.object_age_features import compute_object_age_features
 from kadastra.etl.object_geom_distance_features import (
@@ -23,6 +24,7 @@ from kadastra.etl.object_polygon_features import compute_object_polygon_features
 from kadastra.etl.object_road_features import compute_object_road_features
 from kadastra.etl.object_zonal_features import compute_object_zonal_features
 from kadastra.etl.relative_features import compute_relative_features
+from kadastra.ports.feature_reader import FeatureReaderPort
 from kadastra.ports.raw_data import RawDataPort
 from kadastra.ports.road_graph import RoadGraphPort
 from kadastra.ports.valuation_object_reader import ValuationObjectReaderPort
@@ -53,6 +55,8 @@ class BuildObjectFeatures:
         gar_lookup_object_params_path: Path | None = None,
         osm_raions_geojson_path: Path | None = None,
         current_year_for_age_features: int = 2026,
+        cell_geom_distance_reader: FeatureReaderPort | None = None,
+        cell_tsorf_resolution: int = 10,
     ) -> None:
         self._reader = reader
         self._store = store
@@ -75,6 +79,8 @@ class BuildObjectFeatures:
         self._gar_lookup_object_params_path = gar_lookup_object_params_path
         self._osm_raions_geojson_path = osm_raions_geojson_path
         self._current_year_for_age_features = current_year_for_age_features
+        self._cell_geom_distance_reader = cell_geom_distance_reader
+        self._cell_tsorf_resolution = cell_tsorf_resolution
 
     def execute(self, region_code: str, asset_classes: list[AssetClass]) -> None:
         stations = pl.read_csv(io.BytesIO(self._raw_data.read_bytes(self._stations_key)))
@@ -111,7 +117,10 @@ class BuildObjectFeatures:
         # LineString / Point); the helper handles all three. Missing
         # files → empty layer → null dist column. Share + distance
         # blocks carry orthogonal signals; the model weights them.
-        if self._geom_distance_layer_paths:
+        if self._cell_geom_distance_reader is not None:
+            cell_dist = self._cell_geom_distance_reader.load(region_code, self._cell_tsorf_resolution, "geom_distance")
+            enriched = self._join_cell_distances(enriched, cell_dist)
+        elif self._geom_distance_layer_paths:
             distance_layers = self._load_layer_geometries(self._geom_distance_layer_paths)
             enriched = compute_object_geom_distance_features(enriched, geometries_by_layer=distance_layers)
         # Territorial / municipality features (ADR-0015). ГАР primary
@@ -226,6 +235,18 @@ class BuildObjectFeatures:
 
     def _load_layer_geometries(self, paths: dict[str, str]) -> dict[str, list[BaseGeometry]]:
         return load_geojsonseq_geometries(paths)
+
+    def _join_cell_distances(self, objects: pl.DataFrame, cell_dist: pl.DataFrame) -> pl.DataFrame:
+        """Join objects to cell-level distance ЦОФ on their res cell.
+
+        Computes each object's ``h3_index`` at ``_cell_tsorf_resolution``
+        and left-joins the Слой 1 distance store; objects whose cell has
+        no store row get null distances (mirrors per-object missing-layer
+        semantics).
+        """
+        with_index = add_h3_index(objects, resolution=self._cell_tsorf_resolution)
+        right = cell_dist.drop("resolution") if "resolution" in cell_dist.columns else cell_dist
+        return with_index.join(right, on="h3_index", how="left").drop("h3_index")
 
     def _build_zonal_layers(
         self,

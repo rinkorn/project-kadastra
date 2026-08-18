@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 
 import h3
+import polars as pl
 from shapely.geometry.base import BaseGeometry
 
 
@@ -17,3 +18,12 @@ def h3_cells_to_latlng(cells: Iterable[str]) -> list[tuple[float, float]]:
     cell (ADR-0027).
     """
     return [h3.cell_to_latlng(cell) for cell in cells]
+
+
+def add_h3_index(df: pl.DataFrame, *, resolution: int) -> pl.DataFrame:
+    """Add an ``h3_index`` column derived from ``lat``/``lon`` (WGS84 degrees)."""
+    cells = [
+        h3.latlng_to_cell(lat, lon, resolution)
+        for lat, lon in zip(df["lat"].to_list(), df["lon"].to_list(), strict=False)
+    ]
+    return df.with_columns(pl.Series("h3_index", cells))

@@ -119,6 +119,14 @@ class Settings(BaseSettings):
     # at release time.
     current_year_for_age_features: int = 2026
 
+    # ADR-0027: when True, build_object_features joins location distances
+    # from the cell grid (Слой 1) instead of computing them per object.
+    # Requires the ``geom_distance`` feature set built by
+    # BuildCellGeomDistanceFeatures first. Default False keeps the
+    # per-object baseline until the A/B is run.
+    cell_tsorf_enabled: bool = False
+    cell_tsorf_resolution: int = 10
+
     nspd_silver_store_path: Path = Path("data/silver/nspd")
     nspd_buildings_raw_dir: Path = Path("data/raw/nspd/buildings-kazan")
     nspd_landplots_raw_dir: Path = Path("data/raw/nspd/landplots-kazan")

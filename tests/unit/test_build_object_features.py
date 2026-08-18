@@ -1,11 +1,13 @@
 import json
 from dataclasses import dataclass
 
+import h3
 import numpy as np
 import polars as pl
 
 from kadastra.domain.asset_class import AssetClass
 from kadastra.etl.haversine import haversine_meters
+from kadastra.ports.feature_reader import FeatureReaderPort
 from kadastra.ports.road_graph import RoadGraphPort
 from kadastra.usecases.build_object_features import BuildObjectFeatures
 
@@ -135,6 +137,14 @@ class _FakeRawData:
         return [k for k in self._payloads if k.startswith(prefix)]
 
 
+class _FakeCellDistReader:
+    def __init__(self, df: pl.DataFrame) -> None:
+        self._df = df
+
+    def load(self, region_code: str, resolution: int, feature_set: str) -> pl.DataFrame:
+        return self._df
+
+
 def _usecase(
     store: _FakeStore,
     raw: _FakeRawData,
@@ -147,6 +157,8 @@ def _usecase(
     poly_area_layer_paths: dict[str, str] | None = None,
     geom_distance_layer_paths: dict[str, str] | None = None,
     current_year_for_age_features: int = 2026,
+    cell_geom_distance_reader: FeatureReaderPort | None = None,
+    cell_tsorf_resolution: int = 10,
 ) -> BuildObjectFeatures:
     return BuildObjectFeatures(
         reader=store,
@@ -174,6 +186,8 @@ def _usecase(
         poly_area_layer_paths=(poly_area_layer_paths if poly_area_layer_paths is not None else {}),
         geom_distance_layer_paths=(geom_distance_layer_paths if geom_distance_layer_paths is not None else {}),
         current_year_for_age_features=current_year_for_age_features,
+        cell_geom_distance_reader=cell_geom_distance_reader,
+        cell_tsorf_resolution=cell_tsorf_resolution,
     )
 
 
@@ -676,3 +690,32 @@ def test_handles_empty_partition_gracefully() -> None:
     saved = {c.asset_class: c.df for c in store.calls}
     assert saved[AssetClass.HOUSE].is_empty()
     assert saved[AssetClass.APARTMENT].height == 2
+
+
+def test_joins_cell_geom_distance_from_grid_store() -> None:
+    """ADR-0027: when a cell_geom_distance_reader is wired, dist_to_* comes
+    from the cell grid store via join, not per-object computation."""
+    cell = h3.latlng_to_cell(KAZAN_LAT, KAZAN_LON, 10)
+    reader = _FakeCellDistReader(pl.DataFrame({"h3_index": [cell], "resolution": [10], "dist_to_water_m": [123.0]}))
+
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        cell_geom_distance_reader=reader,
+        cell_tsorf_resolution=10,
+        geom_distance_layer_paths={},
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "dist_to_water_m" in df.columns
+    assert float(df["dist_to_water_m"][0]) == 123.0
+    assert "h3_index" not in df.columns  # join key dropped
+    assert "resolution" not in df.columns  # store bookkeeping column dropped
