@@ -22,6 +22,13 @@ class _FakeRoadGraph:
     ) -> np.ndarray:
         return np.full((len(from_coords), len(to_coords)), 300.0, dtype=np.float64)
 
+    def nearest_distance_m(
+        self,
+        from_coords: list[tuple[float, float]],
+        to_coords: list[tuple[float, float]],
+    ) -> np.ndarray:
+        return self.distance_matrix_m(from_coords, to_coords).min(axis=1)
+
 
 def _cell_frame(cell: str) -> pl.DataFrame:
     return pl.DataFrame({"h3_index": [cell]})
@@ -69,6 +76,13 @@ def test_unreachable_points_yield_far_sentinel() -> None:
             to_coords: list[tuple[float, float]],
         ) -> np.ndarray:
             return np.full((len(from_coords), len(to_coords)), np.inf, dtype=np.float64)
+
+        def nearest_distance_m(
+            self,
+            from_coords: list[tuple[float, float]],
+            to_coords: list[tuple[float, float]],
+        ) -> np.ndarray:
+            return self.distance_matrix_m(from_coords, to_coords).min(axis=1)
 
     df = compute_cell_graph_distance_features(
         _cell_frame(cell),

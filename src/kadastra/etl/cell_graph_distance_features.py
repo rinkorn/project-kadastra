@@ -61,8 +61,8 @@ def compute_cell_graph_distance_features(
             (float(lat), float(lon))
             for lat, lon in zip(layer_df["lat"].to_list(), layer_df["lon"].to_list(), strict=True)
         ]
-        dist = road_graph.distance_matrix_m(coords, layer_coords)
-        dist_min = np.where(np.isinf(dist.min(axis=1)), _FAR_SENTINEL_M, dist.min(axis=1))
+        dist = road_graph.nearest_distance_m(coords, layer_coords)
+        dist_min = np.where(np.isinf(dist), _FAR_SENTINEL_M, dist)
         new_columns.append(pl.Series(col, dist_min))
 
     return points.with_columns(new_columns).drop(["lat", "lon"])

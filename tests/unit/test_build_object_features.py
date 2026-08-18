@@ -33,6 +33,13 @@ class _HaversineRoadGraph(RoadGraphPort):
                 out[i, j] = haversine_meters(la1, lo1, la2, lo2)
         return out
 
+    def nearest_distance_m(
+        self,
+        from_coords: list[tuple[float, float]],
+        to_coords: list[tuple[float, float]],
+    ) -> np.ndarray:
+        return self.distance_matrix_m(from_coords, to_coords).min(axis=1)
+
 
 _FAKE_GRAPH = _HaversineRoadGraph()
 

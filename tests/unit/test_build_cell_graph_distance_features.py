@@ -42,6 +42,13 @@ class FakeRoadGraph:
     ) -> np.ndarray:
         return np.full((len(from_coords), len(to_coords)), 300.0, dtype=np.float64)
 
+    def nearest_distance_m(
+        self,
+        from_coords: list[tuple[float, float]],
+        to_coords: list[tuple[float, float]],
+    ) -> np.ndarray:
+        return self.distance_matrix_m(from_coords, to_coords).min(axis=1)
+
 
 def _coverage(resolution: int) -> pl.DataFrame:
     cell = h3.latlng_to_cell(_KAZAN_LAT, _KAZAN_LON, resolution)
