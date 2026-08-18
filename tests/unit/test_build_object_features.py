@@ -159,6 +159,7 @@ def _usecase(
     current_year_for_age_features: int = 2026,
     cell_geom_distance_reader: FeatureReaderPort | None = None,
     cell_polygon_reader: FeatureReaderPort | None = None,
+    cell_zonal_reader: FeatureReaderPort | None = None,
     cell_tsorf_resolution: int = 10,
 ) -> BuildObjectFeatures:
     return BuildObjectFeatures(
@@ -189,6 +190,7 @@ def _usecase(
         current_year_for_age_features=current_year_for_age_features,
         cell_geom_distance_reader=cell_geom_distance_reader,
         cell_polygon_reader=cell_polygon_reader,
+        cell_zonal_reader=cell_zonal_reader,
         cell_tsorf_resolution=cell_tsorf_resolution,
     )
 
@@ -749,4 +751,33 @@ def test_joins_cell_polygon_share_from_grid_store() -> None:
     df = store.calls[0].df
     assert "water_share_500m" in df.columns
     assert float(df["water_share_500m"][0]) == 0.42
+    assert "h3_index" not in df.columns
+
+
+def test_joins_cell_zonal_density_from_grid_store() -> None:
+    """ADR-0027: when a cell_zonal_reader is wired, within-counts come from
+    the cell grid store via join, not per-object computation."""
+    cell = h3.latlng_to_cell(KAZAN_LAT, KAZAN_LON, 10)
+    reader = _FakeCellDistReader(pl.DataFrame({"h3_index": [cell], "resolution": [10], "stations_within_500m": [7]}))
+
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        cell_zonal_reader=reader,
+        cell_tsorf_resolution=10,
+        zonal_radii_m=[500],
+        zonal_layer_names=["stations"],
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "stations_within_500m" in df.columns
+    assert int(df["stations_within_500m"][0]) == 7
     assert "h3_index" not in df.columns

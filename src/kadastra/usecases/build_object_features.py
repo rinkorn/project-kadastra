@@ -9,7 +9,7 @@ from shapely.geometry.base import BaseGeometry
 
 from kadastra.domain.asset_class import AssetClass
 from kadastra.etl.h3_coverage import add_h3_index
-from kadastra.etl.load_geometries import load_geojsonseq_geometries
+from kadastra.etl.load_geometries import load_geojsonseq_geometries, load_geojsonseq_points
 from kadastra.etl.object_age_features import compute_object_age_features
 from kadastra.etl.object_geom_distance_features import (
     compute_object_geom_distance_features,
@@ -57,6 +57,7 @@ class BuildObjectFeatures:
         current_year_for_age_features: int = 2026,
         cell_geom_distance_reader: FeatureReaderPort | None = None,
         cell_polygon_reader: FeatureReaderPort | None = None,
+        cell_zonal_reader: FeatureReaderPort | None = None,
         cell_tsorf_resolution: int = 10,
     ) -> None:
         self._reader = reader
@@ -82,6 +83,7 @@ class BuildObjectFeatures:
         self._current_year_for_age_features = current_year_for_age_features
         self._cell_geom_distance_reader = cell_geom_distance_reader
         self._cell_polygon_reader = cell_polygon_reader
+        self._cell_zonal_reader = cell_zonal_reader
         self._cell_tsorf_resolution = cell_tsorf_resolution
 
     def execute(self, region_code: str, asset_classes: list[AssetClass]) -> None:
@@ -104,8 +106,12 @@ class BuildObjectFeatures:
         # apartments/houses/commercial come from `enriched` itself,
         # filtered by asset_class with object_id preserved so the helper
         # excludes self-rows in the count.
-        zonal_layers = self._build_zonal_layers(enriched, stations, entrances)
-        enriched = compute_object_zonal_features(enriched, layers=zonal_layers, radii_m=self._zonal_radii_m)
+        if self._cell_zonal_reader is not None:
+            cell_zonal = self._cell_zonal_reader.load(region_code, self._cell_tsorf_resolution, "zonal")
+            enriched = self._join_cell_tsorf(enriched, cell_zonal)
+        else:
+            zonal_layers = self._build_zonal_layers(enriched, stations, entrances)
+            enriched = compute_object_zonal_features(enriched, layers=zonal_layers, radii_m=self._zonal_radii_m)
         # Poly-area buffer features (ADR-0014 → ADR-0027). When the cell
         # grid store is wired in, share comes from Слой 1 (computed at
         # cell centres); otherwise the per-object fallback applies.
@@ -289,40 +295,4 @@ class BuildObjectFeatures:
         return layers
 
     def _load_zonal_poi_layer(self, path_str: str) -> pl.DataFrame:
-        """Read a GeoJSON-seq file and return one (lat, lon) per feature.
-
-        Point geometries pass through unchanged; LineString / Polygon /
-        Multi* are reduced to their centroid so a hospital mapped as a
-        polygon still contributes a single point to the count helper.
-
-        Missing file → empty frame so downstream emits zero counts (same
-        semantic as poly-area layer with a missing extract). Keeps the
-        pipeline composable while OSM extractions are still being run.
-        """
-        path = Path(path_str)
-        if not path.is_file():
-            return pl.DataFrame(
-                {"lat": [], "lon": []},
-                schema={"lat": pl.Float64, "lon": pl.Float64},
-            )
-        lats: list[float] = []
-        lons: list[float] = []
-        with path.open("r", encoding="utf-8") as f:
-            for raw_line in f:
-                line = raw_line.strip()
-                if not line or line.startswith("\x1e"):
-                    line = line.lstrip("\x1e").strip()
-                    if not line:
-                        continue
-                feature = json.loads(line)
-                geom_dict = feature.get("geometry")
-                if geom_dict is None:
-                    continue
-                geom = shape(geom_dict)
-                if geom.is_empty:
-                    continue
-                pt = geom if geom.geom_type == "Point" else geom.centroid
-                pt_x, pt_y = pt.coords[0]
-                lons.append(float(pt_x))
-                lats.append(float(pt_y))
-        return pl.DataFrame({"lat": lats, "lon": lons})
+        return load_geojsonseq_points(path_str)

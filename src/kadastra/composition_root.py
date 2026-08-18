@@ -33,6 +33,9 @@ from kadastra.usecases.build_cell_geom_distance_features import (
 from kadastra.usecases.build_cell_polygon_features import (
     BuildCellPolygonFeatures,
 )
+from kadastra.usecases.build_cell_zonal_features import (
+    BuildCellZonalFeatures,
+)
 from kadastra.usecases.build_gold_features import BuildGoldFeatures
 from kadastra.usecases.build_hex_aggregates import BuildHexAggregates
 from kadastra.usecases.build_metro_features import BuildMetroFeatures
@@ -125,6 +128,20 @@ class Container:
             feature_store=ParquetFeatureStore(s.feature_store_path),
             poly_area_layer_paths=s.poly_area_layer_paths,
             radii_m=s.poly_area_radii_m,
+        )
+
+    def build_cell_zonal_features(self) -> BuildCellZonalFeatures:
+        s = self._settings
+        return BuildCellZonalFeatures(
+            coverage_reader=ParquetCoverageStore(s.coverage_store_path),
+            feature_store=ParquetFeatureStore(s.feature_store_path),
+            raw_data=self.build_s3_raw_data(),
+            object_reader=ParquetValuationObjectStore(s.valuation_object_store_path),
+            stations_key=s.metro_stations_key,
+            entrances_key=s.metro_entrances_key,
+            radii_m=s.zonal_radii_m,
+            zonal_layer_names=s.zonal_layer_names,
+            geom_distance_layer_paths=s.geom_distance_layer_paths,
         )
 
     def build_gold_features(self) -> BuildGoldFeatures:
@@ -247,6 +264,7 @@ class Container:
             current_year_for_age_features=s.current_year_for_age_features,
             cell_geom_distance_reader=(ParquetFeatureStore(s.feature_store_path) if s.cell_tsorf_enabled else None),
             cell_polygon_reader=(ParquetFeatureStore(s.feature_store_path) if s.cell_tsorf_enabled else None),
+            cell_zonal_reader=(ParquetFeatureStore(s.feature_store_path) if s.cell_tsorf_enabled else None),
             cell_tsorf_resolution=s.cell_tsorf_resolution,
         )
 
