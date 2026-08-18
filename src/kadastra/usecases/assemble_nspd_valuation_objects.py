@@ -24,7 +24,7 @@ from kadastra.domain.asset_class import AssetClass
 from kadastra.ports.nspd_silver_store import NspdSilverStorePort
 from kadastra.ports.valuation_object_store import ValuationObjectStorePort
 
-_OUTPUT_SCHEMA: dict[str, type[pl.DataType] | pl.DataType] = {
+RAW_OBJECT_SCHEMA: dict[str, type[pl.DataType] | pl.DataType] = {
     "object_id": pl.Utf8,
     "asset_class": pl.Utf8,
     "lat": pl.Float64,
@@ -62,7 +62,7 @@ class AssembleNspdValuationObjects:
         buildings_needed = any(ac is not AssetClass.LANDPLOT for ac in asset_classes)
         landplots_needed = AssetClass.LANDPLOT in asset_classes
 
-        objects = pl.DataFrame(schema=_OUTPUT_SCHEMA)
+        objects = pl.DataFrame(schema=RAW_OBJECT_SCHEMA)
 
         if buildings_needed:
             buildings = self._silver_store.load(region_code, "buildings")
@@ -95,7 +95,7 @@ class AssembleNspdValuationObjects:
         ).unique(subset=["object_id"], keep="first", maintain_order=True)
 
         for asset_class in asset_classes:
-            slice_df = objects.filter(pl.col("asset_class") == asset_class.value).select(list(_OUTPUT_SCHEMA.keys()))
+            slice_df = objects.filter(pl.col("asset_class") == asset_class.value).select(list(RAW_OBJECT_SCHEMA.keys()))
             self._valuation_object_store.save(region_code, asset_class, slice_df)
 
 
@@ -107,7 +107,7 @@ def _to_valuation_objects_buildings(silver: pl.DataFrame) -> pl.DataFrame:
             pl.lit(None).cast(pl.Int64).alias("flats"),
             pl.col("cost_index_rub_per_m2").alias("synthetic_target_rub_per_m2"),
         ]
-    ).select(list(_OUTPUT_SCHEMA.keys()))
+    ).select(list(RAW_OBJECT_SCHEMA.keys()))
 
 
 def _to_valuation_objects_landplots(silver: pl.DataFrame) -> pl.DataFrame:
@@ -120,4 +120,4 @@ def _to_valuation_objects_landplots(silver: pl.DataFrame) -> pl.DataFrame:
             pl.lit(None).cast(pl.Utf8).alias("materials"),
             pl.col("cost_index_rub_per_m2").alias("synthetic_target_rub_per_m2"),
         ]
-    ).select(list(_OUTPUT_SCHEMA.keys()))
+    ).select(list(RAW_OBJECT_SCHEMA.keys()))

@@ -29,6 +29,7 @@ from kadastra.ports.raw_data import RawDataPort
 from kadastra.ports.road_graph import RoadGraphPort
 from kadastra.ports.valuation_object_reader import ValuationObjectReaderPort
 from kadastra.ports.valuation_object_store import ValuationObjectStorePort
+from kadastra.usecases.assemble_nspd_valuation_objects import RAW_OBJECT_SCHEMA
 
 
 class BuildObjectFeatures:
@@ -103,6 +104,16 @@ class BuildObjectFeatures:
         slices = {ac: self._reader.load(region_code, ac) for ac in asset_classes}
         non_empty = [df for df in slices.values() if not df.is_empty()]
         combined = pl.concat(non_empty, how="vertical_relaxed") if non_empty else next(iter(slices.values()))
+        # Idempotency: the store is read-write (assemble writes raw here,
+        # this usecase writes enriched back to the same path). A rerun
+        # would otherwise read its own enriched output, and the grid
+        # join (left join on h3_index) would then duplicate every
+        # locational feature as ``*_right`` — corrupting the A/B (seen
+        # in the first grid run: 326 feats, 108 ``_right`` dups).
+        # Reduce to the raw schema so feature columns from a prior run
+        # are dropped before recomputing.
+        raw_cols = [c for c in RAW_OBJECT_SCHEMA if c in combined.columns]
+        combined = combined.select(raw_cols)
 
         if self._cell_metro_reader is not None:
             cell_metro = self._cell_metro_reader.load(region_code, self._cell_tsorf_resolution, "metro")

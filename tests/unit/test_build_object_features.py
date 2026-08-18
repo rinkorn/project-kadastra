@@ -891,3 +891,59 @@ def test_joins_cell_metro_from_grid_store() -> None:
     assert float(df["dist_metro_m"][0]) == 500.0
     assert int(df["count_stations_1km"][0]) == 2
     assert "h3_index" not in df.columns
+
+
+class _WriteThroughStore(_FakeStore):
+    """Store that persists saves — so a second execute() reads the
+    enriched output of the first. Mirrors ParquetValuationObjectStore's
+    read-write-same-path design, which is the root of the ``_right``
+    contamination bug."""
+
+    def __init__(self, initial: dict[AssetClass, pl.DataFrame]) -> None:
+        super().__init__(initial)
+        self._data = dict(initial)
+
+    def save(self, region_code: str, asset_class: AssetClass, df: pl.DataFrame) -> None:
+        super().save(region_code, asset_class, df)
+        self._data[asset_class] = df
+
+    def load(self, region_code: str, asset_class: AssetClass) -> pl.DataFrame:
+        return self._data[asset_class]
+
+
+def test_rerun_is_idempotent_no_right_duplicates() -> None:
+    """ADR-0027 A/B guard: build_object_features reads and writes the
+    same store. A rerun must not read its own enriched output and
+    duplicate locational features as ``*_right`` via the grid join.
+    Reduces to the raw schema before recomputing."""
+    cell = h3.latlng_to_cell(KAZAN_LAT, KAZAN_LON, 10)
+    grid_metro = _FakeCellDistReader(pl.DataFrame({"h3_index": [cell], "resolution": [10], "dist_metro_m": [500.0]}))
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _WriteThroughStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    usecase = _usecase(
+        store,
+        raw,
+        cell_metro_reader=grid_metro,
+        cell_tsorf_resolution=10,
+        geom_distance_layer_paths={},
+    )
+    usecase.execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+    first = store.calls[0].df
+    assert "dist_metro_m" in first.columns
+
+    # Second run reads the enriched partition (store is write-through).
+    usecase.execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+    second = store.calls[1].df
+
+    right_cols = [c for c in second.columns if c.endswith("_right")]
+    assert right_cols == [], f"rerot produced _right duplicates: {right_cols}"
+    assert "dist_metro_m" in second.columns
+    assert float(second["dist_metro_m"][0]) == 500.0
+    # Feature count must not grow across reruns.
+    assert second.width == first.width
