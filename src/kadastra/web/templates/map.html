@@ -1569,8 +1569,8 @@ function explanationSection(explanation) {
     const pos = t.contribution >= 0;
     const tooltip = describeFeature(t.feature) || t.feature;
     const barStyle = pos ? `left:50%;width:${half}%` : `right:50%;width:${half}%`;
-    return `<div class="exp-row">
-        <span class="exp-key" title="${escapeHtml(tooltip)}">${escapeHtml(t.feature)}</span>
+    return `<div class="exp-row" data-tip="${escapeHtml(tooltip)}">
+        <span class="exp-key">${escapeHtml(t.feature)}</span>
         <span class="exp-contrib ${pos ? 'pos' : 'neg'}">${escapeHtml(formatDelta(t.contribution))}</span>
         <span class="exp-bar-track"><span class="exp-bar-zero"></span><span class="exp-bar ${pos ? 'pos' : 'neg'}" style="${barStyle}"></span></span>
       </div>`;
