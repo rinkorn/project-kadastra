@@ -98,6 +98,22 @@ class Settings(BaseSettings):
         "tram_stop",
         "railway_station",
     ]
+    # ADR-0027: point-POI layers whose walking (graph) distance is computed
+    # on the grid. Polygonal/linear layers (water, park, powerline, railway)
+    # are excluded — graph distance is point-to-point.
+    walk_dist_layer_names: list[str] = [
+        "school",
+        "kindergarten",
+        "clinic",
+        "hospital",
+        "pharmacy",
+        "supermarket",
+        "cafe",
+        "restaurant",
+        "bus_stop",
+        "tram_stop",
+        "railway_station",
+    ]
     relative_feature_parent_resolutions: list[int] = [7, 8]
     relative_feature_columns: list[str] = [
         "dist_metro_m",

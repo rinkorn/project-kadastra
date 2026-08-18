@@ -73,6 +73,7 @@ ADR-0010 §1 фиксирует: «Используется ~5% методоло
 | Зональные / плотность (`*_within_{R}m`, `count_*`) | ✅ на сетке, **self-free** (`compute_cell_zonal_features` + `BuildCellZonalFeatures` + join) |
 | Дорожная плотность (`road_length_500m`) | ✅ на сетке: `compute_cell_road_features` + `BuildCellRoadFeatures` + join |
 | Метро (`dist_metro_m` через road-graph) | ✅ на сетке, **по графу** (`compute_cell_metro_features` + `BuildCellMetroFeatures` + join); заменяет legacy-хаверсин на сетке |
+| Пешеходные дистанции до точечных POI (`walk_dist_to_<layer>_m`) | ✅ на сетке, **по графу** (`compute_cell_graph_distance_features` + `BuildCellGraphDistanceFeatures` + join); обобщает метро-паттерн на все точечные POI (school/kindergarten/clinic/…/railway_station) |
 | A/B против per-object baseline | ⏳ требует сборки данных + обучения |
 | Репрезентативность | ⏳ не начато |
 

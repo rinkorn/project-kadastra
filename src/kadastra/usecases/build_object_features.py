@@ -60,6 +60,7 @@ class BuildObjectFeatures:
         cell_zonal_reader: FeatureReaderPort | None = None,
         cell_road_reader: FeatureReaderPort | None = None,
         cell_metro_reader: FeatureReaderPort | None = None,
+        cell_walk_dist_reader: FeatureReaderPort | None = None,
         cell_tsorf_resolution: int = 10,
     ) -> None:
         self._reader = reader
@@ -88,6 +89,7 @@ class BuildObjectFeatures:
         self._cell_zonal_reader = cell_zonal_reader
         self._cell_road_reader = cell_road_reader
         self._cell_metro_reader = cell_metro_reader
+        self._cell_walk_dist_reader = cell_walk_dist_reader
         self._cell_tsorf_resolution = cell_tsorf_resolution
 
     def execute(self, region_code: str, asset_classes: list[AssetClass]) -> None:
@@ -148,6 +150,11 @@ class BuildObjectFeatures:
         elif self._geom_distance_layer_paths:
             distance_layers = self._load_layer_geometries(self._geom_distance_layer_paths)
             enriched = compute_object_geom_distance_features(enriched, geometries_by_layer=distance_layers)
+        # ADR-0027: walking distance to point POIs — grid-only (graph is too
+        # expensive per-object; methodology §17 «всё на сетке один раз»).
+        if self._cell_walk_dist_reader is not None:
+            cell_walk_dist = self._cell_walk_dist_reader.load(region_code, self._cell_tsorf_resolution, "walk_dist")
+            enriched = self._join_cell_tsorf(enriched, cell_walk_dist)
         # Territorial / municipality features (ADR-0015). ГАР primary
         # via cad_num→objectid→mun_lookup; NSPD readable_address parse
         # fallback for the ~55–75 % unmatched rows. Skip if either

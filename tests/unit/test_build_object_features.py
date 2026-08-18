@@ -162,6 +162,7 @@ def _usecase(
     cell_zonal_reader: FeatureReaderPort | None = None,
     cell_road_reader: FeatureReaderPort | None = None,
     cell_metro_reader: FeatureReaderPort | None = None,
+    cell_walk_dist_reader: FeatureReaderPort | None = None,
     cell_tsorf_resolution: int = 10,
 ) -> BuildObjectFeatures:
     return BuildObjectFeatures(
@@ -195,6 +196,7 @@ def _usecase(
         cell_zonal_reader=cell_zonal_reader,
         cell_road_reader=cell_road_reader,
         cell_metro_reader=cell_metro_reader,
+        cell_walk_dist_reader=cell_walk_dist_reader,
         cell_tsorf_resolution=cell_tsorf_resolution,
     )
 
@@ -812,6 +814,37 @@ def test_joins_cell_road_density_from_grid_store() -> None:
     assert "road_length_500m" in df.columns
     assert float(df["road_length_500m"][0]) == 950.0
     assert "h3_index" not in df.columns
+
+
+def test_joins_cell_walk_dist_from_grid_store() -> None:
+    """ADR-0027: when a cell_walk_dist_reader is wired, walk_dist_to_* comes
+    from the cell grid store via join. Grid-only — no per-object fallback."""
+    cell = h3.latlng_to_cell(KAZAN_LAT, KAZAN_LON, 10)
+    reader = _FakeCellDistReader(
+        pl.DataFrame({"h3_index": [cell], "resolution": [10], "walk_dist_to_school_m": [450.0]})
+    )
+
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        cell_walk_dist_reader=reader,
+        cell_tsorf_resolution=10,
+        geom_distance_layer_paths={},
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "walk_dist_to_school_m" in df.columns
+    assert float(df["walk_dist_to_school_m"][0]) == 450.0
+    assert "h3_index" not in df.columns
+    assert "resolution" not in df.columns
 
 
 def test_joins_cell_metro_from_grid_store() -> None:

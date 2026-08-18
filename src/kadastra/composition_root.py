@@ -30,6 +30,9 @@ from kadastra.usecases.build_buildings_features import BuildBuildingsFeatures
 from kadastra.usecases.build_cell_geom_distance_features import (
     BuildCellGeomDistanceFeatures,
 )
+from kadastra.usecases.build_cell_graph_distance_features import (
+    BuildCellGraphDistanceFeatures,
+)
 from kadastra.usecases.build_cell_metro_features import (
     BuildCellMetroFeatures,
 )
@@ -125,6 +128,16 @@ class Container:
             coverage_reader=ParquetCoverageStore(s.coverage_store_path),
             feature_store=ParquetFeatureStore(s.feature_store_path),
             geom_distance_layer_paths=s.geom_distance_layer_paths,
+        )
+
+    def build_cell_graph_distance_features(self) -> BuildCellGraphDistanceFeatures:
+        s = self._settings
+        return BuildCellGraphDistanceFeatures(
+            coverage_reader=ParquetCoverageStore(s.coverage_store_path),
+            feature_store=ParquetFeatureStore(s.feature_store_path),
+            road_graph=self.build_road_graph(),
+            layer_paths=s.geom_distance_layer_paths,
+            layer_names=s.walk_dist_layer_names,
         )
 
     def build_cell_metro_features(self) -> BuildCellMetroFeatures:
@@ -294,6 +307,7 @@ class Container:
             cell_zonal_reader=(ParquetFeatureStore(s.feature_store_path) if s.cell_tsorf_enabled else None),
             cell_road_reader=(ParquetFeatureStore(s.feature_store_path) if s.cell_tsorf_enabled else None),
             cell_metro_reader=(ParquetFeatureStore(s.feature_store_path) if s.cell_tsorf_enabled else None),
+            cell_walk_dist_reader=(ParquetFeatureStore(s.feature_store_path) if s.cell_tsorf_enabled else None),
             cell_tsorf_resolution=s.cell_tsorf_resolution,
         )
 

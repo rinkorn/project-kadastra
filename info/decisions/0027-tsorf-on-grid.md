@@ -29,14 +29,24 @@
 ```text
 kadastra/etl/h3_coverage.py               ← geometry_to_h3_cells + h3_cells_to_latlng (центры ячеек)
 kadastra/etl/cell_geom_distance_features.py  ← compute_cell_geom_distance_features
+kadastra/etl/cell_graph_distance_features.py ← compute_cell_graph_distance_features (walk_dist_to_*)
 ```
 
 `compute_cell_geom_distance_features` переприцеливает существующий `compute_object_geom_distance_features` (ADR-0019) на центры ячеек: вход — фрейм с `h3_index`, выход — `h3_index` + `dist_to_<layer>_m`. Это тот же STRtree + UTM-39N pipeline, что и объектный, — дублирования нет.
+
+## Пешеходные дистанции до POI по графу (обобщение метро)
+
+Паттерн «дистанция по road-graph» из метро (`dist_metro_m`) обобщается на **все точечные POI**: для каждой ячейки считается `walk_dist_to_<layer>_m` — пешеходная дистанция (OSM pedestrian graph, Дейкстра по `length_m`) до ближайшей точки слоя. Покрывает `school`, `kindergarten`, `clinic`, `hospital`, `pharmacy`, `supermarket`, `cafe`, `restaurant`, `bus_stop`, `tram_stop`, `railway_station` (`Settings.walk_dist_layer_names`). Метро остаётся отдельным блоком — его колонки (`dist_metro_m`, `count_stations_1km`, `count_entrances_500m`) несут legacy-имена и счётчики, которые потребляют модель/UI/относительные ЦОФ.
+
+- **Почему grid-only**: пешеходная дистанция по графу дорогая per-object (Дейкстра от каждой точки слоя); методология §17 «всё на сетке один раз». Per-object fallback нет — при `cell_tsorf_enabled=False` колонки `walk_dist_to_*` просто отсутствуют.
+- **Почему только точечные**: граф point-to-point, «пешеходный путь до ребра полигона» бессмыслен без точек входа. Полигональные/линейные слои (water, park, powerline, railway) остаются в `dist_to_*` (straight-line, ADR-0019).
+- **Непроходимые точки** → сентинел `1e9`, пустой слой → `null` (семантика как в метро).
 
 ## Последствия
 
 - `h3_cells_to_latlng` — чистый helper центров ячеек.
 - `compute_cell_geom_distance_features` — дистанционные ЦОФ на сетке (первый блок Слоя 1 на сетке).
+- `compute_cell_graph_distance_features` — пешеходные дистанции до точечных POI по графу (обобщённый метро-паттерн).
 - Следующие итерации (по эпику): feature store по `h3_index` + читатель; переприцеливание share/within/count/road; join объект→ячейка в `build_object_features`; A/B против per-object baseline; репрезентативность.
 
 ## Почему именно так
