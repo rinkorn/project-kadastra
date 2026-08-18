@@ -111,10 +111,14 @@
     .panel .exp-contrib { font-family: ui-monospace, SFMono-Regular, monospace; text-align: right; }
     .panel .exp-contrib.pos { color: #4ade80; }
     .panel .exp-contrib.neg { color: #f87171; }
-    .panel .exp-bar-track { height: 8px; background: #1f2937; border-radius: 4px; overflow: hidden; }
-    .panel .exp-bar { display: block; height: 100%; border-radius: 4px; }
+    .panel .exp-bar-track { position: relative; height: 8px; background: #1f2937; border-radius: 4px; overflow: hidden; }
+    .panel .exp-bar-zero { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: #6b7280; }
+    .panel .exp-bar { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
     .panel .exp-bar.pos { background: #4ade80; }
     .panel .exp-bar.neg { background: #f87171; }
+    .panel .exp-all { max-height: 440px; overflow-y: auto; margin-top: 2px; }
+    .panel .exp-toggle { background: #111827; color: #9ca3af; border: 1px solid #4b5563; border-radius: 4px; padding: 2px 8px; cursor: pointer; font-size: 11px; margin-top: 8px; }
+    .panel .exp-toggle:hover { border-color: #fde047; color: #fde047; }
     .panel .cmp-delta.pos { color: #4ade80; }
     .panel .cmp-delta.neg { color: #f87171; }
     .panel .cmp-legend { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px; }
@@ -483,7 +487,13 @@ const TIPS = {
 let featureDescriptions = {};
 
 function describeFeature(name) {
-  return featureDescriptions[name] || null;
+  if (featureDescriptions[name]) return featureDescriptions[name];
+  // EBM pair-interaction terms ("a & b") aren't in the API's description
+  // dict (they're formed at explain time) — give them a generic hint.
+  if (name.includes(' & ')) {
+    return 'Совместный вклад пары признаков: влияние каждого из них зависит от уровня другого. EBM отобрал эту пару как значимое взаимодействие.';
+  }
+  return null;
 }
 
 function applyStaticTooltips() {
@@ -1451,6 +1461,7 @@ async function showObjectInspector(obj, assetClass) {
     sections.push(rowsSection('all', rest));
   }
   panel.innerHTML = sections.join('');
+  wireExplanationToggle();
 }
 
 const GEOMETRY_FIELDS = [
@@ -1542,28 +1553,52 @@ function quartetSection(quartet, marketRef) {
   return `<div class="section quartet">${headerRow}${dataRows}${yTrueRow}${marketRows}</div>`;
 }
 
-// EBM (White Box) explanation: top feature contributions as signed bars.
+// EBM (White Box) explanation: top feature contributions as diverging
+// bars (zero at the track centre — green grows right, red grows left).
 // intercept + Σ contribution == the EBM prediction for the object.
+const EXP_TOP_N = 25;
+
 function explanationSection(explanation) {
   if (!explanation || !explanation.terms || !explanation.terms.length) return '';
   const intercept = explanation.intercept;
   const terms = [...explanation.terms].sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution));
-  const top = terms.slice(0, 12);
-  const maxAbs = Math.max(...top.map(t => Math.abs(t.contribution))) || 1;
+  const maxAbs = Math.max(...terms.map(t => Math.abs(t.contribution))) || 1;
   const total = intercept + terms.reduce((s, t) => s + t.contribution, 0);
-  const rows = top.map(t => {
-    const width = Math.round((Math.abs(t.contribution) / maxAbs) * 100);
+  const rowsHtml = (list) => list.map(t => {
+    const half = Math.round((Math.abs(t.contribution) / maxAbs) * 50);
     const pos = t.contribution >= 0;
     const tooltip = describeFeature(t.feature) || t.feature;
+    const barStyle = pos ? `left:50%;width:${half}%` : `right:50%;width:${half}%`;
     return `<div class="exp-row">
         <span class="exp-key" title="${escapeHtml(tooltip)}">${escapeHtml(t.feature)}</span>
         <span class="exp-contrib ${pos ? 'pos' : 'neg'}">${escapeHtml(formatDelta(t.contribution))}</span>
-        <span class="exp-bar-track"><span class="exp-bar ${pos ? 'pos' : 'neg'}" style="width:${width}%"></span></span>
+        <span class="exp-bar-track"><span class="exp-bar-zero"></span><span class="exp-bar ${pos ? 'pos' : 'neg'}" style="${barStyle}"></span></span>
       </div>`;
   }).join('');
+  const top = terms.slice(0, EXP_TOP_N);
+  const more = terms.length - top.length;
+  const toggle = more > 0
+    ? `<button class="exp-toggle" id="exp-toggle" type="button" data-total="${terms.length}">Показать все (${terms.length})</button>`
+    : '';
   return `<h2>Объяснение цены (EBM)</h2>
     <div class="exp-total">y_pred = ${escapeHtml(formatValue(total))} ₽/м²</div>
-    ${rows}`;
+    <div class="exp-list" id="exp-top">${rowsHtml(top)}</div>
+    <div class="exp-list exp-all" id="exp-all" style="display:none">${rowsHtml(terms)}</div>
+    ${toggle}`;
+}
+
+function wireExplanationToggle() {
+  const btn = document.getElementById('exp-toggle');
+  const top = document.getElementById('exp-top');
+  const all = document.getElementById('exp-all');
+  if (!btn || !top || !all) return;
+  const totalLabel = btn.dataset.total || '';
+  btn.addEventListener('click', () => {
+    const collapsed = top.style.display !== 'none';
+    top.style.display = collapsed ? 'none' : '';
+    all.style.display = collapsed ? '' : 'none';
+    btn.textContent = collapsed ? 'Свернуть' : `Показать все (${totalLabel})`;
+  });
 }
 
 function marketRefRows(marketRef, yTrue) {

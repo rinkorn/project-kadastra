@@ -66,3 +66,50 @@ def test_dominant_pattern_marks_categorical() -> None:
     text = describe_feature("dominant_intra_city_raion")
     assert text is not None
     assert "Категориальный" in text
+
+
+def test_relative_pattern_diff_med() -> None:
+    text = describe_feature("road_length_500m__rel_p7_diff_med")
+    assert text is not None
+    assert "разрешения 7" in text
+    assert "отклонение от медианы" in text
+
+
+def test_relative_pattern_ratio_and_z() -> None:
+    assert describe_feature("road_length_500m__rel_p8_ratio_med") is not None
+    assert describe_feature("road_length_500m__rel_p7_z_iqr") is not None
+
+
+def test_count_parent_pattern() -> None:
+    text = describe_feature("count_p7")
+    assert text is not None
+    assert "разрешения 7" in text
+
+
+def test_geometry_features_have_descriptions() -> None:
+    for f in (
+        "polygon_area_m2",
+        "polygon_perimeter_m",
+        "polygon_compactness",
+        "polygon_convexity",
+        "bbox_aspect_ratio",
+        "polygon_orientation_deg",
+        "polygon_n_vertices",
+    ):
+        assert describe_feature(f) is not None, f
+
+
+def test_admin_categorical_features_have_descriptions() -> None:
+    for f in (
+        "materials",
+        "era_category",
+        "mun_okrug_name",
+        "mun_okrug_oktmo",
+        "settlement_name",
+        "intra_city_raion",
+        "oktmo_full",
+        "okato",
+        "postal_index",
+        "age_years_sq",
+    ):
+        assert describe_feature(f) is not None, f
