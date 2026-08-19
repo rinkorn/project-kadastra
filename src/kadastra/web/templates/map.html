@@ -1924,12 +1924,18 @@ function h3Center(h3Index) {
 }
 
 function hexSelection(hex, payload) {
+  const isGrid = payload.asset_class === 'grid';
   return {
-    kind: 'hex',
+    kind: isGrid ? 'cell' : 'hex',
     label: hex.hex,
     geometry: h3BoundaryGeometry(hex.hex),
     center: h3Center(hex.hex),
-    fetch: () => fetchHexDetail(hex.hex, payload.resolution, payload.asset_class),
+    // Grid cells (ЦОФ-сетка) have no hex_aggregates partition — fetch
+    // the full Слой 1 cell detail instead so compare-mode works the
+    // same way single-inspector does (asset_class==='grid' branch).
+    fetch: isGrid
+      ? () => fetchCellDetail(hex.hex, payload.resolution)
+      : () => fetchHexDetail(hex.hex, payload.resolution, payload.asset_class),
   };
 }
 
@@ -2064,6 +2070,7 @@ function comparisonHeader(a, b) {
 }
 
 function comparisonTable(da, db, kind) {
+  if (kind === 'cell') return comparisonCellTable(da, db);
   const groups = kind === 'hex' ? hexGroupedKeys(da) : objectGroupedKeys(da);
   const out = [];
   for (const g of groups) {
@@ -2071,6 +2078,31 @@ function comparisonTable(da, db, kind) {
     for (const k of g.keys) {
       const label = ADMIN_KEY_LABELS[k] || k;
       out.push(comparisonRow(label, da[k], db[k], k));
+    }
+  }
+  return out.join('');
+}
+
+// Cell (ЦОФ-сетка) comparison: detail is nested
+// {feature_set: {feature: value}}. Render sets in the fixed known
+// order (then unknown alpha), each set as a section header followed
+// by per-feature rows with a numeric Δ column. A feature present in
+// only one cell renders null on the other side.
+function comparisonCellTable(da, db) {
+  const known = Object.keys(CELL_TSORF_SET_LABELS);
+  const present = Object.keys(da);
+  const sets = [
+    ...known.filter(fs => present.includes(fs)),
+    ...present.filter(fs => !(fs in CELL_TSORF_SET_LABELS)).sort(),
+  ];
+  const out = [];
+  for (const fs of sets) {
+    const label = CELL_TSORF_SET_LABELS[fs] || fs;
+    out.push(`<div class="cmp-section">${escapeHtml(label)}</div>`);
+    const aFeats = da[fs] || {};
+    const bFeats = (db && db[fs]) || {};
+    for (const f of Object.keys(aFeats).sort()) {
+      out.push(comparisonRow(f, aFeats[f], bFeats[f], f));
     }
   }
   return out.join('');
