@@ -48,6 +48,7 @@ from kadastra.usecases.build_object_features import BuildObjectFeatures
 from kadastra.usecases.build_object_synthetic_target import BuildObjectSyntheticTarget
 from kadastra.usecases.build_region_coverage import BuildRegionCoverage
 from kadastra.usecases.build_valuation_objects import BuildValuationObjects
+from kadastra.usecases.get_cell_tsorf import GetCellTsorf
 from kadastra.usecases.get_hex_aggregates import GetHexAggregates
 from kadastra.usecases.get_market_reference import GetMarketReference
 from kadastra.usecases.infer_object_valuation import InferObjectValuation
@@ -312,6 +313,10 @@ class Container:
             ebm_loader=LocalEbmModelLoader(s.model_registry_path),
         )
 
+    def build_get_cell_tsorf(self) -> GetCellTsorf:
+        s = self._settings
+        return GetCellTsorf(ParquetFeatureStore(s.feature_store_path))
+
 
 def create_app(settings: Settings) -> FastAPI:
     container = Container(settings)
@@ -333,6 +338,7 @@ def create_app(settings: Settings) -> FastAPI:
             load_inspection=container.build_load_object_inspection(),
             get_market_reference=container.build_get_market_reference(),
             market_reference_year=settings.emiss_market_reference_year,
+            get_cell_tsorf=container.build_get_cell_tsorf(),
         )
     )
     app.include_router(make_web_router(templates_dir))
