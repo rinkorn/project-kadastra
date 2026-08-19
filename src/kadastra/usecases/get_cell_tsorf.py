@@ -69,3 +69,28 @@ class GetCellTsorf:
         """``{feature_set: [features]}`` for every Слой 1 set — one call
         to populate the frontend's two-level (set → feature) selector."""
         return {fs: self.list_features(region_code, resolution, fs) for fs in CELL_TSORF_FEATURE_SETS}
+
+    def get_cell_detail(
+        self,
+        region_code: str,
+        resolution: int,
+        h3_index: str,
+    ) -> dict[str, dict[str, object]]:
+        """``{feature_set: {feature_name: value, ...}}`` across all Layer 1 sets for one cell.
+
+        Populates the per-cell inspector when clicking on a hex in «ЦОФ-сетка» mode.
+        Missing feature sets are skipped. If the cell is absent across all available
+        sets, an empty dictionary is returned.
+        """
+        detail: dict[str, dict[str, object]] = {}
+        for fs in CELL_TSORF_FEATURE_SETS:
+            try:
+                df = self._feature_store.load(region_code, resolution, fs)
+            except FileNotFoundError:
+                continue
+            row = df.filter(pl.col("h3_index") == h3_index)
+            if row.is_empty():
+                continue
+            cols = [c for c in df.columns if c not in {"h3_index", "resolution"}]
+            detail[fs] = {c: row[c][0] for c in cols}
+        return detail

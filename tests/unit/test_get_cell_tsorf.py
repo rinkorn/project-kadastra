@@ -127,3 +127,105 @@ def test_feature_set_map_covers_all_sets_and_skips_missing(tmp_path: Path) -> No
     assert set(m.keys()) == set(CELL_TSORF_FEATURE_SETS)
     assert m["road_density"] == ["road_length_500m"]
     assert m["walk_dist"] == []
+
+
+def test_get_cell_detail_returns_features_across_sets(tmp_path: Path) -> None:
+    base = tmp_path / "features"
+    _write_feature_set(
+        base,
+        "RU-KAZAN-AGG",
+        10,
+        "walk_dist",
+        [
+            {"h3_index": "8a", "resolution": 10, "walk_dist_to_school_m": 538.0},
+            {"h3_index": "8b", "resolution": 10, "walk_dist_to_school_m": 1200.0},
+        ],
+    )
+    _write_feature_set(
+        base,
+        "RU-KAZAN-AGG",
+        10,
+        "road_density",
+        [{"h3_index": "8a", "resolution": 10, "road_length_500m": 950.0}],
+    )
+    usecase = GetCellTsorf(ParquetFeatureStore(base))
+
+    detail = usecase.get_cell_detail("RU-KAZAN-AGG", 10, "8a")
+
+    assert detail == {
+        "walk_dist": {"walk_dist_to_school_m": 538.0},
+        "road_density": {"road_length_500m": 950.0},
+    }
+
+
+def test_get_cell_detail_excludes_bookkeeping_columns(tmp_path: Path) -> None:
+    base = tmp_path / "features"
+    _write_feature_set(
+        base,
+        "RU-KAZAN-AGG",
+        10,
+        "metro",
+        [{"h3_index": "8a", "resolution": 10, "dist_metro_m": 500.0}],
+    )
+    usecase = GetCellTsorf(ParquetFeatureStore(base))
+
+    detail = usecase.get_cell_detail("RU-KAZAN-AGG", 10, "8a")
+
+    assert detail == {"metro": {"dist_metro_m": 500.0}}
+    assert "h3_index" not in detail["metro"]
+    assert "resolution" not in detail["metro"]
+
+
+def test_get_cell_detail_skips_sets_where_cell_is_absent(tmp_path: Path) -> None:
+    base = tmp_path / "features"
+    _write_feature_set(
+        base,
+        "RU-KAZAN-AGG",
+        10,
+        "walk_dist",
+        [{"h3_index": "8a", "resolution": 10, "walk_dist_to_school_m": 538.0}],
+    )
+    _write_feature_set(
+        base,
+        "RU-KAZAN-AGG",
+        10,
+        "road_density",
+        [{"h3_index": "8b", "resolution": 10, "road_length_500m": 950.0}],
+    )
+    usecase = GetCellTsorf(ParquetFeatureStore(base))
+
+    detail = usecase.get_cell_detail("RU-KAZAN-AGG", 10, "8a")
+
+    assert detail == {"walk_dist": {"walk_dist_to_school_m": 538.0}}
+
+
+def test_get_cell_detail_skips_missing_partitions(tmp_path: Path) -> None:
+    base = tmp_path / "features"
+    _write_feature_set(
+        base,
+        "RU-KAZAN-AGG",
+        10,
+        "walk_dist",
+        [{"h3_index": "8a", "resolution": 10, "walk_dist_to_school_m": 538.0}],
+    )
+    usecase = GetCellTsorf(ParquetFeatureStore(base))
+
+    detail = usecase.get_cell_detail("RU-KAZAN-AGG", 10, "8a")
+
+    # Only walk_dist built; every other CELL_TSORF_FEATURE_SETS partition
+    # is absent and must be silently skipped, not raise.
+    assert detail == {"walk_dist": {"walk_dist_to_school_m": 538.0}}
+
+
+def test_get_cell_detail_returns_empty_when_cell_not_found_anywhere(tmp_path: Path) -> None:
+    base = tmp_path / "features"
+    _write_feature_set(
+        base,
+        "RU-KAZAN-AGG",
+        10,
+        "walk_dist",
+        [{"h3_index": "8a", "resolution": 10, "walk_dist_to_school_m": 538.0}],
+    )
+    usecase = GetCellTsorf(ParquetFeatureStore(base))
+
+    assert usecase.get_cell_detail("RU-KAZAN-AGG", 10, "missing") == {}

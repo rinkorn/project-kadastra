@@ -448,10 +448,12 @@
 // Тумблер «💡 подсказки» отключает их через body.tooltips-off.
 const TIPS = {
   controls: {
-    layer: 'Способ показа данных на карте.\n\n«Hex aggregate» — карта разбивается на шестиугольники одинакового размера (сетка H3), и в каждом считается агрегат по объектам внутри (медиана цены, среднее расстояние и т.п.). Удобно искать пространственные паттерны и зоны переоценки/недооценки.\n\n«Object scatter» — каждый объект показан отдельно: точкой или полигоном с реальной геометрией здания/участка. Удобно смотреть конкретные объекты и их признаки.',
+    layer: 'Способ показа данных на карте.\n\n«Hex aggregate» — карта разбивается на шестиугольники одинакового размера (сетка H3), и в каждом считается агрегат по объектам внутри (медиана цены, среднее расстояние и т.п.). Удобно искать пространственные паттерны и зоны переоценки/недооценки.\n\n«Object scatter» — каждый объект показан отдельно: точкой или полигоном с реальной геометрией здания/участка. Удобно смотреть конкретные объекты и их признаки.\n\n«ЦОФ-сетка» — раскраска ячеек сетки H3 по сырым факторам Слоя 1 (дистанции, доли площадей, плотность POI), рассчитанным непосредственно на ячейках.',
     asset_class: 'Тип недвижимости. Влияет и на источник данных, и на обученную модель — для каждого класса своя.\n\nВ режиме «Object scatter» нельзя выбрать «all» — точки объектов привязаны к классу, а у каждого класса свой набор признаков.',
     hex_feature: 'Какой именно показатель усредняется/медианится по гексу и кодируется цветом.\n\nГруппы признаков:\n• «count» — количество объектов в гексе.\n• «median_target / pred / residual» — оценка стоимости и качества модели.\n• «mean_levels / flats / area / year_built / age» — описание самих объектов.\n• «mean_dist_to_*» — среднее расстояние до ближайших значимых объектов (метро, школа, парк, ж/д…).\n• «*_share_500m» — доля площади (вода, парк, лес, промзона…) в буфере 500 м.\n• «*_within_500m / count_*» — число POI в окрестности.\n• «dominant_*» — категориальный признак (район/округ/населённый пункт).',
     hex_resolution: 'Размер шестиугольника H3. Чем выше номер — тем мельче ячейки.\n\n• 7 (≈5 км²) — район города/пригород целиком.\n• 8 (≈0.7 км²) — несколько кварталов, дефолт.\n• 9 (≈0.1 км²) — один-два квартала.\n• 10 (≈15 000 м²) — отдельные дворы.\n\nНа мелких разрешениях ячейки с малым числом объектов становятся шумными и могут быть пустыми.',
+    cell_feature_set: 'Набор ценообразующих факторов (ЦОФ) Слоя 1 на сетке H3.\n\nКаждый набор вычисляется один раз на центрах ячеек и хранится независимо от объектов:\n• «geom_distance» — евклидовы расстояния до полигонов и линий (парки, вода, лес, ж/д).\n• «poly_area» — доли площади слоёв в буферах 100/300/500/800 м.\n• «zonal» — плотность и количество объектов/POI в окрестности.\n• «road_density» — длина дорожной сети в радиусе 500 м.\n• «metro» — доступность метрополитена.\n• «walk_dist» — пешеходные расстояния по графу OSM до точечных POI.',
+    cell_feature: 'Конкретный показатель Слоя 1, по которому окрашивается сетка ячеек H3.',
     object_mode: 'Чем раскрашивать отдельные объекты в режиме «Object scatter».\n\nГруппа «prediction» — посмотреть, как модель работает: фактическая цена, прогноз, ошибка, разбиение на фолды.\n\nГруппа «features» — посмотреть распределение конкретного признака объекта (площадь, этажность, расстояние до школы и т.п.) — то же, что для гексов, но без агрегирования.',
     model: 'Какой моделью оценивать стоимость и считать ошибку.\n\nВ системе обучены 4 модели разной природы — от простой линейной (для baseline) до CatBoost (максимальная точность, но «чёрный ящик»). Выбор модели меняет: out-of-fold прогноз (y_pred_oof), остаток (residual) и медианные агрегаты прогноза/остатка по гексам.\n\nИспользуйте: для проверки качества → CatBoost; для понимания вклада признаков → EBM или grey_tree.',
     scale: 'Как числовое значение признака переводится в цвет.\n\n• «linear (p2–p98)» — линейная шкала, обрезанная по 2-му и 98-му перцентилям. Выбросы не «съедают» всю цветовую гамму. Дефолт.\n• «log» — логарифмическая шкала от min до max. Полезна, когда значения растянуты на несколько порядков (цены, расстояния).\n• «linear» — простой линейный мап от min до max. Чувствителен к выбросам, но точно отражает шкалу.',
@@ -461,6 +463,14 @@ const TIPS = {
     // layer
     hex: 'Карта разбита на одинаковые шестиугольники H3. В каждом — агрегат по объектам внутри (медиана / среднее / счёт).',
     object: 'Каждый объект показан отдельно: точкой или полигоном с реальной геометрией. Цвет — выбранный признак или прогноз.',
+    cell_tsorf: 'Сырые ценообразующие факторы (Слой 1), рассчитанные на ячейках сетки H3 (res 10).',
+    // cell_feature_set
+    geom_distance: 'Прямые расстояния (м) до ближайших полигональных/линейных объектов (водоёмы, парки, промзоны, ЛЭП, ж/д).',
+    poly_area: 'Доли площадей объектов (парки, вода, лес, промзоны) в радиусах 100/300/500/800 м.',
+    zonal: 'Зональная плотность и счётчики POI в окрестности (self-free).',
+    road_density: 'Суммарная длина дорог в радиусе 500 м (прокси связности дорожной сети).',
+    metro: 'Транспортная доступность метро (дистанция до станции/входа, количество входов).',
+    walk_dist: 'Пешеходная дистанция по графу OSM до ближайших точечных POI (школы, детсады, больницы, магазины...).',
     // asset_class
     all: 'Объединение всех классов в одну карту. Доступно только в режиме hex (для object scatter нужен конкретный класс).',
     apartment: 'Квартиры в многоквартирных домах. Самый массовый класс — больше всего данных и наиболее точная модель.',
@@ -513,8 +523,51 @@ function humanizePoi(token) {
   return POI_RU[token] || token.replace(/_/g, ' ');
 }
 
+const INSPECTOR_KEY_DESCRIPTIONS = {
+  h3_index: 'Уникальный идентификатор шестиугольника H3 (64-битный hex-индекс).',
+  resolution: 'Пространственное разрешение H3-сетки (размер ячейки).',
+  asset_class: 'Класс сегмента недвижимости (квартиры, ИЖС, коммерция, участки или all).',
+  count: 'Количество объектов выбранного класса, попавших в данную ячейку.',
+  median_target_rub_per_m2: 'Медианная цена сделки / кадастровой стоимости (₽/м²) из ЕГРН в ячейке.',
+  median_pred_oof_rub_per_m2: 'Медианная out-of-fold оценка модели (₽/м²) по объектам ячейки.',
+  median_residual_rub_per_m2: 'Медианный остаток ошибки модели (прогноз − факт) в ячейке.',
+  dominant_mun_okrug_name: 'Муниципальный округ (муниципальное образование верхнего уровня по ГАР).',
+  dominant_intra_city_raion: 'Внутригородской административный район (например, Вахитовский, Советский).',
+  dominant_settlement_name: 'Населённый пункт (город, посёлок, село, деревня).',
+  mun_okrug_name: 'Муниципальный округ (муниципальное образование верхнего уровня по ГАР).',
+  intra_city_raion: 'Внутригородской административный район (например, Вахитовский, Советский).',
+  settlement_name: 'Населённый пункт (город, посёлок, село, деревня).',
+  mun_source: 'Способ определения муниципалитета: "gar" (по выписке ФИАС/ГАР) или "address" (распознано из адреса).',
+  object_id: 'Уникальный системный идентификатор объекта недвижимости.',
+  cad_num: 'Кадастровый номер объекта недвижимости.',
+  readable_address: 'Текстовый структурированный адрес объекта.',
+  y_true: 'Фактическая удельная стоимость из ЕГРН (₽/м²).',
+  y_pred_oof: 'Честный Out-of-fold прогноз модели (₽/м²) на кросс-валидации.',
+  residual: 'Ошибка оценки модели: прогноз − факт (y_pred − y_true).',
+  fold_id: 'Номер пространственного фолда кросс-валидации (0..4).',
+  geometry: 'Наличие и детали полигональной геометрии объекта (контур здания или участка).',
+  lat: 'Широта (WGS84) центроида объекта.',
+  lon: 'Долгота (WGS84) центроида объекта.',
+};
+
+// Russian display labels for the administrative-hierarchy keys (ГАР).
+// Used in the inspector summary / «Административная принадлежность» group
+// and in compare mode so the rows read as Округ / Район / Населённый
+// пункт instead of raw `dominant_*` / `*_name` column names. The raw key
+// is preserved as the tooltip key (3rd rowsSection element) so
+// describeFeature still resolves the full description.
+const ADMIN_KEY_LABELS = {
+  dominant_mun_okrug_name: 'Округ',
+  dominant_intra_city_raion: 'Район города',
+  dominant_settlement_name: 'Населённый пункт',
+  mun_okrug_name: 'Округ',
+  intra_city_raion: 'Район города',
+  settlement_name: 'Населённый пункт',
+};
+
 function describeFeature(name) {
   if (featureDescriptions[name]) return featureDescriptions[name];
+  if (INSPECTOR_KEY_DESCRIPTIONS[name]) return INSPECTOR_KEY_DESCRIPTIONS[name];
   // EBM pair-interaction terms ("a & b") aren't in the API's description
   // dict (they're formed at explain time) — give them a generic hint.
   if (name.includes(' & ')) {
@@ -531,17 +584,20 @@ function describeFeature(name) {
     }[rel[3]];
     return `Признак «${rel[1].replace(/_/g, ' ')}» относительно родительского гекса H3 разрешения ${rel[2]}: ${statRu}. Ловит «дороже/больше, чем соседи», а не абсолютный уровень.`;
   }
+  // ADR-0027 walk_dist_to: pedestrian network distance
+  const walkDist = name.match(/^walk_dist_to_(.+?)_m$/);
+  if (walkDist) return `Пешеходная дистанция по графу OSM до ближайшего объекта «${humanizePoi(walkDist[1])}», в метрах.`;
   // The families below mirror domain/feature_descriptions.py's regex
   // coverage so non-curated radii/POIs (water_share_800m etc.) also get a
   // description even though they're not in the static API dict.
-  const dist = name.match(/^dist_to_(.+?)_m$/);
-  if (dist) return `Расстояние до ближайшего объекта «${humanizePoi(dist[1])}», в метрах.`;
-  const share = name.match(/^(.+?)_share_(\d+)m$/);
-  if (share) return `Доля площади «${humanizePoi(share[1])}» в круге радиуса ${share[2]} м вокруг объекта (0 — нет, 1 — полностью).`;
-  const within = name.match(/^(.+?)_within_(\d+)m$/);
-  if (within) return `Сколько объектов «${humanizePoi(within[1])}» в радиусе ${within[2]} м вокруг объекта.`;
-  const count = name.match(/^count_(.+?)_(\d+)(km|m)$/);
-  if (count) return `Сколько объектов «${humanizePoi(count[1])}» в радиусе ${count[2]} ${count[3]} вокруг объекта.`;
+  const dist = name.match(/^(mean_)?dist_to_(.+?)_m$/);
+  if (dist) return `Расстояние до ближайшего объекта «${humanizePoi(dist[2])}», в метрах.${dist[1] ? ' Усреднено по гексу.' : ''}`;
+  const share = name.match(/^(mean_)?(.+?)_share_(\d+)m$/);
+  if (share) return `Доля площади «${humanizePoi(share[2])}» в круге радиуса ${share[3]} м вокруг объекта (0 — нет, 1 — полностью).${share[1] ? ' Усреднено по гексу.' : ''}`;
+  const within = name.match(/^(mean_)?(.+?)_within_(\d+)m$/);
+  if (within) return `Сколько объектов «${humanizePoi(within[2])}» в радиусе ${within[3]} м вокруг объекта.${within[1] ? ' Усреднено по гексу.' : ''}`;
+  const count = name.match(/^(mean_)?count_(.+?)_(\d+)(km|m)$/);
+  if (count) return `Сколько объектов «${humanizePoi(count[2])}» в радиусе ${count[3]} ${count[4]} вокруг объекта.${count[1] ? ' Усреднено по гексу.' : ''}`;
   const countp = name.match(/^count_p(\d+)$/);
   if (countp) return `Сколько объектов этого класса в родительском гексе H3 разрешения ${countp[1]}. Укрупнённый счётчик плотности.`;
   return null;
@@ -564,9 +620,9 @@ function applyStaticTooltips() {
 }
 
 function applyFeatureOptionTooltips() {
-  // Called after loadFeatureOptions — features were just appended.
-  document.querySelectorAll('#hex_feature option, #object-mode-features-group option').forEach((opt) => {
-    const tip = describeFeature(opt.value);
+  // Called after loadFeatureOptions and populateCellFeatures — features were just appended.
+  document.querySelectorAll('#hex_feature option, #object-mode-features-group option, #cell_feature option, #cell_feature_set option').forEach((opt) => {
+    const tip = describeFeature(opt.value) || TIPS.options[opt.value];
     if (tip) opt.title = tip;
   });
 }
@@ -1036,6 +1092,7 @@ function populateCellFeatures(cellFs) {
     opt.value = f; opt.textContent = f;
     featSel.appendChild(opt);
   }
+  applyFeatureOptionTooltips();
 }
 
 async function fetchHex() {
@@ -1056,6 +1113,15 @@ async function fetchHexDetail(h3Index, resolution, assetClass) {
   const model = document.getElementById('model').value;
   const r = await fetch(
     `/api/hex_aggregates/${encodeURIComponent(h3Index)}?resolution=${resolution}&asset_class=${assetClass}&model=${model}`
+  );
+  if (!r.ok) return null;
+  return (await r.json()).data;
+}
+
+// Full Layer 1 cell ЦОФ (cell inspector).
+async function fetchCellDetail(h3Index, resolution) {
+  const r = await fetch(
+    `/api/cell_tsorf/${encodeURIComponent(h3Index)}?resolution=${resolution}`
   );
   if (!r.ok) return null;
   return (await r.json()).data;
@@ -1437,6 +1503,10 @@ function redrawWithSelection() {
 // ---------- inspector panel ----------
 
 async function showHexInspector(hex, payload) {
+  // ADR-0027 «ЦОФ-сетка»: a clicked cell carries asset_class='grid' and
+  // has no hex_aggregates row — route to the Layer 1 cell inspector
+  // instead of /api/hex_aggregates/{h3} (which 404s for grid cells).
+  if (payload.asset_class === 'grid') return showCellTsorfInspector(hex, payload);
   showPanel();
   selectedItem = hexSelection(hex, payload);
   redrawWithSelection();
@@ -1461,7 +1531,7 @@ function hexGroupedKeys(detail) {
   ];
   const groups = [{ title: 'Сводка', keys: summaryKeys.filter(k => k in detail) }];
   const defs = [
-    { title: 'Доминантные категории', match: k => k.startsWith('dominant_') },
+    { title: 'Административная принадлежность', match: k => k.startsWith('dominant_') },
     { title: 'Описатели зданий', match: k => ['mean_levels', 'mean_flats', 'mean_area_m2', 'mean_year_built', 'mean_age_years'].includes(k) },
     { title: 'Расстояния до ближайшего (м)', match: k => k.startsWith('mean_dist_') },
     { title: 'Доля в буфере 500 м', match: k => k.endsWith('_share_500m') },
@@ -1481,8 +1551,60 @@ function hexGroupedKeys(detail) {
 
 function renderHexDetailSections(detail) {
   return hexGroupedKeys(detail)
-    .map(g => `<h2>${g.title}</h2>` + rowsSection(g.title === 'Сводка' ? 'summary' : '', g.keys.map(k => [k, formatValue(detail[k])])))
+    .map(g => {
+      const rows = g.keys.map(k => {
+        const label = ADMIN_KEY_LABELS[k];
+        return label ? [label, formatValue(detail[k]), k] : [k, formatValue(detail[k])];
+      });
+      return `<h2>${g.title}</h2>` + rowsSection(g.title === 'Сводка' ? 'summary' : '', rows);
+    })
     .join('');
+}
+
+// ADR-0027: Russian labels for the six Слой 1 feature sets. Drives the
+// section headings of the cell inspector so a reader sees «Метро» /
+// «Дистанции (прямые)» rather than the raw set slugs. Order is fixed so
+// the inspector layout is stable regardless of dict key order.
+const CELL_TSORF_SET_LABELS = {
+  geom_distance: 'Дистанции (прямые)',
+  poly_area: 'Доли площади в буфере',
+  zonal: 'Зональная плотность',
+  road_density: 'Дорожная плотность',
+  metro: 'Метро',
+  walk_dist: 'Пешеходные дистанции по графу',
+};
+
+// Inspector for a single Слой 1 cell (ЦОФ-сетка mode). Fetches every
+// built feature set for the clicked h3_index and renders them as
+// grouped sections — the cell analog of renderHexDetailSections.
+async function showCellTsorfInspector(hex, payload) {
+  showPanel();
+  selectedItem = hexSelection(hex, payload);
+  redrawWithSelection();
+  const panel = document.getElementById('panel-content');
+  panel.innerHTML = `<h2>Loading cell ${escapeHtml(hex.hex)}…</h2>`;
+  const detail = await fetchCellDetail(hex.hex, payload.resolution);
+  if (!detail || Object.keys(detail).length === 0) {
+    panel.innerHTML = `<h2>Cell inspector</h2><p class="empty">No Слой 1 features for ${escapeHtml(hex.hex)}.</p>`;
+    return;
+  }
+  panel.innerHTML = `<h2>Cell inspector — h3 ${escapeHtml(hex.hex)}</h2>` + renderCellTsorfSections(detail);
+}
+
+function renderCellTsorfSections(detail) {
+  const known = Object.keys(CELL_TSORF_SET_LABELS);
+  const present = Object.keys(detail);
+  // Known sets first (in their fixed order), then any unexpected sets
+  // alphabetically — newly added sets still render without code change.
+  const ordered = [
+    ...known.filter(fs => present.includes(fs)),
+    ...present.filter(fs => !(fs in CELL_TSORF_SET_LABELS)).sort(),
+  ];
+  return ordered.map(fs => {
+    const label = CELL_TSORF_SET_LABELS[fs] || fs;
+    const rows = Object.keys(detail[fs]).sort().map(f => [f, formatValue(detail[fs][f])]);
+    return `<h2>${escapeHtml(label)}</h2>` + rowsSection('cell', rows);
+  }).join('');
 }
 
 async function showObjectInspector(obj, assetClass) {
@@ -1518,7 +1640,10 @@ async function showObjectInspector(obj, assetClass) {
     'y_true', 'y_pred_oof', 'residual', 'fold_id'];
   const summaryRows = summary
     .filter(k => detail[k] !== undefined)
-    .map(k => [k, formatValue(detail[k])]);
+    .map(k => {
+      const label = ADMIN_KEY_LABELS[k];
+      return label ? [label, formatValue(detail[k]), k] : [k, formatValue(detail[k])];
+    });
   // Surface a one-line geometry status so the user knows whether the
   // map highlight comes from a real polygon or just a fallback dot.
   summaryRows.push([
@@ -1611,9 +1736,11 @@ function formatGeometryValue(key, v) {
 }
 
 function rowsSection(cls, rows) {
-  return `<div class="section ${cls}">` + rows.map(([k, v]) =>
-    `<div class="row"><span class="key">${escapeHtml(k)}</span><span class="val">${escapeHtml(String(v))}</span></div>`
-  ).join('') + `</div>`;
+  return `<div class="section ${cls}">` + rows.map(r => {
+    const k = r[0], v = r[1], tipKey = r.length > 2 ? r[2] : k;
+    const tip = describeFeature(tipKey) || tipKey;
+    return `<div class="row"><span class="key" title="${escapeHtml(tip)}">${escapeHtml(k)}</span><span class="val">${escapeHtml(String(v))}</span></div>`;
+  }).join('') + `</div>`;
 }
 
 // 4-model comparison table. Layout: model name + y_pred_oof + residual.
@@ -1941,12 +2068,15 @@ function comparisonTable(da, db, kind) {
   const out = [];
   for (const g of groups) {
     out.push(`<div class="cmp-section">${escapeHtml(g.title)}</div>`);
-    for (const k of g.keys) out.push(comparisonRow(k, da[k], db[k]));
+    for (const k of g.keys) {
+      const label = ADMIN_KEY_LABELS[k] || k;
+      out.push(comparisonRow(label, da[k], db[k], k));
+    }
   }
   return out.join('');
 }
 
-function comparisonRow(key, va, vb) {
+function comparisonRow(key, va, vb, tipKey) {
   const fa = formatValue(va);
   const fb = formatValue(vb);
   const delta = numericDelta(va, vb);
@@ -1957,8 +2087,9 @@ function comparisonRow(key, va, vb) {
     const cls = delta > 0 ? 'pos' : (delta < 0 ? 'neg' : '');
     deltaCell = `<span class="cmp-delta ${cls}">${formatDelta(delta)}</span>`;
   }
+  const tip = describeFeature(tipKey || key) || (tipKey || key);
   return `<div class="cmp-row">
-      <span class="cmp-key" title="${escapeHtml(describeFeature(key) || key)}">${escapeHtml(key)}</span>
+      <span class="cmp-key" title="${escapeHtml(tip)}">${escapeHtml(key)}</span>
       <span class="cmp-val" title="${escapeHtml(fa)}">${escapeHtml(fa)}</span>
       <span class="cmp-val" title="${escapeHtml(fb)}">${escapeHtml(fb)}</span>
       ${deltaCell}

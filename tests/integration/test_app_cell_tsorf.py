@@ -115,3 +115,30 @@ def test_feature_options_includes_cell_tsorf_block(client: TestClient) -> None:
     # Tooltip covers the Слой 1 feature name.
     assert "walk_dist_to_school_m" in opts["feature_descriptions"]
     assert "пешеходная" in opts["feature_descriptions"]["walk_dist_to_school_m"].lower()
+
+
+def test_cell_tsorf_detail_returns_all_sets_for_cell(client: TestClient) -> None:
+    response = client.get("/api/cell_tsorf/8a10a84a4d97fff", params={"resolution": 10})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["region"] == "RU-TA"
+    assert payload["resolution"] == 10
+    assert payload["h3_index"] == "8a10a84a4d97fff"
+    # Both seeded sets contain this cell.
+    assert payload["data"]["walk_dist"] == {"walk_dist_to_school_m": 538.0}
+    assert payload["data"]["road_density"] == {"road_length_500m": 950.0}
+
+
+def test_cell_tsorf_detail_skips_sets_where_cell_is_absent(client: TestClient) -> None:
+    response = client.get("/api/cell_tsorf/8a10a84a4daffff", params={"resolution": 10})
+    assert response.status_code == 200
+    payload = response.json()
+    # walk_dist has this cell; road_density does not.
+    assert payload["data"]["walk_dist"] == {"walk_dist_to_school_m": 1.0e9}
+    assert "road_density" not in payload["data"]
+
+
+def test_cell_tsorf_detail_404_for_unknown_cell(client: TestClient) -> None:
+    response = client.get("/api/cell_tsorf/deadbeef", params={"resolution": 10})
+    assert response.status_code == 404
+    assert "deadbeef" in response.json()["detail"]
