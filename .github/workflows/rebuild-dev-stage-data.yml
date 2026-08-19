@@ -19,12 +19,12 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p ${{ vars.DEV_STAGE_PORT }} ${{ vars.DEV_STAGE_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Build raw valuation objects
+      - name: Assemble NSPD valuation objects
         run: |
           ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
             ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
             "cd ${{ env.DEPLOY_PATH }} && \
-             docker compose --profile scripts run --rm scripts scripts/build_valuation_objects.py"
+             docker compose --profile scripts run --rm scripts scripts/assemble_nspd_valuation_objects.py"
 
       - name: Build scripts image from current sources
         run: |
