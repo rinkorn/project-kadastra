@@ -5,6 +5,7 @@ from typing import Protocol
 import h3
 import numpy as np
 import polars as pl
+import pytest
 
 from kadastra.domain.asset_class import AssetClass
 from kadastra.etl.haversine import haversine_meters
@@ -182,6 +183,7 @@ def _usecase(
     cell_metro_reader: FeatureReaderPort | None = None,
     cell_walk_dist_reader: FeatureReaderPort | None = None,
     cell_tsorf_resolution: int = 10,
+    cell_tsorf_overlap_weighted: bool = False,
 ) -> BuildObjectFeatures:
     return BuildObjectFeatures(
         reader=store,
@@ -216,6 +218,7 @@ def _usecase(
         cell_metro_reader=cell_metro_reader,
         cell_walk_dist_reader=cell_walk_dist_reader,
         cell_tsorf_resolution=cell_tsorf_resolution,
+        cell_tsorf_overlap_weighted=cell_tsorf_overlap_weighted,
     )
 
 
@@ -958,3 +961,74 @@ def test_rerun_is_idempotent_no_right_duplicates() -> None:
     assert float(second["dist_metro_m"][0]) == 500.0
     # Feature count must not grow across reruns.
     assert second.width == first.width
+
+
+def test_joins_cell_tsorf_overlap_weighted() -> None:
+    """ADR-0027 §12: with overlap_weighted enabled, an object whose
+    footprint spans multiple res cells blends their ЦОФ by area share,
+    not inherits the centroid cell's value. Verify the weighted-mean
+    math against the overlap-weights helper directly."""
+    import shapely
+    from pyproj import Transformer
+
+    t = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+    cx, cy = t.transform(KAZAN_LON, KAZAN_LAT)
+    # 300 m box — spans 2 res-10 cells (edge 75 m).
+    wkt = shapely.geometry.box(cx - 150, cy - 150, cx + 150, cy + 150).wkt
+
+    from kadastra.etl.cell_overlap_weights import compute_overlap_weights
+
+    obj = pl.DataFrame(
+        {
+            "object_id": ["way/apt-1"],
+            "asset_class": ["apartment"],
+            "lat": [KAZAN_LAT],
+            "lon": [KAZAN_LON],
+            "levels": [9],
+            "flats": [72],
+            "year_built": [2015],
+            "polygon_wkt_3857": [wkt],
+        },
+        schema={
+            "object_id": pl.Utf8,
+            "asset_class": pl.Utf8,
+            "lat": pl.Float64,
+            "lon": pl.Float64,
+            "levels": pl.Int64,
+            "flats": pl.Int64,
+            "year_built": pl.Int64,
+            "polygon_wkt_3857": pl.Utf8,
+        },
+    )
+    # Cell reader: the cells the box overlaps get distinct values.
+    weights = compute_overlap_weights(obj, resolution=10)
+    assert weights.height >= 2, "fixture should span ≥2 cells"
+    cell_rows = []
+    weight_list = weights["weight"].to_list()
+    for i, cell in enumerate(weights["h3_index"].to_list()):
+        cell_rows.append({"h3_index": cell, "resolution": 10, "dist_metro_m": 100.0 + 100.0 * i})
+    reader = _FakeCellDistReader(pl.DataFrame(cell_rows))
+
+    store = _FakeStore({AssetClass.APARTMENT: obj})
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+    _usecase(
+        store,
+        raw,
+        cell_metro_reader=reader,
+        cell_tsorf_resolution=10,
+        cell_tsorf_overlap_weighted=True,
+        geom_distance_layer_paths={},
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    # Expected = Σ weight_i · value_i over the overlapping cells.
+    expected = sum(w * (100.0 + 100.0 * i) for i, w in enumerate(weight_list))
+    assert "dist_metro_m" in df.columns
+    assert float(df["dist_metro_m"][0]) == pytest.approx(expected, rel=1e-6)
+    # Must lie strictly between the two extremes (proves it's a blend).
+    assert 100.0 < float(df["dist_metro_m"][0]) < 200.0
+    assert "h3_index" not in df.columns

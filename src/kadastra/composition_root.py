@@ -229,6 +229,7 @@ class Container:
             cell_metro_reader=(ParquetFeatureStore(s.feature_store_path) if s.cell_tsorf_enabled else None),
             cell_walk_dist_reader=(ParquetFeatureStore(s.feature_store_path) if s.cell_tsorf_enabled else None),
             cell_tsorf_resolution=s.cell_tsorf_resolution,
+            cell_tsorf_overlap_weighted=s.cell_tsorf_overlap_weighted,
         )
 
     def build_object_synthetic_target(self) -> BuildObjectSyntheticTarget:

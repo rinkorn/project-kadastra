@@ -8,6 +8,7 @@ from shapely.geometry import shape
 from shapely.geometry.base import BaseGeometry
 
 from kadastra.domain.asset_class import AssetClass
+from kadastra.etl.cell_overlap_weights import compute_overlap_weights
 from kadastra.etl.h3_coverage import add_h3_index
 from kadastra.etl.load_geometries import load_geojsonseq_geometries, load_geojsonseq_points
 from kadastra.etl.object_age_features import compute_object_age_features
@@ -63,6 +64,7 @@ class BuildObjectFeatures:
         cell_metro_reader: FeatureReaderPort | None = None,
         cell_walk_dist_reader: FeatureReaderPort | None = None,
         cell_tsorf_resolution: int = 10,
+        cell_tsorf_overlap_weighted: bool = True,
     ) -> None:
         self._reader = reader
         self._store = store
@@ -92,6 +94,7 @@ class BuildObjectFeatures:
         self._cell_metro_reader = cell_metro_reader
         self._cell_walk_dist_reader = cell_walk_dist_reader
         self._cell_tsorf_resolution = cell_tsorf_resolution
+        self._cell_tsorf_overlap_weighted = cell_tsorf_overlap_weighted
 
     def execute(self, region_code: str, asset_classes: list[AssetClass]) -> None:
         stations = pl.read_csv(io.BytesIO(self._raw_data.read_bytes(self._stations_key)))
@@ -114,15 +117,27 @@ class BuildObjectFeatures:
         # are dropped before recomputing.
         raw_cols = [c for c in RAW_OBJECT_SCHEMA if c in combined.columns]
         combined = combined.select(raw_cols)
+        # ADR-0027 §12: overlap-weighted assignment of cell ЦОФ to each
+        # object — a large footprint blending the features of every res
+        # cell it covers, weighted by area share, instead of inheriting
+        # only the centroid cell's values. Computed once and reused
+        # across all six Слой 1 joins (metro/road/zonal/poly_area/
+        # geom_distance/walk_dist). When disabled (or no cell readers
+        # wired), falls back to single-cell-by-centroid in the join.
+        cell_join_weights = (
+            compute_overlap_weights(combined, resolution=self._cell_tsorf_resolution)
+            if self._cell_tsorf_overlap_weighted and self._has_any_cell_reader()
+            else None
+        )
 
         if self._cell_metro_reader is not None:
             cell_metro = self._cell_metro_reader.load(region_code, self._cell_tsorf_resolution, "metro")
-            enriched = self._join_cell_tsorf(combined, cell_metro)
+            enriched = self._join_cell_tsorf(combined, cell_metro, cell_join_weights)
         else:
             enriched = compute_object_metro_features(combined, stations, entrances, road_graph=self._road_graph)
         if self._cell_road_reader is not None:
             cell_road = self._cell_road_reader.load(region_code, self._cell_tsorf_resolution, "road_density")
-            enriched = self._join_cell_tsorf(enriched, cell_road)
+            enriched = self._join_cell_tsorf(enriched, cell_road, cell_join_weights)
         else:
             enriched = compute_object_road_features(enriched, ways, radius_m=self._road_radius_m)
         enriched = compute_object_neighbor_features(enriched, radius_m=self._neighbor_radius_m)
@@ -133,7 +148,7 @@ class BuildObjectFeatures:
         # excludes self-rows in the count.
         if self._cell_zonal_reader is not None:
             cell_zonal = self._cell_zonal_reader.load(region_code, self._cell_tsorf_resolution, "zonal")
-            enriched = self._join_cell_tsorf(enriched, cell_zonal)
+            enriched = self._join_cell_tsorf(enriched, cell_zonal, cell_join_weights)
         else:
             zonal_layers = self._build_zonal_layers(enriched, stations, entrances)
             enriched = compute_object_zonal_features(enriched, layers=zonal_layers, radii_m=self._zonal_radii_m)
@@ -142,7 +157,7 @@ class BuildObjectFeatures:
         # cell centres); otherwise the per-object fallback applies.
         if self._cell_polygon_reader is not None:
             cell_share = self._cell_polygon_reader.load(region_code, self._cell_tsorf_resolution, "poly_area")
-            enriched = self._join_cell_tsorf(enriched, cell_share)
+            enriched = self._join_cell_tsorf(enriched, cell_share, cell_join_weights)
         else:
             poly_layers = self._load_poly_area_layers()
             enriched = compute_object_polygon_features(
@@ -157,7 +172,7 @@ class BuildObjectFeatures:
         # blocks carry orthogonal signals; the model weights them.
         if self._cell_geom_distance_reader is not None:
             cell_dist = self._cell_geom_distance_reader.load(region_code, self._cell_tsorf_resolution, "geom_distance")
-            enriched = self._join_cell_tsorf(enriched, cell_dist)
+            enriched = self._join_cell_tsorf(enriched, cell_dist, cell_join_weights)
         elif self._geom_distance_layer_paths:
             distance_layers = self._load_layer_geometries(self._geom_distance_layer_paths)
             enriched = compute_object_geom_distance_features(enriched, geometries_by_layer=distance_layers)
@@ -165,7 +180,7 @@ class BuildObjectFeatures:
         # expensive per-object; methodology §17 «всё на сетке один раз»).
         if self._cell_walk_dist_reader is not None:
             cell_walk_dist = self._cell_walk_dist_reader.load(region_code, self._cell_tsorf_resolution, "walk_dist")
-            enriched = self._join_cell_tsorf(enriched, cell_walk_dist)
+            enriched = self._join_cell_tsorf(enriched, cell_walk_dist, cell_join_weights)
         # Territorial / municipality features (ADR-0015). ГАР primary
         # via cad_num→objectid→mun_lookup; NSPD readable_address parse
         # fallback for the ~55–75 % unmatched rows. Skip if either
@@ -279,17 +294,71 @@ class BuildObjectFeatures:
     def _load_layer_geometries(self, paths: dict[str, str]) -> dict[str, list[BaseGeometry]]:
         return load_geojsonseq_geometries(paths)
 
-    def _join_cell_tsorf(self, objects: pl.DataFrame, cell_tsorf: pl.DataFrame) -> pl.DataFrame:
-        """Join objects to cell-level ЦОФ on their res cell (ADR-0027).
+    def _has_any_cell_reader(self) -> bool:
+        return any(
+            reader is not None
+            for reader in (
+                self._cell_metro_reader,
+                self._cell_road_reader,
+                self._cell_zonal_reader,
+                self._cell_polygon_reader,
+                self._cell_geom_distance_reader,
+                self._cell_walk_dist_reader,
+            )
+        )
 
-        Computes each object's ``h3_index`` at ``_cell_tsorf_resolution``
-        and left-joins a Слой 1 feature set; objects whose cell has no
-        store row get null values (mirrors per-object missing-layer
-        semantics).
+    def _join_cell_tsorf(
+        self,
+        objects: pl.DataFrame,
+        cell_tsorf: pl.DataFrame,
+        weights_df: pl.DataFrame | None = None,
+    ) -> pl.DataFrame:
+        """Join objects to cell-level ЦОФ (ADR-0027, §12 overlap).
+
+        Two modes:
+
+        - **overlap-weighted** (``weights_df`` given): each object blends
+          the features of every res cell its footprint covers, weighted
+          by area share (``compute_overlap_weights``). A long
+          ``(object_id, h3_index, weight)`` frame is joined to the cell
+          feature set on ``h3_index``, then features are reduced per
+          object via ``Σ value·weight`` (count columns get the same
+          weighted mean — appropriate for densities; integer casts are
+          re-applied). Objects with no coverage get nulls.
+        - **single-cell** (``weights_df`` None): the legacy centroid-cell
+          left-join — backward-compatible path used when overlap
+          weighting is disabled or no cell reader is wired.
         """
-        with_index = add_h3_index(objects, resolution=self._cell_tsorf_resolution)
         right = cell_tsorf.drop("resolution") if "resolution" in cell_tsorf.columns else cell_tsorf
-        return with_index.join(right, on="h3_index", how="left").drop("h3_index")
+        feature_cols = [c for c in right.columns if c != "h3_index"]
+        if not feature_cols:
+            return objects
+
+        if weights_df is None:
+            with_index = add_h3_index(objects, resolution=self._cell_tsorf_resolution)
+            return with_index.join(right, on="h3_index", how="left").drop("h3_index")
+
+        # Overlap-weighted: long (object_id, h3_index, weight) × cell features.
+        joined = weights_df.join(right, on="h3_index", how="inner")
+        if joined.is_empty():
+            # No cell coverage at all — emit null feature columns.
+            return objects.with_columns([pl.lit(None, dtype=pl.Float64).alias(c) for c in feature_cols])
+        # Σ value·weight per object, keyed on object_id. Casts happen at
+        # the end so count columns (stored Int64) re-become integers
+        # only after the weighted mean; the intermediate is Float64.
+        agg_exprs = [(pl.col(c).cast(pl.Float64) * pl.col("weight")).sum().alias(c) for c in feature_cols]
+        weighted = joined.group_by("object_id").agg(agg_exprs)
+        # Preserve original column dtypes (counts stay Int64).
+        cast_exprs = []
+        for c in feature_cols:
+            src = right.schema.get(c, pl.Float64)
+            if src != pl.Float64:
+                cast_exprs.append(pl.col(c).cast(src))
+            else:
+                cast_exprs.append(pl.col(c))
+        if cast_exprs:
+            weighted = weighted.with_columns(cast_exprs)
+        return objects.join(weighted, on="object_id", how="left")
 
     def _build_zonal_layers(
         self,

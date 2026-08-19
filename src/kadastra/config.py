@@ -137,6 +137,13 @@ class Settings(BaseSettings):
     # per-object baseline until the A/B is run.
     cell_tsorf_enabled: bool = False
     cell_tsorf_resolution: int = 10
+    # ADR-0027 §12: when True (and cell_tsorf_enabled), each object
+    # blends the Слой 1 features of every res cell its footprint covers,
+    # weighted by area share, instead of inheriting only its centroid
+    # cell's values. Default True — the methodologically-correct path
+    # (the single-cell fallback exists for A/B ablation). Only objects
+    # without a usable polygon geometry fall back to centroid-by-point.
+    cell_tsorf_overlap_weighted: bool = True
 
     nspd_silver_store_path: Path = Path("data/silver/nspd")
     nspd_buildings_raw_dir: Path = Path("data/raw/nspd/buildings-kazan")
