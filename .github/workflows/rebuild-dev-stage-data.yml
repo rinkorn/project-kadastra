@@ -19,26 +19,33 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p ${{ vars.DEV_STAGE_PORT }} ${{ vars.DEV_STAGE_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
+      - name: Build scripts image from current sources
+        run: |
+          ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
+            ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
+            "cd ${{ env.DEPLOY_PATH }} && \
+             docker compose --profile scripts build --no-cache scripts"
+
       - name: Rebuild object features
         run: |
           ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
             ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
             "cd ${{ env.DEPLOY_PATH }} && \
-             docker compose --profile scripts run --rm -e CELL_TSORF_ENABLED=true scripts python scripts/build_object_features.py"
+             docker compose --profile scripts run --rm -e CELL_TSORF_ENABLED=true scripts scripts/build_object_features.py"
 
       - name: Rebuild hex aggregates
         run: |
           ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
             ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
             "cd ${{ env.DEPLOY_PATH }} && \
-             docker compose --profile scripts run --rm scripts python scripts/build_hex_aggregates.py"
+             docker compose --profile scripts run --rm scripts scripts/build_hex_aggregates.py"
 
       - name: Upload valuation_objects to S3
         run: |
           ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
             ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
             "cd ${{ env.DEPLOY_PATH }} && \
-             docker compose --profile scripts run --rm scripts python scripts/upload_dir_to_s3.py \
+             docker compose --profile scripts run --rm scripts scripts/upload_dir_to_s3.py \
                --src data/gold/valuation_objects \
                --prefix Kadatastr/gold/valuation_objects"
 
@@ -47,7 +54,7 @@ jobs:
           ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
             ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
             "cd ${{ env.DEPLOY_PATH }} && \
-             docker compose --profile scripts run --rm scripts python scripts/upload_dir_to_s3.py \
+             docker compose --profile scripts run --rm scripts scripts/upload_dir_to_s3.py \
                --src data/gold/hex_aggregates \
                --prefix Kadatastr/gold/hex_aggregates"
 
