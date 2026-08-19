@@ -315,6 +315,28 @@ def make_api_router(
             "data": data,
         }
 
+    @router.get("/cell_tsorf/{h3_index}")
+    def cell_tsorf_detail(
+        h3_index: str,
+        resolution: int = Query(..., ge=0, le=15),
+    ) -> dict[str, Any]:
+        """Full Layer 1 cell ЦОФ across all built feature sets for a single cell.
+
+        Feeds the cell inspector panel when clicking on a hex in «ЦОФ-сетка» mode.
+        """
+        data = get_cell_tsorf.get_cell_detail(region_code, resolution, h3_index)
+        if not data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"cell {h3_index!r} not found at resolution={resolution} in region={region_code!r}",
+            )
+        return {
+            "region": region_code,
+            "resolution": resolution,
+            "h3_index": h3_index,
+            "data": data,
+        }
+
     return router
 
 
