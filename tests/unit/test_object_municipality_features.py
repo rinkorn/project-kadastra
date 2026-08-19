@@ -521,3 +521,133 @@ def test_preserves_input_columns_and_order() -> None:
     assert out["object_id"].to_list() == ["z", "a"]
     for col in ("object_id", "cad_num", "readable_address", "lat", "lon"):
         assert col in out.columns
+
+
+def _make_kazan_mun_lookup() -> pl.DataFrame:
+    return _mun(
+        [
+            {
+                "objectid": 1,
+                "mun_okrug_name": "город Казань",
+                "mun_okrug_oktmo": "92701000",
+                "settlement_name": "Казань",
+            }
+        ]
+    )
+
+
+def test_settlement_strips_raion_suffix_from_city() -> None:
+    """ "г Казань р-н" must resolve to settlement "Казань", not "Казань р-н"."""
+    objects = _objects(
+        [
+            {
+                "object_id": "a",
+                "cad_num": "16:50:999:999",
+                "readable_address": "Республика Татарстан, г Казань р-н, ул Пушкина, д. 5",
+                "lat": 55.78,
+                "lon": 49.12,
+            }
+        ]
+    )
+    out = compute_object_municipality_features(
+        objects, cadnum_index=_cadnum_ix([]), mun_lookup=_make_kazan_mun_lookup()
+    )
+    row = out.row(0, named=True)
+    assert row["settlement_name"] == "Казань"
+    assert row["mun_okrug_name"] == "город Казань"
+    assert row["mun_okrug_oktmo"] == "92701000"
+    assert row["mun_source"] == "address"
+
+
+def test_settlement_strips_street_tail_from_city() -> None:
+    """ "г Казань ул Гагарина" must resolve to settlement "Казань"."""
+    objects = _objects(
+        [
+            {
+                "object_id": "a",
+                "cad_num": "16:50:999:999",
+                "readable_address": "Республика Татарстан, г Казань ул Гагарина, д. 5",
+                "lat": 55.78,
+                "lon": 49.12,
+            }
+        ]
+    )
+    out = compute_object_municipality_features(
+        objects, cadnum_index=_cadnum_ix([]), mun_lookup=_make_kazan_mun_lookup()
+    )
+    row = out.row(0, named=True)
+    assert row["settlement_name"] == "Казань"
+    assert row["mun_okrug_name"] == "город Казань"
+
+
+def test_urban_okrug_with_intra_raion_leaks_to_city_fallback() -> None:
+    """ "г.о. Советский район, г Казань" is malformed: the urban-okrug
+    segment accidentally carries an intra-city raion. The raion must be
+    stripped from the okrug capture, leaving the city fallback to produce
+    "город Казань"."""
+    objects = _objects(
+        [
+            {
+                "object_id": "a",
+                "cad_num": "16:50:999:999",
+                "readable_address": "Республика Татарстан, г.о. Советский район, г Казань, ул Пушкина",
+                "lat": 55.78,
+                "lon": 49.12,
+            }
+        ]
+    )
+    out = compute_object_municipality_features(
+        objects, cadnum_index=_cadnum_ix([]), mun_lookup=_make_kazan_mun_lookup()
+    )
+    row = out.row(0, named=True)
+    assert row["intra_city_raion"] == "Советский"
+    assert row["settlement_name"] == "Казань"
+    assert row["mun_okrug_name"] == "город Казань"
+    assert row["mun_okrug_oktmo"] == "92701000"
+
+
+def test_intra_raion_name_cannot_become_mun_okrug() -> None:
+    """A standalone "Советский район" segment must populate
+    ``intra_city_raion``, not ``mun_okrug_name``."""
+    objects = _objects(
+        [
+            {
+                "object_id": "a",
+                "cad_num": "16:50:999:999",
+                "readable_address": "Республика Татарстан, Советский район, г Казань, ул Пушкина",
+                "lat": 55.78,
+                "lon": 49.12,
+            }
+        ]
+    )
+    out = compute_object_municipality_features(
+        objects, cadnum_index=_cadnum_ix([]), mun_lookup=_make_kazan_mun_lookup()
+    )
+    row = out.row(0, named=True)
+    assert row["intra_city_raion"] == "Советский"
+    # Raion name must not leak into okrug; city fallback saves it.
+    assert row["mun_okrug_name"] == "город Казань"
+    assert row["mun_okrug_oktmo"] == "92701000"
+
+
+def test_bare_city_in_urban_okrug_gets_prefixed_for_oktmo_bridge() -> None:
+    """ "г.о. Казань" (bare city, no "город" prefix) must bridge to the
+    canonical "город Казань" OKTMO entry."""
+    objects = _objects(
+        [
+            {
+                "object_id": "a",
+                "cad_num": "16:50:999:999",
+                "readable_address": "Республика Татарстан, г.о. Казань, г Казань, ул Пушкина",
+                "lat": 55.78,
+                "lon": 49.12,
+            }
+        ]
+    )
+    out = compute_object_municipality_features(
+        objects, cadnum_index=_cadnum_ix([]), mun_lookup=_make_kazan_mun_lookup()
+    )
+    row = out.row(0, named=True)
+    assert row["mun_okrug_name"] == "город Казань"
+    assert row["mun_okrug_oktmo"] == "92701000"
+    assert row["settlement_name"] == "Казань"
