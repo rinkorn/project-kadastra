@@ -42,13 +42,14 @@ jobs:
       - name: Fix data ownership on VM
         run: |
           # Scripts run inside Docker write to data/ as root; subsequent
-          # rsync --delete fails to remove those files. Re-own to the
-          # deploy user before syncing.
+          # rsync --delete fails to remove those files. Re-own the whole
+          # data/ tree (gold outputs, silver/models/raw rebuild inputs)
+          # to the deploy user before syncing.
           ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
             ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
             "cd ${{ env.DEPLOY_PATH }} && \
-             mkdir -p data/gold && \
-             docker run --rm -v ./data:/data alpine chown -R \$(id -u):\$(id -g) /data/gold"
+             mkdir -p data && \
+             docker run --rm -v ./data:/data alpine chown -R \$(id -u):\$(id -g) /data"
 
       - name: Sync sources to VM
         run: |
