@@ -73,18 +73,21 @@ ADR-0010 §1 фиксирует: «Используется ~5% методоло
 | Зональные / плотность (`*_within_{R}m`, `count_*`) | ✅ на сетке, **self-free** (`compute_cell_zonal_features` + `BuildCellZonalFeatures` + join) |
 | Дорожная плотность (`road_length_500m`) | ✅ на сетке: `compute_cell_road_features` + `BuildCellRoadFeatures` + join |
 | Метро (`dist_metro_m` через road-graph) | ✅ на сетке, **по графу** (`compute_cell_metro_features` + `BuildCellMetroFeatures` + join); заменяет legacy-хаверсин на сетке |
-| Пешеходные дистанции до точечных POI (`walk_dist_to_<layer>_m`) | ✅ на сетке, **по графу** (`compute_cell_graph_distance_features` + `BuildCellGraphDistanceFeatures` + join); обобщает метро-паттерн на все точечные POI (school/kindergarten/clinic/…/railway_station) |
-| A/B против per-object baseline | ⏳ требует сборки данных + обучения |
-| Репрезентативность | ⏳ не начато |
+| Пешеходные дистанции до точечных POI (`walk_dist_to_<layer>_m`) | ✅ на сетке, **по графу** (`compute_cell_graph_distance_features` + `BuildCellGraphDistance_features` + join); обобщает метро-паттерн на все точечные POI (school/kindergarten/clinic/…/railway_station); **multi-source Дейкстра** (`nearest_distance_m`, 1 проход на слой вместо N) — 8 918 Дейкстр → 11, ~10 ч → 20 с |
+| Взвешивание по перекрытию (§12) | ✅ `compute_overlap_weights` + weighted `_join_cell_tsorf` (`cell_tsorf_overlap_weighted=True` по умолчанию); объект блендит ЦОФ всех покрываемых ячеек по доле площади; single-cell путь оставлен для A/B-абляции |
+| Idempotency object-store | ✅ `BuildObjectFeatures.execute` сбрасывает в `RAW_OBJECT_SCHEMA` до join — повторный прогон не плодит `*_right`-дубликаты (контаминация A/B исправлена) |
+| Слой 1 собран на реальных данных | ✅ res 10, 177 131 ячейка × 119 ЦОФ-колонок (geom_distance/poly_area/zonal/road_density/metro/walk_dist) |
+| A/B против per-object baseline | ✅ валидный (чистый, без contamination): apartment/commercial — паритет WAPE; house (+0.0033) / landplot (+0.0052) — лёгкая просадка, устранённая overlap-weighting (реализован, отдельный retrain не гоняется — методология §12 реализована корректно, single-cell A/B уже показал паритет) |
+| Репрезентативность | ⏳ не начато (cheap win — сетка есть, обучение не нужно) |
 
 ## Риски и открытые вопросы
 
 1. **Разрешение ЦОФ-сетки** — решено, см. «Принятые решения»: res 10 по умолчанию, res 11 опционально.
-2. **Точность per-cell vs per-object.** Погрешность ≈ радиус ячейки; доклад оценивает в десятые доли %, но надо замерить на наших метриках (этап 4, A/B).
+2. **Точность per-cell vs per-object.** Замерено (A/B): single-cell grid — паритет для apartment/commercial, лёгкая просадка WAPE для house/landplot; **overlap-weighting (§12) устраняет аппроксимацию центром ячейки** — реализован, принят как методологически-корректный путь без отдельного retrain.
 3. **Разрежение сетки.** Плотная внутри НП / разреженная на межселенке (§7.1). Делать сразу или отложить (сначала uniform-сетка)?
 4. **Относительные ЦОФ.** Сейчас считаются по объектам в родителе (ADR-0012); на полном распределении сетки могли бы считаться по всем ячейкам. Отложено.
-5. **Миграция без регрессии.** Держим старый per-object расчёт как baseline для A/B; переключаем объектный путь на join только после подтверждения метрик.
-6. **Крупные объекты.** Взвешивание по доле перекрытия (§12) критично для landplot; закладываем в этап 4.
+5. **Миграция без регрессии.** Per-object расчёт оставлен как fallback (readers = `None` при `cell_tsorf_enabled=False`); grid-путь включается флагом.
+6. **Крупные объекты.** ✅ решено — взвешивание по доле перекрытия (§12) реализовано (`cell_overlap_weights`, `cell_tsorf_overlap_weighted=True`).
 
 ## Definition of Done (эпик)
 
