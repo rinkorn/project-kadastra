@@ -2101,10 +2101,15 @@ function setLegendSliders(values, isDiverging) {
   }
   let trackMin, trackMax;
   if (isDiverging) {
-    const m = Math.max(...finite.map(v => Math.abs(v))) || 1;
+    let m = 1;
+    for (const v of finite) { const a = Math.abs(v); if (a > m) m = a; }
     trackMin = -m; trackMax = m;
   } else {
-    trackMin = Math.min(...finite); trackMax = Math.max(...finite);
+    // Iterate instead of Math.min(...finite)/Math.max(...finite): the
+    // spread explodes the array as call args, which overflows the JS
+    // call stack for large Слой 1 payloads (177k+ cells). See ADR-0027.
+    trackMin = Infinity; trackMax = -Infinity;
+    for (const v of finite) { if (v < trackMin) trackMin = v; if (v > trackMax) trackMax = v; }
     if (trackMin === trackMax) trackMax = trackMin + 1;
   }
   const span = trackMax - trackMin;
