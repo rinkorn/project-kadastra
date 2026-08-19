@@ -72,6 +72,25 @@ _INTRA_KAZAN_RAIONS = (
 )
 _RX_INTRA = r"(" + r"|".join(_INTRA_KAZAN_RAIONS) + r")\s+район"
 
+# Address-parser cleanup: strip trailing junk tokens that NSPD sometimes
+# glues to the city / urban-okrug segment when commas are missing.
+# Covers "Советский район", "р-н", "г.о.", "м.о.", "с/т", street markers,
+# parenthetical notes and house-number tails (e.g. "Казань д. 5").
+_RX_ADDR_JUNK_TAIL = (
+    r"^(?:" + r"|".join(_INTRA_KAZAN_RAIONS) + r")\s+район\s*|"
+    r"(?:\s+(?:"
+    r"муниципальный\s+район|" + r"|".join(_INTRA_KAZAN_RAIONS) + r"\s+район|"
+    r"р-н\.?|"
+    r"г\.о\.?|"
+    r"м\.о\.?|"
+    r"с/т.*|"
+    r"ул\.?.*|"
+    r"улица.*|"
+    r"\(.*"
+    r")|"
+    r"\.\s.*)$"
+)
+
 
 def _build_name_to_oktmo(mun_lookup: pl.DataFrame) -> pl.DataFrame:
     """Bridge from okrug name to its canonical short OKTMO. Built from
@@ -199,25 +218,40 @@ def compute_object_municipality_features(
             addr.str.extract(_RX_VILLAGE, group_index=1).alias("_vil_addr"),
             addr.str.extract(_RX_INTRA, group_index=1).alias("_intra_raion_addr"),
         )
-        # Clean address-extracted strings: strip whitespace/punctuation
-        # and trim everything from " муниципальный ..." or
-        # " {INTRA_KAZAN_RAION} район" — those tokens leak into the
-        # urban-okrug capture when the original text has no comma
-        # before them (e.g. "г.о. город Казань Советский район").
+        # Clean address-extracted strings: strip trailing junk tokens
+        # (raion/okruga/street/house markers) that leak into the capture
+        # when the original text has no comma before them
+        # (e.g. "г Казань р-н", "г Казань ул Гагарина", "г.о. Казань").
         .with_columns(
             pl.col("_okrug_addr_urban")
-            .str.replace(
-                r"\s+(?:муниципальный\s+район|" + r"|".join(_INTRA_KAZAN_RAIONS) + r"\s+район).*$",
-                "",
-            )
+            .str.replace(_RX_ADDR_JUNK_TAIL, "")
             .str.strip_chars(" \t.,;")
             .alias("_okrug_addr_urban_clean"),
             pl.col("_city_addr")
-            .str.replace(
-                r"\s+(?:муниципальный\s+район|" + r"|".join(_INTRA_KAZAN_RAIONS) + r"\s+район).*$",
-                "",
-            )
+            .str.replace(_RX_ADDR_JUNK_TAIL, "")
             .str.strip_chars(" \t.,;")
+            .alias("_city_addr_clean"),
+        )
+        # Guard the urban-okrug capture:
+        #   - empty string → null (cleanup consumed everything);
+        #   - intra-Kazan raion name → null (raion is not an okrug);
+        #   - bare city name from "г.о. Казань" → prefix "город " so it
+        #     bridges to the canonical "город Казань" OKTMO entry.
+        .with_columns(
+            pl.when(pl.col("_okrug_addr_urban_clean") == "")
+            .then(pl.lit(None, dtype=pl.Utf8))
+            .when(pl.col("_okrug_addr_urban_clean").is_in(list(_INTRA_KAZAN_RAIONS)))
+            .then(pl.lit(None, dtype=pl.Utf8))
+            .when(
+                pl.col("_okrug_addr_urban_clean").is_not_null()
+                & ~pl.col("_okrug_addr_urban_clean").str.contains(r"город|район|муниципальный")
+            )
+            .then(pl.lit("город ") + pl.col("_okrug_addr_urban_clean"))
+            .otherwise(pl.col("_okrug_addr_urban_clean"))
+            .alias("_okrug_addr_urban_guarded"),
+            pl.when(pl.col("_city_addr_clean") == "")
+            .then(pl.lit(None, dtype=pl.Utf8))
+            .otherwise(pl.col("_city_addr_clean"))
             .alias("_city_addr_clean"),
         )
         # Settlement: ГАР first, else city ("г X"), else village.
@@ -228,14 +262,14 @@ def compute_object_municipality_features(
                 pl.col("_vil_addr").str.strip_chars(),
             ).alias("settlement_name_resolved"),
         )
-        # Okrug: ГАР first, else "г.о. X", else "X муниципальный район",
+        # Okrug: ГАР first, else guarded "г.о. X", else "X муниципальный район",
         # else infer "город {settlement}" for objects that just say
         # "г Казань" without г.о. — most NSPD entries inside Kazan
         # city lack the г.о. prefix despite belonging to the okrug.
         .with_columns(
             pl.coalesce(
                 pl.col("mun_okrug_name"),
-                pl.col("_okrug_addr_urban_clean"),
+                pl.col("_okrug_addr_urban_guarded"),
                 pl.col("_okrug_addr_rural").str.strip_chars(),
                 pl.when(pl.col("_city_addr_clean").is_not_null())
                 .then(pl.lit("город ") + pl.col("_city_addr_clean"))
