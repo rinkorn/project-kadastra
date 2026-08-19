@@ -1739,7 +1739,7 @@ function rowsSection(cls, rows) {
   return `<div class="section ${cls}">` + rows.map(r => {
     const k = r[0], v = r[1], tipKey = r.length > 2 ? r[2] : k;
     const tip = describeFeature(tipKey) || tipKey;
-    return `<div class="row"><span class="key" title="${escapeHtml(tip)}">${escapeHtml(k)}</span><span class="val">${escapeHtml(String(v))}</span></div>`;
+    return `<div class="row"><span class="key" data-tip="${escapeHtml(tip)}">${escapeHtml(k)}</span><span class="val">${escapeHtml(String(v))}</span></div>`;
   }).join('') + `</div>`;
 }
 
@@ -2121,9 +2121,9 @@ function comparisonRow(key, va, vb, tipKey) {
   }
   const tip = describeFeature(tipKey || key) || (tipKey || key);
   return `<div class="cmp-row">
-      <span class="cmp-key" title="${escapeHtml(tip)}">${escapeHtml(key)}</span>
-      <span class="cmp-val" title="${escapeHtml(fa)}">${escapeHtml(fa)}</span>
-      <span class="cmp-val" title="${escapeHtml(fb)}">${escapeHtml(fb)}</span>
+      <span class="cmp-key" data-tip="${escapeHtml(tip)}">${escapeHtml(key)}</span>
+      <span class="cmp-val" data-tip="${escapeHtml(fa)}">${escapeHtml(fa)}</span>
+      <span class="cmp-val" data-tip="${escapeHtml(fb)}">${escapeHtml(fb)}</span>
       ${deltaCell}
     </div>`;
 }
