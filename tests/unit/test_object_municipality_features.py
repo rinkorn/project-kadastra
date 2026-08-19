@@ -651,3 +651,78 @@ def test_bare_city_in_urban_okrug_gets_prefixed_for_oktmo_bridge() -> None:
     assert row["mun_okrug_name"] == "город Казань"
     assert row["mun_okrug_oktmo"] == "92701000"
     assert row["settlement_name"] == "Казань"
+
+
+def test_snt_landmark_address_cut_at_raion() -> None:
+    """NSPD "местоположение относительно ориентира" addresses glue the
+    whole "…район сдт X участок N" tail to the city name without commas.
+    The capture must be cut at the first junk token."""
+    objects = _objects(
+        [
+            {
+                "object_id": "a",
+                "cad_num": "16:50:999:999",
+                "readable_address": (
+                    "Местоположение установлено относительно ориентира, расположенного в границах участка. "
+                    "Почтовый адрес ориентира: Республика Татарстан, г Казань Приволжский район "
+                    "сдт Табигать участок 234."
+                ),
+                "lat": 55.78,
+                "lon": 49.12,
+            }
+        ]
+    )
+    out = compute_object_municipality_features(
+        objects, cadnum_index=_cadnum_ix([]), mun_lookup=_make_kazan_mun_lookup()
+    )
+    row = out.row(0, named=True)
+    assert row["settlement_name"] == "Казань"
+    assert row["mun_okrug_name"] == "город Казань"
+    assert row["mun_okrug_oktmo"] == "92701000"
+    assert row["intra_city_raion"] == "Приволжский"
+
+
+def test_snt_address_with_commas_cut_at_raion() -> None:
+    """ "город Казань Приволжский район, сдт Табигать, дом 185" — the city
+    capture ends at the comma but still carries the raion segment."""
+    objects = _objects(
+        [
+            {
+                "object_id": "a",
+                "cad_num": "16:50:999:999",
+                "readable_address": "Республика Татарстан, город Казань Приволжский район, сдт Табигать, дом 185",
+                "lat": 55.78,
+                "lon": 49.12,
+            }
+        ]
+    )
+    out = compute_object_municipality_features(
+        objects, cadnum_index=_cadnum_ix([]), mun_lookup=_make_kazan_mun_lookup()
+    )
+    row = out.row(0, named=True)
+    assert row["settlement_name"] == "Казань"
+    assert row["mun_okrug_name"] == "город Казань"
+    assert row["intra_city_raion"] == "Приволжский"
+
+
+def test_city_raion_settlement_compound_cut_at_raion() -> None:
+    """ "г Казань Советский район п Вознесение" — settlement must be
+    "Казань", not the whole compound string."""
+    objects = _objects(
+        [
+            {
+                "object_id": "a",
+                "cad_num": "16:50:999:999",
+                "readable_address": "Республика Татарстан, г Казань Советский район п Вознесение, ул Центральная, д. 1",
+                "lat": 55.78,
+                "lon": 49.12,
+            }
+        ]
+    )
+    out = compute_object_municipality_features(
+        objects, cadnum_index=_cadnum_ix([]), mun_lookup=_make_kazan_mun_lookup()
+    )
+    row = out.row(0, named=True)
+    assert row["settlement_name"] == "Казань"
+    assert row["mun_okrug_name"] == "город Казань"
+    assert row["intra_city_raion"] == "Советский"
