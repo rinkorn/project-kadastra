@@ -19,6 +19,13 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p ${{ vars.DEV_STAGE_PORT }} ${{ vars.DEV_STAGE_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
+      - name: Build scripts image from current sources
+        run: |
+          ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
+            ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
+            "cd ${{ env.DEPLOY_PATH }} && \
+             docker compose --profile scripts build --no-cache scripts"
+
       - name: Rebuild object features
         run: |
           ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
