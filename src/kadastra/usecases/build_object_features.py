@@ -8,6 +8,9 @@ from shapely.geometry import shape
 from shapely.geometry.base import BaseGeometry
 
 from kadastra.domain.asset_class import AssetClass
+from kadastra.etl.cell_overlap_weights import compute_overlap_weights
+from kadastra.etl.h3_coverage import add_h3_index
+from kadastra.etl.load_geometries import load_geojsonseq_geometries, load_geojsonseq_points
 from kadastra.etl.object_age_features import compute_object_age_features
 from kadastra.etl.object_geom_distance_features import (
     compute_object_geom_distance_features,
@@ -22,10 +25,12 @@ from kadastra.etl.object_polygon_features import compute_object_polygon_features
 from kadastra.etl.object_road_features import compute_object_road_features
 from kadastra.etl.object_zonal_features import compute_object_zonal_features
 from kadastra.etl.relative_features import compute_relative_features
+from kadastra.ports.feature_reader import FeatureReaderPort
 from kadastra.ports.raw_data import RawDataPort
 from kadastra.ports.road_graph import RoadGraphPort
 from kadastra.ports.valuation_object_reader import ValuationObjectReaderPort
 from kadastra.ports.valuation_object_store import ValuationObjectStorePort
+from kadastra.usecases.assemble_nspd_valuation_objects import RAW_OBJECT_SCHEMA
 
 
 class BuildObjectFeatures:
@@ -52,6 +57,14 @@ class BuildObjectFeatures:
         gar_lookup_object_params_path: Path | None = None,
         osm_raions_geojson_path: Path | None = None,
         current_year_for_age_features: int = 2026,
+        cell_geom_distance_reader: FeatureReaderPort | None = None,
+        cell_polygon_reader: FeatureReaderPort | None = None,
+        cell_zonal_reader: FeatureReaderPort | None = None,
+        cell_road_reader: FeatureReaderPort | None = None,
+        cell_metro_reader: FeatureReaderPort | None = None,
+        cell_walk_dist_reader: FeatureReaderPort | None = None,
+        cell_tsorf_resolution: int = 10,
+        cell_tsorf_overlap_weighted: bool = True,
     ) -> None:
         self._reader = reader
         self._store = store
@@ -74,6 +87,14 @@ class BuildObjectFeatures:
         self._gar_lookup_object_params_path = gar_lookup_object_params_path
         self._osm_raions_geojson_path = osm_raions_geojson_path
         self._current_year_for_age_features = current_year_for_age_features
+        self._cell_geom_distance_reader = cell_geom_distance_reader
+        self._cell_polygon_reader = cell_polygon_reader
+        self._cell_zonal_reader = cell_zonal_reader
+        self._cell_road_reader = cell_road_reader
+        self._cell_metro_reader = cell_metro_reader
+        self._cell_walk_dist_reader = cell_walk_dist_reader
+        self._cell_tsorf_resolution = cell_tsorf_resolution
+        self._cell_tsorf_overlap_weighted = cell_tsorf_overlap_weighted
 
     def execute(self, region_code: str, asset_classes: list[AssetClass]) -> None:
         stations = pl.read_csv(io.BytesIO(self._raw_data.read_bytes(self._stations_key)))
@@ -86,33 +107,80 @@ class BuildObjectFeatures:
         slices = {ac: self._reader.load(region_code, ac) for ac in asset_classes}
         non_empty = [df for df in slices.values() if not df.is_empty()]
         combined = pl.concat(non_empty, how="vertical_relaxed") if non_empty else next(iter(slices.values()))
+        # Idempotency: the store is read-write (assemble writes raw here,
+        # this usecase writes enriched back to the same path). A rerun
+        # would otherwise read its own enriched output, and the grid
+        # join (left join on h3_index) would then duplicate every
+        # locational feature as ``*_right`` — corrupting the A/B (seen
+        # in the first grid run: 326 feats, 108 ``_right`` dups).
+        # Reduce to the raw schema so feature columns from a prior run
+        # are dropped before recomputing.
+        raw_cols = [c for c in RAW_OBJECT_SCHEMA if c in combined.columns]
+        combined = combined.select(raw_cols)
+        # ADR-0027 §12: overlap-weighted assignment of cell ЦОФ to each
+        # object — a large footprint blending the features of every res
+        # cell it covers, weighted by area share, instead of inheriting
+        # only the centroid cell's values. Computed once and reused
+        # across all six Слой 1 joins (metro/road/zonal/poly_area/
+        # geom_distance/walk_dist). When disabled (or no cell readers
+        # wired), falls back to single-cell-by-centroid in the join.
+        cell_join_weights = (
+            compute_overlap_weights(combined, resolution=self._cell_tsorf_resolution)
+            if self._cell_tsorf_overlap_weighted and self._has_any_cell_reader()
+            else None
+        )
 
-        enriched = compute_object_metro_features(combined, stations, entrances, road_graph=self._road_graph)
-        enriched = compute_object_road_features(enriched, ways, radius_m=self._road_radius_m)
+        if self._cell_metro_reader is not None:
+            cell_metro = self._cell_metro_reader.load(region_code, self._cell_tsorf_resolution, "metro")
+            enriched = self._join_cell_tsorf(combined, cell_metro, cell_join_weights)
+        else:
+            enriched = compute_object_metro_features(combined, stations, entrances, road_graph=self._road_graph)
+        if self._cell_road_reader is not None:
+            cell_road = self._cell_road_reader.load(region_code, self._cell_tsorf_resolution, "road_density")
+            enriched = self._join_cell_tsorf(enriched, cell_road, cell_join_weights)
+        else:
+            enriched = compute_object_road_features(enriched, ways, radius_m=self._road_radius_m)
         enriched = compute_object_neighbor_features(enriched, radius_m=self._neighbor_radius_m)
         # Zonal density at multiple radii (ADR-0013). Layers are built
         # from the same payload: stations/entrances are the loaded CSVs;
         # apartments/houses/commercial come from `enriched` itself,
         # filtered by asset_class with object_id preserved so the helper
         # excludes self-rows in the count.
-        zonal_layers = self._build_zonal_layers(enriched, stations, entrances)
-        enriched = compute_object_zonal_features(enriched, layers=zonal_layers, radii_m=self._zonal_radii_m)
-        # Poly-area buffer features (ADR-0014). Layers are loaded once
-        # from disk; missing files yield empty layers (zero share).
-        poly_layers = self._load_poly_area_layers()
-        enriched = compute_object_polygon_features(
-            enriched,
-            polygons_by_layer=poly_layers,
-            radii_m=self._poly_area_radii_m,
-        )
+        if self._cell_zonal_reader is not None:
+            cell_zonal = self._cell_zonal_reader.load(region_code, self._cell_tsorf_resolution, "zonal")
+            enriched = self._join_cell_tsorf(enriched, cell_zonal, cell_join_weights)
+        else:
+            zonal_layers = self._build_zonal_layers(enriched, stations, entrances)
+            enriched = compute_object_zonal_features(enriched, layers=zonal_layers, radii_m=self._zonal_radii_m)
+        # Poly-area buffer features (ADR-0014 → ADR-0027). When the cell
+        # grid store is wired in, share comes from Слой 1 (computed at
+        # cell centres); otherwise the per-object fallback applies.
+        if self._cell_polygon_reader is not None:
+            cell_share = self._cell_polygon_reader.load(region_code, self._cell_tsorf_resolution, "poly_area")
+            enriched = self._join_cell_tsorf(enriched, cell_share, cell_join_weights)
+        else:
+            poly_layers = self._load_poly_area_layers()
+            enriched = compute_object_polygon_features(
+                enriched,
+                polygons_by_layer=poly_layers,
+                radii_m=self._poly_area_radii_m,
+            )
         # Geom-distance features (ADR-0019). Each entry is a path to an
         # OSM-extracted GeoJSON-seq with arbitrary geometries (Polygon /
         # LineString / Point); the helper handles all three. Missing
         # files → empty layer → null dist column. Share + distance
         # blocks carry orthogonal signals; the model weights them.
-        if self._geom_distance_layer_paths:
+        if self._cell_geom_distance_reader is not None:
+            cell_dist = self._cell_geom_distance_reader.load(region_code, self._cell_tsorf_resolution, "geom_distance")
+            enriched = self._join_cell_tsorf(enriched, cell_dist, cell_join_weights)
+        elif self._geom_distance_layer_paths:
             distance_layers = self._load_layer_geometries(self._geom_distance_layer_paths)
             enriched = compute_object_geom_distance_features(enriched, geometries_by_layer=distance_layers)
+        # ADR-0027: walking distance to point POIs — grid-only (graph is too
+        # expensive per-object; methodology §17 «всё на сетке один раз»).
+        if self._cell_walk_dist_reader is not None:
+            cell_walk_dist = self._cell_walk_dist_reader.load(region_code, self._cell_tsorf_resolution, "walk_dist")
+            enriched = self._join_cell_tsorf(enriched, cell_walk_dist, cell_join_weights)
         # Territorial / municipality features (ADR-0015). ГАР primary
         # via cad_num→objectid→mun_lookup; NSPD readable_address parse
         # fallback for the ~55–75 % unmatched rows. Skip if either
@@ -224,39 +292,73 @@ class BuildObjectFeatures:
         return self._load_layer_geometries(self._poly_area_layer_paths)
 
     def _load_layer_geometries(self, paths: dict[str, str]) -> dict[str, list[BaseGeometry]]:
-        """Load each ``{name: path}`` GeoJSON-seq into a geometries list.
+        return load_geojsonseq_geometries(paths)
 
-        Geometry-agnostic: returns whatever ``shape()`` produces from each
-        feature (Point / LineString / Polygon and Multi* variants). The
-        share helper still expects polygons only and is fed via
-        ``poly_area_layer_paths``, while the distance helper accepts any
-        type and is fed via ``geom_distance_layer_paths``.
+    def _has_any_cell_reader(self) -> bool:
+        return any(
+            reader is not None
+            for reader in (
+                self._cell_metro_reader,
+                self._cell_road_reader,
+                self._cell_zonal_reader,
+                self._cell_polygon_reader,
+                self._cell_geom_distance_reader,
+                self._cell_walk_dist_reader,
+            )
+        )
 
-        Missing files yield empty layers — downstream produces
-        zero/null columns rather than failing, so the pipeline stays
-        composable while OSM extractions are still being run.
+    def _join_cell_tsorf(
+        self,
+        objects: pl.DataFrame,
+        cell_tsorf: pl.DataFrame,
+        weights_df: pl.DataFrame | None = None,
+    ) -> pl.DataFrame:
+        """Join objects to cell-level ЦОФ (ADR-0027, §12 overlap).
+
+        Two modes:
+
+        - **overlap-weighted** (``weights_df`` given): each object blends
+          the features of every res cell its footprint covers, weighted
+          by area share (``compute_overlap_weights``). A long
+          ``(object_id, h3_index, weight)`` frame is joined to the cell
+          feature set on ``h3_index``, then features are reduced per
+          object via ``Σ value·weight`` (count columns get the same
+          weighted mean — appropriate for densities; integer casts are
+          re-applied). Objects with no coverage get nulls.
+        - **single-cell** (``weights_df`` None): the legacy centroid-cell
+          left-join — backward-compatible path used when overlap
+          weighting is disabled or no cell reader is wired.
         """
-        layers: dict[str, list[BaseGeometry]] = {}
-        for name, path_str in paths.items():
-            path = Path(path_str)
-            if not path.is_file():
-                layers[name] = []
-                continue
-            geoms: list[BaseGeometry] = []
-            with path.open("r", encoding="utf-8") as f:
-                for raw_line in f:
-                    line = raw_line.strip()
-                    if not line or line.startswith("\x1e"):
-                        line = line.lstrip("\x1e").strip()
-                        if not line:
-                            continue
-                    feature = json.loads(line)
-                    geom = feature.get("geometry")
-                    if geom is None:
-                        continue
-                    geoms.append(shape(geom))
-            layers[name] = geoms
-        return layers
+        right = cell_tsorf.drop("resolution") if "resolution" in cell_tsorf.columns else cell_tsorf
+        feature_cols = [c for c in right.columns if c != "h3_index"]
+        if not feature_cols:
+            return objects
+
+        if weights_df is None:
+            with_index = add_h3_index(objects, resolution=self._cell_tsorf_resolution)
+            return with_index.join(right, on="h3_index", how="left").drop("h3_index")
+
+        # Overlap-weighted: long (object_id, h3_index, weight) × cell features.
+        joined = weights_df.join(right, on="h3_index", how="inner")
+        if joined.is_empty():
+            # No cell coverage at all — emit null feature columns.
+            return objects.with_columns([pl.lit(None, dtype=pl.Float64).alias(c) for c in feature_cols])
+        # Σ value·weight per object, keyed on object_id. Casts happen at
+        # the end so count columns (stored Int64) re-become integers
+        # only after the weighted mean; the intermediate is Float64.
+        agg_exprs = [(pl.col(c).cast(pl.Float64) * pl.col("weight")).sum().alias(c) for c in feature_cols]
+        weighted = joined.group_by("object_id").agg(agg_exprs)
+        # Preserve original column dtypes (counts stay Int64).
+        cast_exprs = []
+        for c in feature_cols:
+            src = right.schema.get(c, pl.Float64)
+            if src != pl.Float64:
+                cast_exprs.append(pl.col(c).cast(src))
+            else:
+                cast_exprs.append(pl.col(c))
+        if cast_exprs:
+            weighted = weighted.with_columns(cast_exprs)
+        return objects.join(weighted, on="object_id", how="left")
 
     def _build_zonal_layers(
         self,
@@ -292,40 +394,4 @@ class BuildObjectFeatures:
         return layers
 
     def _load_zonal_poi_layer(self, path_str: str) -> pl.DataFrame:
-        """Read a GeoJSON-seq file and return one (lat, lon) per feature.
-
-        Point geometries pass through unchanged; LineString / Polygon /
-        Multi* are reduced to their centroid so a hospital mapped as a
-        polygon still contributes a single point to the count helper.
-
-        Missing file → empty frame so downstream emits zero counts (same
-        semantic as poly-area layer with a missing extract). Keeps the
-        pipeline composable while OSM extractions are still being run.
-        """
-        path = Path(path_str)
-        if not path.is_file():
-            return pl.DataFrame(
-                {"lat": [], "lon": []},
-                schema={"lat": pl.Float64, "lon": pl.Float64},
-            )
-        lats: list[float] = []
-        lons: list[float] = []
-        with path.open("r", encoding="utf-8") as f:
-            for raw_line in f:
-                line = raw_line.strip()
-                if not line or line.startswith("\x1e"):
-                    line = line.lstrip("\x1e").strip()
-                    if not line:
-                        continue
-                feature = json.loads(line)
-                geom_dict = feature.get("geometry")
-                if geom_dict is None:
-                    continue
-                geom = shape(geom_dict)
-                if geom.is_empty:
-                    continue
-                pt = geom if geom.geom_type == "Point" else geom.centroid
-                pt_x, pt_y = pt.coords[0]
-                lons.append(float(pt_x))
-                lats.append(float(pt_y))
-        return pl.DataFrame({"lat": lats, "lon": lons})
+        return load_geojsonseq_points(path_str)

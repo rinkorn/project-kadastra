@@ -10,9 +10,6 @@ from kadastra.adapters.s3_raw_data import S3RawData
 from kadastra.composition_root import Container
 from kadastra.config import Settings
 from kadastra.usecases.build_region_coverage import BuildRegionCoverage
-from kadastra.usecases.build_synthetic_target import BuildSyntheticTarget
-from kadastra.usecases.infer_valuation import InferValuation
-from kadastra.usecases.train_valuation_model import TrainValuationModel
 
 
 def test_container_builds_region_coverage_usecase(tmp_path: Path) -> None:
@@ -65,24 +62,9 @@ def test_container_raises_when_s3_credentials_missing(tmp_path: Path) -> None:
         container.build_s3_raw_data()
 
 
-def test_container_builds_synthetic_target_usecase(tmp_path: Path) -> None:
-    settings = Settings(
-        region_boundary_path=tmp_path / "b.geojson",
-        coverage_store_path=tmp_path / "c",
-        gold_store_path=tmp_path / "gold",
-        synthetic_target_store_path=tmp_path / "targets",
-    )
-    container = Container(settings)
-
-    usecase = container.build_synthetic_target()
-
-    assert isinstance(usecase, BuildSyntheticTarget)
-
-
-def test_settings_has_synthetic_target_defaults() -> None:
+def test_settings_has_synthetic_target_seed_default() -> None:
     settings = Settings()
 
-    assert settings.synthetic_target_store_path.as_posix().endswith("data/gold/targets")
     assert settings.synthetic_target_seed == 42
 
 
@@ -97,23 +79,15 @@ def test_settings_has_training_defaults() -> None:
     assert settings.train_parent_resolution >= 0
 
 
-def test_container_builds_train_valuation_model_with_local_registry_when_mlflow_disabled(
-    tmp_path: Path,
-) -> None:
+def test_container_builds_local_model_registry_when_mlflow_disabled(tmp_path: Path) -> None:
     settings = Settings(
         region_boundary_path=tmp_path / "b.geojson",
         coverage_store_path=tmp_path / "c",
-        gold_store_path=tmp_path / "gold",
-        synthetic_target_store_path=tmp_path / "targets",
         model_registry_path=tmp_path / "models",
         mlflow_enabled=False,
     )
     container = Container(settings)
 
-    usecase = container.build_train_valuation_model()
-
-    assert isinstance(usecase, TrainValuationModel)
-    # Concretely, the adapter inside should be LocalModelRegistry
     assert isinstance(container.build_model_registry(), LocalModelRegistry)
 
 
@@ -144,12 +118,6 @@ def test_container_raises_when_mlflow_enabled_but_uri_missing(tmp_path: Path) ->
         container.build_model_registry()
 
 
-def test_settings_has_predictions_store_default() -> None:
-    settings = Settings()
-
-    assert settings.predictions_store_path.as_posix().endswith("data/gold/predictions")
-
-
 def test_container_builds_local_model_loader_when_mlflow_disabled(tmp_path: Path) -> None:
     settings = Settings(
         region_boundary_path=tmp_path / "b.geojson",
@@ -172,20 +140,6 @@ def test_container_builds_mlflow_model_loader_when_enabled(tmp_path: Path) -> No
     container = Container(settings)
 
     assert isinstance(container.build_model_loader(), MLflowModelLoader)
-
-
-def test_container_builds_infer_valuation(tmp_path: Path) -> None:
-    settings = Settings(
-        region_boundary_path=tmp_path / "b.geojson",
-        coverage_store_path=tmp_path / "c",
-        gold_store_path=tmp_path / "gold",
-        predictions_store_path=tmp_path / "preds",
-        model_registry_path=tmp_path / "models",
-        mlflow_enabled=False,
-    )
-    container = Container(settings)
-
-    assert isinstance(container.build_infer_valuation(), InferValuation)
 
 
 def test_settings_has_object_pipeline_defaults() -> None:

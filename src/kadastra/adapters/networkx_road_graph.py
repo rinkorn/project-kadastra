@@ -101,3 +101,45 @@ class NetworkxRoadGraph(RoadGraphPort):
                 if from_node in dist_map:
                     out[i, j] = float(from_snap_m + dist_map[from_node] + to_snap_m)
         return out
+
+    def nearest_distance_m(
+        self,
+        from_coords: list[_Coord],
+        to_coords: list[_Coord],
+    ) -> np.ndarray:
+        """Distance from each ``from`` coord to its nearest ``to`` coord.
+
+        Single multi-source Dijkstra over the whole graph — one pass from
+        a virtual super-source that connects every target node with its
+        snap offset as the edge weight. ``O((V+E) log V)`` per call,
+        independent of the target count, versus ``N`` full Dijkstras in
+        :meth:`distance_matrix_m`. This is the right call when callers
+        only need the nearest target (e.g. ``walk_dist_to_<layer>_m``),
+        not per-target distances.
+        """
+        n_from = len(from_coords)
+        out = np.full(n_from, np.inf, dtype=np.float64)
+        if n_from == 0 or not to_coords or self._kdtree is None:
+            return out
+
+        from_snaps = [self._snap(lat, lon) for lat, lon in from_coords]
+        # Dedupe target nodes, keeping the smallest snap offset — several
+        # POIs can snap to the same node, and the nearest is the closest.
+        source_offset: dict[int, float] = {}
+        for lat, lon in to_coords:
+            node, snap_m = self._snap(lat, lon)
+            source_offset[node] = min(source_offset.get(node, float("inf")), float(snap_m))
+
+        super_id = max(self._graph.nodes) + 1
+        self._graph.add_node(super_id)
+        for node, snap_m in source_offset.items():
+            self._graph.add_edge(super_id, node, length_m=snap_m)
+        try:
+            dist_map = nx.single_source_dijkstra_path_length(self._graph, super_id, weight="length_m")
+        finally:
+            self._graph.remove_node(super_id)
+
+        for i, (from_node, from_snap_m) in enumerate(from_snaps):
+            if from_node in dist_map:
+                out[i] = float(from_snap_m + dist_map[from_node])
+        return out

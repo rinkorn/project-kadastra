@@ -1,12 +1,18 @@
 import json
 from dataclasses import dataclass
+from typing import Protocol
 
+import h3
 import numpy as np
 import polars as pl
+import pytest
 
 from kadastra.domain.asset_class import AssetClass
 from kadastra.etl.haversine import haversine_meters
+from kadastra.ports.feature_reader import FeatureReaderPort
 from kadastra.ports.road_graph import RoadGraphPort
+from kadastra.ports.valuation_object_reader import ValuationObjectReaderPort
+from kadastra.ports.valuation_object_store import ValuationObjectStorePort
 from kadastra.usecases.build_object_features import BuildObjectFeatures
 
 KAZAN_LAT, KAZAN_LON = 55.7887, 49.1221
@@ -30,6 +36,13 @@ class _HaversineRoadGraph(RoadGraphPort):
             for j, (la2, lo2) in enumerate(to_coords):
                 out[i, j] = haversine_meters(la1, lo1, la2, lo2)
         return out
+
+    def nearest_distance_m(
+        self,
+        from_coords: list[tuple[float, float]],
+        to_coords: list[tuple[float, float]],
+    ) -> np.ndarray:
+        return self.distance_matrix_m(from_coords, to_coords).min(axis=1)
 
 
 _FAKE_GRAPH = _HaversineRoadGraph()
@@ -98,6 +111,14 @@ class _FakeStore:
         return self._initial[asset_class]
 
 
+class _ReaderStore(ValuationObjectReaderPort, ValuationObjectStorePort, Protocol):
+    """Contract BuildObjectFeatures actually depends on: one object
+    wired into both ``reader=`` and ``store=``. Mirrors the real
+    ParquetValuationObjectStore, which is read-write-same-path — the
+    design the idempotency test exercises. Fakes satisfy this
+    structurally; no inheritance needed."""
+
+
 def _stations_csv(rows: list[tuple[float, float]]) -> bytes:
     header = "name,lat,lon\n"
     body = "".join(f"s,{lat},{lon}\n" for lat, lon in rows)
@@ -135,8 +156,16 @@ class _FakeRawData:
         return [k for k in self._payloads if k.startswith(prefix)]
 
 
+class _FakeCellDistReader:
+    def __init__(self, df: pl.DataFrame) -> None:
+        self._df = df
+
+    def load(self, region_code: str, resolution: int, feature_set: str) -> pl.DataFrame:
+        return self._df
+
+
 def _usecase(
-    store: _FakeStore,
+    store: _ReaderStore,
     raw: _FakeRawData,
     *,
     relative_feature_parent_resolutions: list[int] | None = None,
@@ -147,6 +176,14 @@ def _usecase(
     poly_area_layer_paths: dict[str, str] | None = None,
     geom_distance_layer_paths: dict[str, str] | None = None,
     current_year_for_age_features: int = 2026,
+    cell_geom_distance_reader: FeatureReaderPort | None = None,
+    cell_polygon_reader: FeatureReaderPort | None = None,
+    cell_zonal_reader: FeatureReaderPort | None = None,
+    cell_road_reader: FeatureReaderPort | None = None,
+    cell_metro_reader: FeatureReaderPort | None = None,
+    cell_walk_dist_reader: FeatureReaderPort | None = None,
+    cell_tsorf_resolution: int = 10,
+    cell_tsorf_overlap_weighted: bool = False,
 ) -> BuildObjectFeatures:
     return BuildObjectFeatures(
         reader=store,
@@ -174,6 +211,14 @@ def _usecase(
         poly_area_layer_paths=(poly_area_layer_paths if poly_area_layer_paths is not None else {}),
         geom_distance_layer_paths=(geom_distance_layer_paths if geom_distance_layer_paths is not None else {}),
         current_year_for_age_features=current_year_for_age_features,
+        cell_geom_distance_reader=cell_geom_distance_reader,
+        cell_polygon_reader=cell_polygon_reader,
+        cell_zonal_reader=cell_zonal_reader,
+        cell_road_reader=cell_road_reader,
+        cell_metro_reader=cell_metro_reader,
+        cell_walk_dist_reader=cell_walk_dist_reader,
+        cell_tsorf_resolution=cell_tsorf_resolution,
+        cell_tsorf_overlap_weighted=cell_tsorf_overlap_weighted,
     )
 
 
@@ -676,3 +721,314 @@ def test_handles_empty_partition_gracefully() -> None:
     saved = {c.asset_class: c.df for c in store.calls}
     assert saved[AssetClass.HOUSE].is_empty()
     assert saved[AssetClass.APARTMENT].height == 2
+
+
+def test_joins_cell_geom_distance_from_grid_store() -> None:
+    """ADR-0027: when a cell_geom_distance_reader is wired, dist_to_* comes
+    from the cell grid store via join, not per-object computation."""
+    cell = h3.latlng_to_cell(KAZAN_LAT, KAZAN_LON, 10)
+    reader = _FakeCellDistReader(pl.DataFrame({"h3_index": [cell], "resolution": [10], "dist_to_water_m": [123.0]}))
+
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        cell_geom_distance_reader=reader,
+        cell_tsorf_resolution=10,
+        geom_distance_layer_paths={},
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "dist_to_water_m" in df.columns
+    assert float(df["dist_to_water_m"][0]) == 123.0
+    assert "h3_index" not in df.columns  # join key dropped
+    assert "resolution" not in df.columns  # store bookkeeping column dropped
+
+
+def test_joins_cell_polygon_share_from_grid_store() -> None:
+    """ADR-0027: when a cell_polygon_reader is wired, share comes from the
+    cell grid store via join, not per-object computation."""
+    cell = h3.latlng_to_cell(KAZAN_LAT, KAZAN_LON, 10)
+    reader = _FakeCellDistReader(pl.DataFrame({"h3_index": [cell], "resolution": [10], "water_share_500m": [0.42]}))
+
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        cell_polygon_reader=reader,
+        cell_tsorf_resolution=10,
+        poly_area_layer_paths={},
+        poly_area_radii_m=[500],
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "water_share_500m" in df.columns
+    assert float(df["water_share_500m"][0]) == 0.42
+    assert "h3_index" not in df.columns
+
+
+def test_joins_cell_zonal_density_from_grid_store() -> None:
+    """ADR-0027: when a cell_zonal_reader is wired, within-counts come from
+    the cell grid store via join, not per-object computation."""
+    cell = h3.latlng_to_cell(KAZAN_LAT, KAZAN_LON, 10)
+    reader = _FakeCellDistReader(pl.DataFrame({"h3_index": [cell], "resolution": [10], "stations_within_500m": [7]}))
+
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        cell_zonal_reader=reader,
+        cell_tsorf_resolution=10,
+        zonal_radii_m=[500],
+        zonal_layer_names=["stations"],
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "stations_within_500m" in df.columns
+    assert int(df["stations_within_500m"][0]) == 7
+    assert "h3_index" not in df.columns
+
+
+def test_joins_cell_road_density_from_grid_store() -> None:
+    """ADR-0027: when a cell_road_reader is wired, road_length comes from
+    the cell grid store via join, not per-object computation."""
+    cell = h3.latlng_to_cell(KAZAN_LAT, KAZAN_LON, 10)
+    reader = _FakeCellDistReader(pl.DataFrame({"h3_index": [cell], "resolution": [10], "road_length_500m": [950.0]}))
+
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        cell_road_reader=reader,
+        cell_tsorf_resolution=10,
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "road_length_500m" in df.columns
+    assert float(df["road_length_500m"][0]) == 950.0
+    assert "h3_index" not in df.columns
+
+
+def test_joins_cell_walk_dist_from_grid_store() -> None:
+    """ADR-0027: when a cell_walk_dist_reader is wired, walk_dist_to_* comes
+    from the cell grid store via join. Grid-only — no per-object fallback."""
+    cell = h3.latlng_to_cell(KAZAN_LAT, KAZAN_LON, 10)
+    reader = _FakeCellDistReader(
+        pl.DataFrame({"h3_index": [cell], "resolution": [10], "walk_dist_to_school_m": [450.0]})
+    )
+
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        cell_walk_dist_reader=reader,
+        cell_tsorf_resolution=10,
+        geom_distance_layer_paths={},
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "walk_dist_to_school_m" in df.columns
+    assert float(df["walk_dist_to_school_m"][0]) == 450.0
+    assert "h3_index" not in df.columns
+    assert "resolution" not in df.columns
+
+
+def test_joins_cell_metro_from_grid_store() -> None:
+    """ADR-0027: when a cell_metro_reader is wired, metro columns come from
+    the cell grid store via join, not per-object graph computation."""
+    cell = h3.latlng_to_cell(KAZAN_LAT, KAZAN_LON, 10)
+    reader = _FakeCellDistReader(
+        pl.DataFrame(
+            {
+                "h3_index": [cell],
+                "resolution": [10],
+                "dist_metro_m": [500.0],
+                "dist_entrance_m": [400.0],
+                "count_stations_1km": [2],
+                "count_entrances_500m": [1],
+            }
+        )
+    )
+
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        cell_metro_reader=reader,
+        cell_tsorf_resolution=10,
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "dist_metro_m" in df.columns
+    assert float(df["dist_metro_m"][0]) == 500.0
+    assert int(df["count_stations_1km"][0]) == 2
+    assert "h3_index" not in df.columns
+
+
+class _WriteThroughStore:
+    """Read-write store that persists saves — so a second execute()
+    reads the enriched output of the first. Mirrors
+    ParquetValuationObjectStore's read-write-same-path design, the root
+    of the ``_right`` contamination bug the idempotency test guards."""
+
+    def __init__(self, initial: dict[AssetClass, pl.DataFrame]) -> None:
+        self._data = dict(initial)
+        self.calls: list[_StoreCall] = []
+
+    def save(self, region_code: str, asset_class: AssetClass, df: pl.DataFrame) -> None:
+        self.calls.append(_StoreCall(region_code, asset_class, df))
+        self._data[asset_class] = df
+
+    def load(self, region_code: str, asset_class: AssetClass) -> pl.DataFrame:
+        return self._data[asset_class]
+
+
+def test_rerun_is_idempotent_no_right_duplicates() -> None:
+    """ADR-0027 A/B guard: build_object_features reads and writes the
+    same store. A rerun must not read its own enriched output and
+    duplicate locational features as ``*_right`` via the grid join.
+    Reduces to the raw schema before recomputing."""
+    cell = h3.latlng_to_cell(KAZAN_LAT, KAZAN_LON, 10)
+    grid_metro = _FakeCellDistReader(pl.DataFrame({"h3_index": [cell], "resolution": [10], "dist_metro_m": [500.0]}))
+    initial = {AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)}
+    store = _WriteThroughStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    usecase = _usecase(
+        store,
+        raw,
+        cell_metro_reader=grid_metro,
+        cell_tsorf_resolution=10,
+        geom_distance_layer_paths={},
+    )
+    usecase.execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+    first = store.calls[0].df
+    assert "dist_metro_m" in first.columns
+
+    # Second run reads the enriched partition (store is write-through).
+    usecase.execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+    second = store.calls[1].df
+
+    right_cols = [c for c in second.columns if c.endswith("_right")]
+    assert right_cols == [], f"rerot produced _right duplicates: {right_cols}"
+    assert "dist_metro_m" in second.columns
+    assert float(second["dist_metro_m"][0]) == 500.0
+    # Feature count must not grow across reruns.
+    assert second.width == first.width
+
+
+def test_joins_cell_tsorf_overlap_weighted() -> None:
+    """ADR-0027 §12: with overlap_weighted enabled, an object whose
+    footprint spans multiple res cells blends their ЦОФ by area share,
+    not inherits the centroid cell's value. Verify the weighted-mean
+    math against the overlap-weights helper directly."""
+    import shapely
+    from pyproj import Transformer
+
+    t = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+    cx, cy = t.transform(KAZAN_LON, KAZAN_LAT)
+    # 300 m box — spans 2 res-10 cells (edge 75 m).
+    wkt = shapely.geometry.box(cx - 150, cy - 150, cx + 150, cy + 150).wkt
+
+    from kadastra.etl.cell_overlap_weights import compute_overlap_weights
+
+    obj = pl.DataFrame(
+        {
+            "object_id": ["way/apt-1"],
+            "asset_class": ["apartment"],
+            "lat": [KAZAN_LAT],
+            "lon": [KAZAN_LON],
+            "levels": [9],
+            "flats": [72],
+            "year_built": [2015],
+            "polygon_wkt_3857": [wkt],
+        },
+        schema={
+            "object_id": pl.Utf8,
+            "asset_class": pl.Utf8,
+            "lat": pl.Float64,
+            "lon": pl.Float64,
+            "levels": pl.Int64,
+            "flats": pl.Int64,
+            "year_built": pl.Int64,
+            "polygon_wkt_3857": pl.Utf8,
+        },
+    )
+    # Cell reader: the cells the box overlaps get distinct values.
+    weights = compute_overlap_weights(obj, resolution=10)
+    assert weights.height >= 2, "fixture should span ≥2 cells"
+    cell_rows = []
+    weight_list = weights["weight"].to_list()
+    for i, cell in enumerate(weights["h3_index"].to_list()):
+        cell_rows.append({"h3_index": cell, "resolution": 10, "dist_metro_m": 100.0 + 100.0 * i})
+    reader = _FakeCellDistReader(pl.DataFrame(cell_rows))
+
+    store = _FakeStore({AssetClass.APARTMENT: obj})
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+    _usecase(
+        store,
+        raw,
+        cell_metro_reader=reader,
+        cell_tsorf_resolution=10,
+        cell_tsorf_overlap_weighted=True,
+        geom_distance_layer_paths={},
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    # Expected = Σ weight_i · value_i over the overlapping cells.
+    expected = sum(w * (100.0 + 100.0 * i) for i, w in enumerate(weight_list))
+    assert "dist_metro_m" in df.columns
+    assert float(df["dist_metro_m"][0]) == pytest.approx(expected, rel=1e-6)
+    # Must lie strictly between the two extremes (proves it's a blend).
+    assert 100.0 < float(df["dist_metro_m"][0]) < 200.0
+    assert "h3_index" not in df.columns

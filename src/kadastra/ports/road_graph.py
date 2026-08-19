@@ -34,3 +34,19 @@ class RoadGraphPort(Protocol):
             pairs are reported as ``float('inf')``.
         """
         ...
+
+    def nearest_distance_m(
+        self,
+        from_coords: list[tuple[float, float]],
+        to_coords: list[tuple[float, float]],
+    ) -> np.ndarray:
+        """Distance from each ``from`` coord to its nearest ``to`` coord.
+
+        Same snap semantics as :meth:`distance_matrix_m`, but returns a
+        length-``len(from_coords)`` vector of distances to the closest
+        target instead of the full pairwise matrix. Implementations
+        should use a single multi-source shortest-path pass (one
+        Dijkstra from all targets) so this stays ``O((V+E) log V)``
+        regardless of how many targets there are.
+        """
+        ...
