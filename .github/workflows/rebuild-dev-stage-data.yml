@@ -24,7 +24,7 @@ jobs:
           ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
             ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
             "cd ${{ env.DEPLOY_PATH }} && \
-             docker compose --profile scripts build --no-cache scripts"
+             docker compose --profile scripts build scripts"
 
       - name: Rebuild object features
         run: |
