@@ -44,7 +44,7 @@ class BuildObjectFeatures:
         roads_key: str,
         neighbor_radius_m: float,
         road_radius_m: float,
-        road_graph: RoadGraphPort,
+        road_graph: RoadGraphPort | None,
         relative_feature_parent_resolutions: list[int],
         relative_feature_columns: list[str],
         zonal_radii_m: list[int],
@@ -134,6 +134,7 @@ class BuildObjectFeatures:
             cell_metro = self._cell_metro_reader.load(region_code, self._cell_tsorf_resolution, "metro")
             enriched = self._join_cell_tsorf(combined, cell_metro, cell_join_weights)
         else:
+            assert self._road_graph is not None, "road_graph is required when cell_metro_reader is not wired"
             enriched = compute_object_metro_features(combined, stations, entrances, road_graph=self._road_graph)
         if self._cell_road_reader is not None:
             cell_road = self._cell_road_reader.load(region_code, self._cell_tsorf_resolution, "road_density")
