@@ -210,7 +210,7 @@ class Container:
             roads_key=s.roads_key,
             neighbor_radius_m=s.object_neighbor_radius_m,
             road_radius_m=s.object_road_radius_m,
-            road_graph=self.build_road_graph(),
+            road_graph=(self.build_road_graph() if not s.cell_tsorf_enabled else None),
             relative_feature_parent_resolutions=s.relative_feature_parent_resolutions,
             relative_feature_columns=s.relative_feature_columns,
             zonal_radii_m=s.zonal_radii_m,
