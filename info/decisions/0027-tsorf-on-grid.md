@@ -67,6 +67,19 @@ Single-cell grid vs per-object baseline (CatBoost, 5-fold OOF):
 
 Просадка house/landplot — механизменная (аппроксимация центром ячейки для крупных footprint); устранена overlap-weighting (§12). Отдельный retrain overlap-версии не гоняется — методология реализована корректно, single-cell A/B уже показал паритет для мелких классов.
 
+## Замечание для будущих переобучений
+
+Текущие продленные модели (карта, inspector, квартет) обучены на **single-cell** grid-фичах — overlap-weighting (§12) был реализован в коде *после* их обучения, а целевой retrain под overlap мы осознанно пропустили (single-cell уже на паритете для apartment/commercial, а §12 — про корректность методологии, а не про сиюминутный WAPE-буст).
+
+**При следующем переобучении** делать так:
+
+1. Убедиться, что `Settings.cell_tsorf_overlap_weighted = True` (это дефолт).
+2. **Пересобрать valuation_objects** (`BuildObjectFeatures`) — он пересчитает join с weighted `_join_cell_tsorf` (бленд по доле площади перекрытия вместо одной ячейки). Идемпотентность (`RAW_OBJECT_SCHEMA` reset) гарантирует чистый прогон без `*_right`-контаминации.
+3. **Пересобрать hex_aggregates** — они агрегируют объектные предсказания по гексам; рассинхрон с обновлённым valuation_objects ломает consistent UI.
+4. Обучить квартет на enriched valuation_objects; перелить модели в registry → S3.
+
+Порядок строгий, но Слой 1 (cell ЦОФ) менять не нужно (он не зависит от объектов) — только object-join → aggregates → train. См. эпик 001 «Прогресс».
+
 ## Последствия
 
 - `h3_cells_to_latlng` — чистый helper центров ячеек.
