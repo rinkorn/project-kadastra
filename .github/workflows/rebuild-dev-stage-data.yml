@@ -1,0 +1,74 @@
+name: Rebuild dev-stage data
+
+on:
+  workflow_dispatch:
+
+jobs:
+  rebuild:
+    name: Rebuild valuation_objects + hex_aggregates on dev-stage
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_PATH: ${{ vars.DEV_STAGE_DEPLOY_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEV_STAGE_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p ${{ vars.DEV_STAGE_PORT }} ${{ vars.DEV_STAGE_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Rebuild object features
+        run: |
+          ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
+            ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
+            "cd ${{ env.DEPLOY_PATH }} && \
+             docker compose --profile scripts run --rm -e CELL_TSORF_ENABLED=true scripts python scripts/build_object_features.py"
+
+      - name: Rebuild hex aggregates
+        run: |
+          ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
+            ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
+            "cd ${{ env.DEPLOY_PATH }} && \
+             docker compose --profile scripts run --rm scripts python scripts/build_hex_aggregates.py"
+
+      - name: Upload valuation_objects to S3
+        run: |
+          ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
+            ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
+            "cd ${{ env.DEPLOY_PATH }} && \
+             docker compose --profile scripts run --rm scripts python scripts/upload_dir_to_s3.py \
+               --src data/gold/valuation_objects \
+               --prefix Kadatastr/gold/valuation_objects"
+
+      - name: Upload hex_aggregates to S3
+        run: |
+          ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
+            ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
+            "cd ${{ env.DEPLOY_PATH }} && \
+             docker compose --profile scripts run --rm scripts python scripts/upload_dir_to_s3.py \
+               --src data/gold/hex_aggregates \
+               --prefix Kadatastr/gold/hex_aggregates"
+
+      - name: Restart dev-stage container to cold-pull fresh data
+        run: |
+          ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
+            ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
+            "cd ${{ env.DEPLOY_PATH }} && \
+             docker compose -p kadastra-dev-stage -f docker-compose.dev-stage.yml restart kadastra"
+
+      - name: Wait for healthcheck
+        run: |
+          ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
+            ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
+            "for i in \$(seq 1 30); do
+               if curl -fsS http://localhost:${{ vars.DEV_STAGE_INTERNAL_PORT }}/health > /dev/null 2>&1; then
+                 echo 'Healthcheck passed'
+                 exit 0
+               fi
+               sleep 5
+             done
+             echo 'Healthcheck did not pass after 150s' >&2
+             docker compose -p kadastra-dev-stage -f ${{ env.DEPLOY_PATH }}/docker-compose.dev-stage.yml logs --tail=200 >&2
+             exit 1"
