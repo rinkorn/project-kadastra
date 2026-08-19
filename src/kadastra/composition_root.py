@@ -12,7 +12,6 @@ from kadastra.adapters.mlflow_model_registry import MLflowModelRegistry
 from kadastra.adapters.networkx_road_graph import NetworkxRoadGraph
 from kadastra.adapters.parquet_coverage_store import ParquetCoverageStore
 from kadastra.adapters.parquet_feature_store import ParquetFeatureStore
-from kadastra.adapters.parquet_gold_feature_store import ParquetGoldFeatureStore
 from kadastra.adapters.parquet_nspd_silver_store import ParquetNspdSilverStore
 from kadastra.adapters.parquet_valuation_object_store import ParquetValuationObjectStore
 from kadastra.adapters.s3_raw_data import S3RawData
@@ -26,28 +25,39 @@ from kadastra.ports.road_graph import RoadGraphPort
 from kadastra.usecases.assemble_nspd_valuation_objects import (
     AssembleNspdValuationObjects,
 )
-from kadastra.usecases.build_buildings_features import BuildBuildingsFeatures
-from kadastra.usecases.build_gold_features import BuildGoldFeatures
+from kadastra.usecases.build_cell_geom_distance_features import (
+    BuildCellGeomDistanceFeatures,
+)
+from kadastra.usecases.build_cell_graph_distance_features import (
+    BuildCellGraphDistanceFeatures,
+)
+from kadastra.usecases.build_cell_metro_features import (
+    BuildCellMetroFeatures,
+)
+from kadastra.usecases.build_cell_polygon_features import (
+    BuildCellPolygonFeatures,
+)
+from kadastra.usecases.build_cell_road_features import (
+    BuildCellRoadFeatures,
+)
+from kadastra.usecases.build_cell_zonal_features import (
+    BuildCellZonalFeatures,
+)
 from kadastra.usecases.build_hex_aggregates import BuildHexAggregates
-from kadastra.usecases.build_metro_features import BuildMetroFeatures
 from kadastra.usecases.build_object_features import BuildObjectFeatures
 from kadastra.usecases.build_object_synthetic_target import BuildObjectSyntheticTarget
 from kadastra.usecases.build_region_coverage import BuildRegionCoverage
-from kadastra.usecases.build_road_features import BuildRoadFeatures
-from kadastra.usecases.build_synthetic_target import BuildSyntheticTarget
 from kadastra.usecases.build_valuation_objects import BuildValuationObjects
+from kadastra.usecases.get_cell_tsorf import GetCellTsorf
 from kadastra.usecases.get_hex_aggregates import GetHexAggregates
 from kadastra.usecases.get_market_reference import GetMarketReference
 from kadastra.usecases.infer_object_valuation import InferObjectValuation
-from kadastra.usecases.infer_valuation import InferValuation
 from kadastra.usecases.load_nspd_raw_objects import LoadNspdRawObjects
 from kadastra.usecases.load_object_inspection import LoadObjectInspection
 from kadastra.usecases.train_object_valuation_model import TrainObjectValuationModel
 from kadastra.usecases.train_quartet import TrainQuartet
-from kadastra.usecases.train_valuation_model import TrainValuationModel
 from kadastra.web.routes import make_web_router
 
-_RUN_NAME_PREFIX = "catboost-baseline-res"
 _OBJECT_RUN_NAME_PREFIX = "catboost-object-"
 
 
@@ -76,49 +86,66 @@ class Container:
             addressing_style=s.s3_addressing_style,
         )
 
-    def build_metro_features(self) -> BuildMetroFeatures:
+    def build_cell_geom_distance_features(self) -> BuildCellGeomDistanceFeatures:
         s = self._settings
-        return BuildMetroFeatures(
+        return BuildCellGeomDistanceFeatures(
             coverage_reader=ParquetCoverageStore(s.coverage_store_path),
-            raw_data=self.build_s3_raw_data(),
             feature_store=ParquetFeatureStore(s.feature_store_path),
+            geom_distance_layer_paths=s.geom_distance_layer_paths,
+        )
+
+    def build_cell_graph_distance_features(self) -> BuildCellGraphDistanceFeatures:
+        s = self._settings
+        return BuildCellGraphDistanceFeatures(
+            coverage_reader=ParquetCoverageStore(s.coverage_store_path),
+            feature_store=ParquetFeatureStore(s.feature_store_path),
+            road_graph=self.build_road_graph(),
+            layer_paths=s.geom_distance_layer_paths,
+            layer_names=s.walk_dist_layer_names,
+        )
+
+    def build_cell_metro_features(self) -> BuildCellMetroFeatures:
+        s = self._settings
+        return BuildCellMetroFeatures(
+            coverage_reader=ParquetCoverageStore(s.coverage_store_path),
+            feature_store=ParquetFeatureStore(s.feature_store_path),
+            raw_data=self.build_s3_raw_data(),
+            road_graph=self.build_road_graph(),
             stations_key=s.metro_stations_key,
             entrances_key=s.metro_entrances_key,
         )
 
-    def build_buildings_features(self) -> BuildBuildingsFeatures:
+    def build_cell_polygon_features(self) -> BuildCellPolygonFeatures:
         s = self._settings
-        return BuildBuildingsFeatures(
+        return BuildCellPolygonFeatures(
             coverage_reader=ParquetCoverageStore(s.coverage_store_path),
-            raw_data=self.build_s3_raw_data(),
             feature_store=ParquetFeatureStore(s.feature_store_path),
-            buildings_key=s.buildings_key,
+            poly_area_layer_paths=s.poly_area_layer_paths,
+            radii_m=s.poly_area_radii_m,
         )
 
-    def build_road_features(self) -> BuildRoadFeatures:
+    def build_cell_zonal_features(self) -> BuildCellZonalFeatures:
         s = self._settings
-        return BuildRoadFeatures(
+        return BuildCellZonalFeatures(
             coverage_reader=ParquetCoverageStore(s.coverage_store_path),
-            raw_data=self.build_s3_raw_data(),
             feature_store=ParquetFeatureStore(s.feature_store_path),
+            raw_data=self.build_s3_raw_data(),
+            object_reader=ParquetValuationObjectStore(s.valuation_object_store_path),
+            stations_key=s.metro_stations_key,
+            entrances_key=s.metro_entrances_key,
+            radii_m=s.zonal_radii_m,
+            zonal_layer_names=s.zonal_layer_names,
+            geom_distance_layer_paths=s.geom_distance_layer_paths,
+        )
+
+    def build_cell_road_features(self) -> BuildCellRoadFeatures:
+        s = self._settings
+        return BuildCellRoadFeatures(
+            coverage_reader=ParquetCoverageStore(s.coverage_store_path),
+            feature_store=ParquetFeatureStore(s.feature_store_path),
+            raw_data=self.build_s3_raw_data(),
             roads_key=s.roads_key,
-        )
-
-    def build_gold_features(self) -> BuildGoldFeatures:
-        s = self._settings
-        return BuildGoldFeatures(
-            coverage_reader=ParquetCoverageStore(s.coverage_store_path),
-            feature_reader=ParquetFeatureStore(s.feature_store_path),
-            gold_store=ParquetGoldFeatureStore(s.gold_store_path),
-            feature_sets=s.gold_feature_sets,
-        )
-
-    def build_synthetic_target(self) -> BuildSyntheticTarget:
-        s = self._settings
-        return BuildSyntheticTarget(
-            gold_reader=ParquetGoldFeatureStore(s.gold_store_path),
-            target_store=ParquetGoldFeatureStore(s.synthetic_target_store_path),
-            seed=s.synthetic_target_seed,
+            radius_m=s.object_road_radius_m,
         )
 
     def build_model_registry(self) -> ModelRegistryPort:
@@ -132,23 +159,6 @@ class Container:
             )
         return LocalModelRegistry(s.model_registry_path)
 
-    def build_train_valuation_model(self) -> TrainValuationModel:
-        s = self._settings
-        params = CatBoostParams(
-            iterations=s.catboost_iterations,
-            learning_rate=s.catboost_learning_rate,
-            depth=s.catboost_depth,
-            seed=s.catboost_seed,
-        )
-        return TrainValuationModel(
-            gold_reader=ParquetGoldFeatureStore(s.gold_store_path),
-            target_reader=ParquetGoldFeatureStore(s.synthetic_target_store_path),
-            model_registry=self.build_model_registry(),
-            params=params,
-            n_splits=s.train_n_splits,
-            parent_resolution=s.train_parent_resolution,
-        )
-
     def build_model_loader(self) -> ModelLoaderPort:
         s = self._settings
         if s.mlflow_enabled:
@@ -159,15 +169,6 @@ class Container:
                 experiment_name=s.mlflow_experiment_name,
             )
         return LocalModelLoader(s.model_registry_path)
-
-    def build_infer_valuation(self) -> InferValuation:
-        s = self._settings
-        return InferValuation(
-            model_loader=self.build_model_loader(),
-            gold_reader=ParquetGoldFeatureStore(s.gold_store_path),
-            prediction_store=ParquetGoldFeatureStore(s.predictions_store_path),
-            run_name_prefix=_RUN_NAME_PREFIX,
-        )
 
     def build_valuation_objects(self) -> BuildValuationObjects:
         s = self._settings
@@ -222,6 +223,14 @@ class Container:
             gar_lookup_object_params_path=s.gar_lookup_object_params_path,
             osm_raions_geojson_path=s.osm_raions_geojson_path,
             current_year_for_age_features=s.current_year_for_age_features,
+            cell_geom_distance_reader=(ParquetFeatureStore(s.feature_store_path) if s.cell_tsorf_enabled else None),
+            cell_polygon_reader=(ParquetFeatureStore(s.feature_store_path) if s.cell_tsorf_enabled else None),
+            cell_zonal_reader=(ParquetFeatureStore(s.feature_store_path) if s.cell_tsorf_enabled else None),
+            cell_road_reader=(ParquetFeatureStore(s.feature_store_path) if s.cell_tsorf_enabled else None),
+            cell_metro_reader=(ParquetFeatureStore(s.feature_store_path) if s.cell_tsorf_enabled else None),
+            cell_walk_dist_reader=(ParquetFeatureStore(s.feature_store_path) if s.cell_tsorf_enabled else None),
+            cell_tsorf_resolution=s.cell_tsorf_resolution,
+            cell_tsorf_overlap_weighted=s.cell_tsorf_overlap_weighted,
         )
 
     def build_object_synthetic_target(self) -> BuildObjectSyntheticTarget:
@@ -304,6 +313,10 @@ class Container:
             ebm_loader=LocalEbmModelLoader(s.model_registry_path),
         )
 
+    def build_get_cell_tsorf(self) -> GetCellTsorf:
+        s = self._settings
+        return GetCellTsorf(ParquetFeatureStore(s.feature_store_path))
+
 
 def create_app(settings: Settings) -> FastAPI:
     container = Container(settings)
@@ -325,6 +338,7 @@ def create_app(settings: Settings) -> FastAPI:
             load_inspection=container.build_load_object_inspection(),
             get_market_reference=container.build_get_market_reference(),
             market_reference_year=settings.emiss_market_reference_year,
+            get_cell_tsorf=container.build_get_cell_tsorf(),
         )
     )
     app.include_router(make_web_router(templates_dir))

@@ -104,6 +104,73 @@ def test_distance_matrix_handles_batch_of_sources_and_targets() -> None:
     assert out[1, 1] == pytest.approx(haversine_meters(*b, *c), rel=1e-3)
 
 
+def test_nearest_distance_returns_min_over_targets() -> None:
+    a = (0.0, 0.0)
+    b = (0.001, 0.0)
+    c = (0.002, 0.0)
+    edges = [
+        (a, b, haversine_meters(*a, *b)),
+        (b, c, haversine_meters(*b, *c)),
+    ]
+    graph = NetworkxRoadGraph.from_edges(edges)
+
+    out = graph.nearest_distance_m(from_coords=[a], to_coords=[b, c])
+
+    assert out.shape == (1,)
+    # a is closest to b (~111 m) vs c (~222 m).
+    assert out[0] == pytest.approx(haversine_meters(*a, *b), rel=1e-3)
+
+
+def test_nearest_distance_includes_snap_distance() -> None:
+    a = (0.0, 0.0)
+    b = (0.001, 0.0)
+    graph = NetworkxRoadGraph.from_edges([(a, b, haversine_meters(*a, *b))])
+
+    a_off = (0.0001, 0.0)
+    b_off = (0.0009, 0.0)
+
+    out = graph.nearest_distance_m(from_coords=[a_off], to_coords=[b_off])
+
+    expected = haversine_meters(*a_off, *a) + haversine_meters(*a, *b) + haversine_meters(*b_off, *b)
+    assert out[0] == pytest.approx(expected, rel=1e-2)
+
+
+def test_nearest_distance_inf_for_disconnected_component() -> None:
+    a = (0.0, 0.0)
+    b = (0.001, 0.0)
+    c = (10.0, 10.0)
+    d = (10.001, 10.0)
+    graph = NetworkxRoadGraph.from_edges(
+        [
+            (a, b, haversine_meters(*a, *b)),
+            (c, d, haversine_meters(*c, *d)),
+        ]
+    )
+
+    out = graph.nearest_distance_m(from_coords=[a], to_coords=[c])
+
+    assert math.isinf(out[0])
+
+
+def test_nearest_distance_matches_matrix_min_for_multiple_targets() -> None:
+    """Consistency: multi-source nearest equals distance_matrix_m.min(axis=1)."""
+    a = (0.0, 0.0)
+    b = (0.001, 0.0)
+    c = (0.002, 0.0)
+    edges = [
+        (a, b, haversine_meters(*a, *b)),
+        (b, c, haversine_meters(*b, *c)),
+    ]
+    graph = NetworkxRoadGraph.from_edges(edges)
+    froms = [a, b]
+    tos = [b, c]
+
+    nearest = graph.nearest_distance_m(from_coords=froms, to_coords=tos)
+    matrix_min = graph.distance_matrix_m(from_coords=froms, to_coords=tos).min(axis=1)
+
+    assert nearest == pytest.approx(matrix_min)
+
+
 def test_empty_query_returns_zero_sized_matrix() -> None:
     graph = NetworkxRoadGraph.from_edges([((0.0, 0.0), (0.001, 0.0), 111.0)])
 

@@ -25,13 +25,8 @@ class Settings(BaseSettings):
     buildings_key: str = "Kadatastr/osm/osm_buildings_kazan_agglomeration.csv"
     roads_key: str = "Kadatastr/tatarstan_major_roads/tatarstan_major_roads.json"
 
-    gold_store_path: Path = Path("data/gold/features")
-    gold_feature_sets: list[str] = ["metro", "buildings", "roads"]
-
-    synthetic_target_store_path: Path = Path("data/gold/targets")
     synthetic_target_seed: int = 42
 
-    predictions_store_path: Path = Path("data/gold/predictions")
     valuation_object_store_path: Path = Path("data/gold/valuation_objects")
     object_predictions_store_path: Path = Path("data/gold/object_predictions")
     object_neighbor_radius_m: float = 500.0
@@ -98,6 +93,22 @@ class Settings(BaseSettings):
         "tram_stop",
         "railway_station",
     ]
+    # ADR-0027: point-POI layers whose walking (graph) distance is computed
+    # on the grid. Polygonal/linear layers (water, park, powerline, railway)
+    # are excluded — graph distance is point-to-point.
+    walk_dist_layer_names: list[str] = [
+        "school",
+        "kindergarten",
+        "clinic",
+        "hospital",
+        "pharmacy",
+        "supermarket",
+        "cafe",
+        "restaurant",
+        "bus_stop",
+        "tram_stop",
+        "railway_station",
+    ]
     relative_feature_parent_resolutions: list[int] = [7, 8]
     relative_feature_columns: list[str] = [
         "dist_metro_m",
@@ -118,6 +129,21 @@ class Settings(BaseSettings):
     # datetime.now()) so reruns are deterministic; bump once per year
     # at release time.
     current_year_for_age_features: int = 2026
+
+    # ADR-0027: when True, build_object_features joins location distances
+    # from the cell grid (Слой 1) instead of computing them per object.
+    # Requires the ``geom_distance`` feature set built by
+    # BuildCellGeomDistanceFeatures first. Default False keeps the
+    # per-object baseline until the A/B is run.
+    cell_tsorf_enabled: bool = False
+    cell_tsorf_resolution: int = 10
+    # ADR-0027 §12: when True (and cell_tsorf_enabled), each object
+    # blends the Слой 1 features of every res cell its footprint covers,
+    # weighted by area share, instead of inheriting only its centroid
+    # cell's values. Default True — the methodologically-correct path
+    # (the single-cell fallback exists for A/B ablation). Only objects
+    # without a usable polygon geometry fall back to centroid-by-point.
+    cell_tsorf_overlap_weighted: bool = True
 
     nspd_silver_store_path: Path = Path("data/silver/nspd")
     nspd_buildings_raw_dir: Path = Path("data/raw/nspd/buildings-kazan")

@@ -222,6 +222,17 @@ def _describe_dist_to(m: re.Match[str]) -> str:
     return head + _interpret_distance(token) + _agg_suffix(mean_prefix)
 
 
+def _describe_walk_dist_to(m: re.Match[str]) -> str:
+    """ADR-0027: пешеходная дистанция по графу OSM до ближайшего POI слоя.
+
+    В отличие от ``dist_to_*`` (прямая геометрическая), это длина кратчайшего
+    пути по пешеходному графу — учитывает уличную сеть, а не «как птица летит».
+    """
+    token = m.group(1)
+    head = f"Пешеходная дистанция по графу OSM до ближайшего объекта «{_humanize_poi(token)}», в метрах."
+    return head + _interpret_distance(token)
+
+
 def _describe_dist_metro(m: re.Match[str]) -> str:
     base = (
         "Расстояние до ближайшей станции метро, в метрах. Один из самых"
@@ -300,6 +311,7 @@ _PATTERNS: list[tuple[re.Pattern[str], Callable[[re.Match[str]], str]]] = [
     (re.compile(r"^(mean_)?dist_metro_m$"), _describe_dist_metro),
     (re.compile(r"^(mean_)?dist_entrance_m$"), _describe_dist_entrance),
     (re.compile(r"^(mean_)?dist_to_(.+?)_m$"), _describe_dist_to),
+    (re.compile(r"^walk_dist_to_(.+?)_m$"), _describe_walk_dist_to),
     (re.compile(r"^(mean_)?(.+?)_share_(\d+)m$"), _describe_share),
     (re.compile(r"^(mean_)?(.+?)_within_(\d+)m$"), _describe_within),
     (re.compile(r"^(mean_)?count_(.+?)_(\d+)(km|m)$"), _describe_count),

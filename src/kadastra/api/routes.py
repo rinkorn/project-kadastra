@@ -33,6 +33,10 @@ from shapely.geometry import mapping
 
 from kadastra.domain.asset_class import AssetClass
 from kadastra.domain.feature_descriptions import describe_feature
+from kadastra.usecases.get_cell_tsorf import (
+    CELL_TSORF_FEATURE_SETS,
+    GetCellTsorf,
+)
 from kadastra.usecases.get_hex_aggregates import (
     ASSET_CLASS_VALUES,
     CATEGORICAL_FEATURES,
@@ -55,6 +59,10 @@ QUARTET_MODELS = ("catboost", "ebm", "grey_tree", "naive_linear")
 # at module load: web-mercator metres (silver/gold storage CRS) → WGS84
 # lon/lat degrees (deck.gl + maplibre input).
 _WGS84_FROM_3857 = pyproj.Transformer.from_crs(3857, 4326, always_xy=True)
+# ADR-0027: the Слой 1 grid resolution the «ЦОФ-сетка» mode reads. Matches
+# Settings.cell_tsorf_resolution default; the API doesn't import Settings
+# to keep the web layer free of config coupling, so the constant is local.
+_CELL_TSORF_RESOLUTION = 10
 
 
 def _convert_wkt_3857_to_geojson_wgs84(wkt: str | None) -> dict[str, Any] | None:
@@ -76,6 +84,7 @@ def make_api_router(
     load_inspection: LoadObjectInspection,
     get_market_reference: GetMarketReference,
     market_reference_year: int,
+    get_cell_tsorf: GetCellTsorf,
 ) -> APIRouter:
     router = APIRouter(prefix="/api")
 
@@ -262,16 +271,48 @@ def make_api_router(
             + list(OBJECT_FEATURE_COLUMNS)
             + list(RAW_OBJECT_FEATURE_COLUMNS)
         )
+        # Слой 1 cell ЦОФ (ADR-0027) — the «ЦОФ-сетка» mode's two-level
+        # selector: {feature_set: [features]}. Built once so the frontend
+        # gets everything in one round-trip; empty for sets not yet built.
+        cell_tsorf = get_cell_tsorf.feature_set_map(region_code, _CELL_TSORF_RESOLUTION)
+        all_feature_names += [f for feats in cell_tsorf.values() for f in feats]
         return {
             "asset_classes": list(ASSET_CLASS_VALUES),
             "numeric_features": list(NUMERIC_FEATURES),
             "categorical_features": list(CATEGORICAL_FEATURES),
             "object_features": list(OBJECT_FEATURE_COLUMNS),
             "models": list(QUARTET_MODELS),
+            "cell_tsorf_resolution": _CELL_TSORF_RESOLUTION,
+            "cell_tsorf_feature_sets": list(CELL_TSORF_FEATURE_SETS),
+            "cell_tsorf_features": cell_tsorf,
             # Single source of truth for per-feature tooltips. The map UI
             # reads this dict and falls back to nothing if a key is
             # missing — see domain/feature_descriptions.py.
             "feature_descriptions": {name: describe_feature(name) for name in all_feature_names},
+        }
+
+    @router.get("/cell_tsorf")
+    def cell_tsorf(
+        resolution: int = Query(..., ge=0, le=15),
+        feature_set: str = Query(...),
+        feature: str = Query(...),
+    ) -> dict[str, Any]:
+        """Слой 1 cell ЦОФ (ADR-0027) for the map UI's «ЦОФ-сетка» mode:
+        ``[{hex, value}]`` for one feature column across all res cells.
+        Not asset-class / model scoped — this is input location factors,
+        not object predictions."""
+        try:
+            data = get_cell_tsorf.execute(region_code, resolution, feature_set, feature)
+        except KeyError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return {
+            "region": region_code,
+            "resolution": resolution,
+            "feature_set": feature_set,
+            "feature": feature,
+            "data": data,
         }
 
     return router
