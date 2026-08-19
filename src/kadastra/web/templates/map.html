@@ -565,6 +565,21 @@ const ADMIN_KEY_LABELS = {
   settlement_name: 'Населённый пункт',
 };
 
+// Tooltips for the 4-model quartet table (ADR-0016) and its metrics.
+// Attached to the .qrow container (not the cell) because qcell has no
+// overflow:hidden, but keeping the tip at row grain reads cleaner.
+const QUARTET_TIPS = {
+  catboost: 'CatBoost — градиентный бустинг над деревьями решений. Тёмная лошадка ансамбля: обычно самая точная, но наименее интерпретируемая.',
+  ebm: 'EBM (Explainable Boosting Machine) —Generalized Additive Model с bagging. Интерпретируемый: каждый вклад фичи показан отдельно в блоке «White Box».',
+  grey_tree: 'Grey-Box Tree — дерево решений над вручную сконструированными признаками. Прозрачная логика ветвления, ниже точность.',
+  naive_linear: 'Naive Linear — линейная регрессия (baseline). Нижняя граница качества ансамбля.',
+  y_pred_oof: 'honest out-of-fold прогноз: объект предсказан моделью, которая его не видела при обучении (пространственная K-fold по ADR-0016). Нет утечки.',
+  residual: 'y_pred_oof − y_true. Положительный — модель переоценивает, отрицательный — недооценивает.',
+  y_true: 'Целевая метка: кадастровая стоимость ₽/м² по ЕГРН (cost_index). Proxy реальных сделок до подключения рыночных данных.',
+  secondary: 'ЕМИСС-61781: средняя цена вторичного рынка, ₽/м², за указанный год. Внешний ориентир для проверки y_true.',
+  primary: 'ЕМИСС-61781: средняя цена первичного рынка, ₽/м², за указанный год. Внешний ориентир для проверки y_true.',
+};
+
 function describeFeature(name) {
   if (featureDescriptions[name]) return featureDescriptions[name];
   if (INSPECTOR_KEY_DESCRIPTIONS[name]) return INSPECTOR_KEY_DESCRIPTIONS[name];
@@ -1757,19 +1772,21 @@ function quartetSection(quartet, marketRef) {
   const order = ['catboost', 'ebm', 'grey_tree', 'naive_linear'];
   const headerRow = `<div class="qrow qhead">
     <span class="qcell qmodel">model</span>
-    <span class="qcell qval">y_pred_oof</span>
-    <span class="qcell qval">residual</span>
+    <span class="qcell qval" data-tip="${escapeHtml(QUARTET_TIPS.y_pred_oof)}">y_pred_oof</span>
+    <span class="qcell qval" data-tip="${escapeHtml(QUARTET_TIPS.residual)}">residual</span>
   </div>`;
   const dataRows = order.map(m => {
     const entry = quartet.models[m] || {};
     const isActive = m === activeModel ? ' qactive' : '';
-    return `<div class="qrow${isActive}">
+    const tip = QUARTET_TIPS[m] || m;
+    return `<div class="qrow${isActive}" data-tip="${escapeHtml(tip)}">
       <span class="qcell qmodel">${escapeHtml(m)}</span>
       <span class="qcell qval">${escapeHtml(formatValue(entry.y_pred_oof))}</span>
       <span class="qcell qval">${escapeHtml(formatValue(entry.residual))}</span>
     </div>`;
   }).join('');
-  const yTrueRow = `<div class="qrow qfoot">
+  const yTrueTip = QUARTET_TIPS.y_true;
+  const yTrueRow = `<div class="qrow qfoot" data-tip="${escapeHtml(yTrueTip)}">
     <span class="qcell qmodel">y_true (ЕГРН)</span>
     <span class="qcell qval">${escapeHtml(formatValue(yTrue))}</span>
     <span class="qcell qval"></span>
@@ -1867,11 +1884,15 @@ function marketRefRows(marketRef, yTrue) {
       delta,
     });
   }
-  return rows.map(r => `<div class="qrow qmarket">
+  return rows.map(r => {
+    const kind = r.label.includes('вторичный') ? 'secondary' : 'primary';
+    const tip = `${QUARTET_TIPS[kind]}\n\nΔ = EMISS − y_true: насколько кадастровая оценка расходится с рыночной.`;
+    return `<div class="qrow qmarket" data-tip="${escapeHtml(tip)}">
     <span class="qcell qmodel">${escapeHtml(r.label)}</span>
     <span class="qcell qval">${escapeHtml(formatValue(r.value))}</span>
     <span class="qcell qval">${escapeHtml(formatValue(r.delta))}</span>
-  </div>`).join('');
+  </div>`;
+  }).join('');
 }
 
 function escapeHtml(s) {
@@ -2120,10 +2141,13 @@ function comparisonRow(key, va, vb, tipKey) {
     deltaCell = `<span class="cmp-delta ${cls}">${formatDelta(delta)}</span>`;
   }
   const tip = describeFeature(tipKey || key) || (tipKey || key);
-  return `<div class="cmp-row">
-      <span class="cmp-key" data-tip="${escapeHtml(tip)}">${escapeHtml(key)}</span>
-      <span class="cmp-val" data-tip="${escapeHtml(fa)}">${escapeHtml(fa)}</span>
-      <span class="cmp-val" data-tip="${escapeHtml(fb)}">${escapeHtml(fb)}</span>
+  // data-tip goes on the .cmp-row container, not the .cmp-key/.cmp-val
+  // spans: those have overflow:hidden (for ellipsis) which clips the
+  // ::after tooltip. The row is the smallest non-clipping ancestor.
+  return `<div class="cmp-row" data-tip="${escapeHtml(tip)}">
+      <span class="cmp-key">${escapeHtml(key)}</span>
+      <span class="cmp-val">${escapeHtml(fa)}</span>
+      <span class="cmp-val">${escapeHtml(fb)}</span>
       ${deltaCell}
     </div>`;
 }
