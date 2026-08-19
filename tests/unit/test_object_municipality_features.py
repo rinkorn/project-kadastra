@@ -726,3 +726,64 @@ def test_city_raion_settlement_compound_cut_at_raion() -> None:
     assert row["settlement_name"] == "Казань"
     assert row["mun_okrug_name"] == "город Казань"
     assert row["intra_city_raion"] == "Советский"
+
+
+def test_intra_raion_municipal_form_not_treated_as_rural_okrug() -> None:
+    """NSPD writes intra-Kazan raions as "Советский муниципальный район",
+    which the rural-okrug regex would otherwise trust as a real municipal
+    raion. The rural capture must be nulled so the city fallback yields
+    "город Казань" (not bare "Советский" as mun_okrug_name)."""
+    objects = _objects(
+        [
+            {
+                "object_id": "a",
+                "cad_num": "16:50:999:999",
+                "readable_address": (
+                    "Российская Федерация, Республика Татарстан, город Казань, "
+                    "Советский муниципальный район, улица Вишневая, дом 5"
+                ),
+                "lat": 55.78,
+                "lon": 49.12,
+            }
+        ]
+    )
+    out = compute_object_municipality_features(
+        objects, cadnum_index=_cadnum_ix([]), mun_lookup=_make_kazan_mun_lookup()
+    )
+    row = out.row(0, named=True)
+    assert row["mun_okrug_name"] == "город Казань"
+    assert row["mun_okrug_oktmo"] == "92701000"
+    # intra_city_raion stays null here: the address-regex form
+    # "Советский муниципальный район" is not matched by _RX_INTRA (it
+    # expects "Советский район" adjacent); in the real pipeline the
+    # OSM polygon spatial join fills it from lat/lon instead.
+    assert row["intra_city_raion"] is None
+    assert row["settlement_name"] == "Казань"
+
+
+def test_village_capture_strips_street_tail() -> None:
+    """A village capture like "с Константиновка ул Интернациональная"
+    (street glued without a comma) must resolve to settlement
+    "Константиновка", not the compound string."""
+    objects = _objects(
+        [
+            {
+                "object_id": "a",
+                "cad_num": "16:50:999:999",
+                "readable_address": (
+                    "Местоположение установлено относительно ориентира, расположенного "
+                    "в границах участка. Почтовый адрес ориентира: Республика Татарстан, "
+                    "с Константиновка ул Интернациональная, дом 3."
+                ),
+                "lat": 55.78,
+                "lon": 49.12,
+            }
+        ]
+    )
+    # mun_lookup has no Константиновка entry — okrug falls back to null
+    # (rural raion absent); only the settlement cleanup is asserted.
+    out = compute_object_municipality_features(
+        objects, cadnum_index=_cadnum_ix([]), mun_lookup=_make_kazan_mun_lookup()
+    )
+    row = out.row(0, named=True)
+    assert row["settlement_name"] == "Константиновка"
