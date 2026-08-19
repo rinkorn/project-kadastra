@@ -19,12 +19,14 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p ${{ vars.DEV_STAGE_PORT }} ${{ vars.DEV_STAGE_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Assemble NSPD valuation objects
+      - name: Download current valuation_objects from S3
         run: |
           ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
             ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
             "cd ${{ env.DEPLOY_PATH }} && \
-             docker compose --profile scripts run --rm scripts scripts/assemble_nspd_valuation_objects.py"
+             docker compose --profile scripts run --rm scripts scripts/download_dir_from_s3.py \
+               --prefix Kadatastr/gold/valuation_objects \
+               --dst data/gold/valuation_objects"
 
       - name: Build scripts image from current sources
         run: |
