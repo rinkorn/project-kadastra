@@ -79,6 +79,7 @@ jobs:
           ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
             ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
             "cd ${{ env.DEPLOY_PATH }} && \
+             mkdir -p data/gold && \
              docker run --rm -v ./data:/data alpine chown -R \$(id -u):\$(id -g) /data/gold"
 
       - name: Wait for healthcheck
