@@ -39,6 +39,16 @@ jobs:
           echo "${{ secrets.DEV_STAGE_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p ${{ vars.DEV_STAGE_PORT }} ${{ vars.DEV_STAGE_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Fix data ownership on VM
+        run: |
+          # Scripts run inside Docker write to data/ as root; subsequent
+          # rsync --delete fails to remove those files. Re-own to the
+          # deploy user before syncing.
+          ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
+            ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
+            "cd ${{ env.DEPLOY_PATH }} && \
+             docker run --rm -v ./data:/data alpine chown -R \$(id -u):\$(id -g) /data/gold"
+
       - name: Sync sources to VM
         run: |
           # `data/` is gitignored except for the whitelisted region
