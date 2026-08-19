@@ -227,7 +227,8 @@ def compute_object_municipality_features(
         # Clean address-extracted strings: strip trailing junk tokens
         # (raion/okruga/street/house markers) that leak into the capture
         # when the original text has no comma before them
-        # (e.g. "г Казань р-н", "г Казань ул Гагарина", "г.о. Казань").
+        # (e.g. "г Казань р-н", "г Казань ул Гагарина", "г.о. Казань",
+        # "с Константиновка ул Интернациональная").
         .with_columns(
             pl.col("_okrug_addr_urban")
             .str.replace(_RX_ADDR_JUNK_TAIL, "")
@@ -237,6 +238,7 @@ def compute_object_municipality_features(
             .str.replace(_RX_ADDR_JUNK_TAIL, "")
             .str.strip_chars(" \t.,;")
             .alias("_city_addr_clean"),
+            pl.col("_vil_addr").str.replace(_RX_ADDR_JUNK_TAIL, "").str.strip_chars(" \t.,;").alias("_vil_addr_clean"),
         )
         # Guard the urban-okrug capture:
         #   - empty string → null (cleanup consumed everything);
@@ -255,28 +257,42 @@ def compute_object_municipality_features(
             .then(pl.lit("город ") + pl.col("_okrug_addr_urban_clean"))
             .otherwise(pl.col("_okrug_addr_urban_clean"))
             .alias("_okrug_addr_urban_guarded"),
+            # Guard the rural-okrug capture: NSPD writes intra-Kazan
+            # raions as "Советский муниципальный район", which the rural
+            # regex trusts as a real municipal raion. Null those so the
+            # city fallback produces "город Казань" instead. Genuine
+            # rural raions ("Высокогорский муниципальный район") pass.
+            pl.when(pl.col("_okrug_addr_rural").is_in(list(_INTRA_KAZAN_RAIONS)))
+            .then(pl.lit(None, dtype=pl.Utf8))
+            .otherwise(pl.col("_okrug_addr_rural"))
+            .alias("_okrug_addr_rural_guarded"),
             pl.when(pl.col("_city_addr_clean") == "")
             .then(pl.lit(None, dtype=pl.Utf8))
             .otherwise(pl.col("_city_addr_clean"))
             .alias("_city_addr_clean"),
+            pl.when(pl.col("_vil_addr_clean") == "")
+            .then(pl.lit(None, dtype=pl.Utf8))
+            .otherwise(pl.col("_vil_addr_clean"))
+            .alias("_vil_addr_clean"),
         )
         # Settlement: ГАР first, else city ("г X"), else village.
         .with_columns(
             pl.coalesce(
                 pl.col("settlement_name"),
                 pl.col("_city_addr_clean"),
-                pl.col("_vil_addr").str.strip_chars(),
+                pl.col("_vil_addr_clean"),
             ).alias("settlement_name_resolved"),
         )
-        # Okrug: ГАР first, else guarded "г.о. X", else "X муниципальный район",
-        # else infer "город {settlement}" for objects that just say
-        # "г Казань" without г.о. — most NSPD entries inside Kazan
-        # city lack the г.о. prefix despite belonging to the okrug.
+        # Okrug: ГАР first, else guarded "г.о. X", else guarded
+        # "X муниципальный район", else infer "город {settlement}" for
+        # objects that just say "г Казань" without г.о. — most NSPD
+        # entries inside Kazan city lack the г.о. prefix despite
+        # belonging to the okrug.
         .with_columns(
             pl.coalesce(
                 pl.col("mun_okrug_name"),
                 pl.col("_okrug_addr_urban_guarded"),
-                pl.col("_okrug_addr_rural").str.strip_chars(),
+                pl.col("_okrug_addr_rural_guarded").str.strip_chars(),
                 pl.when(pl.col("_city_addr_clean").is_not_null())
                 .then(pl.lit("город ") + pl.col("_city_addr_clean"))
                 .otherwise(None),
