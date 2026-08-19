@@ -88,6 +88,7 @@ ADR-0010 §1 фиксирует: «Используется ~5% методоло
 4. **Относительные ЦОФ.** Сейчас считаются по объектам в родителе (ADR-0012); на полном распределении сетки могли бы считаться по всем ячейкам. Отложено.
 5. **Миграция без регрессии.** Per-object расчёт оставлен как fallback (readers = `None` при `cell_tsorf_enabled=False`); grid-путь включается флагом.
 6. **Крупные объекты.** ✅ решено — взвешивание по доле перекрытия (§12) реализовано (`cell_overlap_weights`, `cell_tsorf_overlap_weighted=True`).
+7. **Retrain под overlap.** Текущие модели обучены на single-cell grid-фичах; overlap-weighting (§12) реализован, но целевой retrain пропущен осознанно. При следующем переобучении — пересобрать valuation_objects + hex_aggregates с `cell_tsorf_overlap_weighted=True` перед обучением. См. [ADR-0027 «Замечание для будущих переобучений»](../decisions/0027-tsorf-on-grid.md).
 
 ## Definition of Done (эпик)
 
