@@ -72,23 +72,29 @@ _INTRA_KAZAN_RAIONS = (
 )
 _RX_INTRA = r"(" + r"|".join(_INTRA_KAZAN_RAIONS) + r")\s+район"
 
-# Address-parser cleanup: strip trailing junk tokens that NSPD sometimes
-# glues to the city / urban-okrug segment when commas are missing.
-# Covers "Советский район", "р-н", "г.о.", "м.о.", "с/т", street markers,
-# parenthetical notes and house-number tails (e.g. "Казань д. 5").
+# Address-parser cleanup: cut the city / urban-okrug capture at the
+# FIRST junk token — NSPD often glues raion / garden-partnership /
+# street segments right after the city name without a comma
+# ("г Казань Приволжский район сдт Табигать участок 234.",
+# "г Казань р-н", "г Казань ул Гагарина"). Anything from the first such
+# token to the end of the capture is junk, so the match eats ".*$".
+# Also strips a leading intra-city raion ("Советский район Казань")
+# and trailing lone periods ("Салмачи.").
 _RX_ADDR_JUNK_TAIL = (
     r"^(?:" + r"|".join(_INTRA_KAZAN_RAIONS) + r")\s+район\s*|"
-    r"(?:\s+(?:"
+    r"\s+(?:"
     r"муниципальный\s+район|" + r"|".join(_INTRA_KAZAN_RAIONS) + r"\s+район|"
     r"р-н\.?|"
     r"г\.о\.?|"
     r"м\.о\.?|"
-    r"с/т.*|"
-    r"ул\.?.*|"
-    r"улица.*|"
-    r"\(.*"
-    r")|"
-    r"\.\s.*)$"
+    r"с/т|"
+    r"сдт\.?|снт\.?|днт\.?|днп\.?|"
+    r"п\s|"
+    r"ул\.?|улица|"
+    r"\(|"
+    r"\.\s"
+    r").*$|"
+    r"\.+$"
 )
 
 
