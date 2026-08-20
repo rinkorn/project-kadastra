@@ -37,6 +37,7 @@ _BUILDINGS_SCHEMA: dict[str, type[pl.DataType] | pl.DataType] = {
     "materials": pl.Utf8,
     "ownership_type": pl.Utf8,
     "registration_date": pl.Utf8,
+    "kadnum_quarter": pl.Utf8,
     "readable_address": pl.Utf8,
     "polygon_wkt_3857": pl.Utf8,
 }
@@ -54,6 +55,8 @@ _LANDPLOTS_SCHEMA: dict[str, type[pl.DataType] | pl.DataType] = {
     "land_record_subtype": pl.Utf8,
     "ownership_type": pl.Utf8,
     "registration_date": pl.Utf8,
+    "vri": pl.Utf8,
+    "kadnum_quarter": pl.Utf8,
     "readable_address": pl.Utf8,
     "polygon_wkt_3857": pl.Utf8,
 }

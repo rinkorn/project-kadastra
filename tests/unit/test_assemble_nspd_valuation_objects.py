@@ -57,6 +57,7 @@ def _silver_buildings() -> pl.DataFrame:
             "underground_floors": [1, 1, 0, 0, 1],
             "materials": ["Кирпичные", "Панельные", "Кирпичные", "Деревянные", "Монолитные"],
             "ownership_type": ["Частная"] * 5,
+            "kadnum_quarter": ["16:50:010406"] * 5,
             "registration_date": ["2005-01-01"] * 5,
             "readable_address": [f"Казань addr {i}" for i in range(5)],
             "polygon_wkt_3857": ["POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))"] * 5,
@@ -81,6 +82,8 @@ def _silver_landplots() -> pl.DataFrame:
             "land_record_category_type": ["Земли населенных пунктов"] * 3,
             "land_record_subtype": ["Землепользование"] * 3,
             "ownership_type": ["Частная"] * 3,
+            "vri": ["Садоводство", "Индивидуальное жилищное строительство", None],
+            "kadnum_quarter": ["16:50:010406", "16:50:010407", "16:50:010408"],
             "registration_date": ["2009-02-16"] * 3,
             "readable_address": [f"Казань уч {i}" for i in range(3)],
             "polygon_wkt_3857": ["POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))"] * 3,
@@ -274,3 +277,37 @@ def test_landplots_partition_skipped_when_landplot_not_requested() -> None:
 
     saved_classes = {c for _, c, _ in store.calls}
     assert AssetClass.LANDPLOT not in saved_classes
+
+
+def test_landplot_rich_attributes_passthrough() -> None:
+    """ADR-0021: vri / category_zem / kadnum_quarter must reach gold for
+    landplots; the building-only underground_floors stays null."""
+    silver = _FakeSilverStore(buildings=_silver_buildings(), landplots=_silver_landplots())
+    store = _FakeValuationObjectStore()
+    AssembleNspdValuationObjects(silver_store=silver, valuation_object_store=store).execute(
+        "RU-KAZAN-AGG",
+        asset_classes=[AssetClass.LANDPLOT],
+    )
+
+    df = store.calls[0][2]
+    assert df["vri"].to_list() == ["Садоводство", "Индивидуальное жилищное строительство", None]
+    assert df["category_zem"].to_list() == ["Земли населенных пунктов"] * 3
+    assert df["kadnum_quarter"].to_list() == ["16:50:010406", "16:50:010407", "16:50:010408"]
+    assert df["underground_floors"].to_list() == [None, None, None]
+
+
+def test_building_rich_attributes_passthrough() -> None:
+    """ADR-0021: kadnum_quarter / underground_floors must reach gold for
+    buildings; the landplot-only vri / category_zem stay null."""
+    silver = _FakeSilverStore(buildings=_silver_buildings(), landplots=_silver_landplots())
+    store = _FakeValuationObjectStore()
+    AssembleNspdValuationObjects(silver_store=silver, valuation_object_store=store).execute(
+        "RU-KAZAN-AGG",
+        asset_classes=[AssetClass.HOUSE],
+    )
+
+    df = store.calls[0][2]
+    assert df["kadnum_quarter"].to_list() == ["16:50:010406"] * 2
+    assert sorted(df["underground_floors"].to_list()) == [0, 1]
+    assert df["vri"].to_list() == [None, None]
+    assert df["category_zem"].to_list() == [None, None]

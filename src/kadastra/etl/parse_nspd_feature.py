@@ -70,6 +70,17 @@ def _to_str(value: Any) -> str | None:
     return s if s else None
 
 
+# NSPD serializes missing values as the literal string ``"None"`` rather
+# than JSON null (seen for ``permitted_use_established_by_document`` in
+# the landplots dump). Applied to the ADR-0021 columns only — legacy
+# columns keep the historic ``_to_str`` behaviour.
+def _to_str_na(value: Any) -> str | None:
+    s = _to_str(value)
+    if s is None or s.lower() == "none":
+        return None
+    return s
+
+
 def _centroid_wgs84(geometry_dict: dict[str, Any]) -> tuple[float, float]:
     geom: BaseGeometry = shape(geometry_dict)
     centroid = geom.centroid
@@ -103,6 +114,7 @@ def parse_nspd_building_feature(feature: dict[str, Any]) -> dict[str, Any]:
         "materials": _to_str(options.get("materials")),
         "ownership_type": _to_str(options.get("ownership_type")),
         "registration_date": _to_str(options.get("build_record_registration_date")),
+        "kadnum_quarter": _to_str_na(options.get("quarter_cad_number")),
         "readable_address": _to_str(options.get("readable_address")),
         "polygon_wkt_3857": _polygon_wkt(feature["geometry"]),
     }
@@ -125,6 +137,10 @@ def parse_nspd_landplot_feature(feature: dict[str, Any]) -> dict[str, Any]:
         "land_record_subtype": _to_str(options.get("land_record_subtype")),
         "ownership_type": _to_str(options.get("ownership_type")),
         "registration_date": _to_str(options.get("land_record_reg_date")),
+        # ADR-0021: вид разрешённого использования (VRI) — ключевая
+        # категориальная фича для landplot.
+        "vri": _to_str_na(options.get("permitted_use_established_by_document")),
+        "kadnum_quarter": _to_str_na(options.get("quarter_cad_number")),
         "readable_address": _to_str(options.get("readable_address")),
         "polygon_wkt_3857": _polygon_wkt(feature["geometry"]),
     }

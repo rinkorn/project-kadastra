@@ -188,6 +188,39 @@ def test_parse_landplot_handles_missing_optional_fields() -> None:
     assert row["land_record_category_type"] is None
 
 
+def test_parse_building_kadnum_quarter() -> None:
+    row = parse_nspd_building_feature(_building_feature(quarter_cad_number="16:50:010406"))
+    assert row["kadnum_quarter"] == "16:50:010406"
+
+
+def test_parse_building_kadnum_quarter_missing_is_null() -> None:
+    row = parse_nspd_building_feature(_building_feature())
+    assert row["kadnum_quarter"] is None
+
+
+def test_parse_landplot_vri_and_kadnum_quarter() -> None:
+    row = parse_nspd_landplot_feature(
+        _landplot_feature(
+            permitted_use_established_by_document="Садоводство",
+            quarter_cad_number="16:50:010406",
+        )
+    )
+    assert row["vri"] == "Садоводство"
+    assert row["kadnum_quarter"] == "16:50:010406"
+
+
+def test_parse_landplot_vri_none_literal_is_null() -> None:
+    """NSPD serializes missing values as the literal string ``"None"``
+    (not JSON null); the VRI column must map it to null."""
+    row = parse_nspd_landplot_feature(_landplot_feature(permitted_use_established_by_document="None"))
+    assert row["vri"] is None
+
+
+def test_parse_landplot_vri_missing_is_null() -> None:
+    row = parse_nspd_landplot_feature(_landplot_feature())
+    assert row["vri"] is None
+
+
 def test_parse_building_multipolygon_geometry() -> None:
     feat = _building_feature()
     # Wrap into MultiPolygon: list of polygons (each a list of rings)
