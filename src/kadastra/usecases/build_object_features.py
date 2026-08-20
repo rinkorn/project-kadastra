@@ -17,6 +17,7 @@ from kadastra.etl.object_geom_distance_features import (
     compute_object_geom_distance_features,
 )
 from kadastra.etl.object_geometry_features import compute_object_geometry_features
+from kadastra.etl.object_isochrone_features import join_isochrone_features
 from kadastra.etl.object_macro_features import compute_object_macro_features
 from kadastra.etl.object_metro_features import compute_object_metro_features
 from kadastra.etl.object_municipality_features import (
@@ -24,6 +25,7 @@ from kadastra.etl.object_municipality_features import (
 )
 from kadastra.etl.object_neighbor_features import compute_object_neighbor_features
 from kadastra.etl.object_polygon_features import compute_object_polygon_features
+from kadastra.etl.object_road_class_features import join_road_class_features
 from kadastra.etl.object_road_features import compute_object_road_features
 from kadastra.etl.object_zonal_features import compute_object_zonal_features
 from kadastra.etl.relative_features import compute_relative_features
@@ -107,9 +109,6 @@ class BuildObjectFeatures:
         self._macro_oktmo_features_path = macro_oktmo_features_path
         self._cadastre_target_year = cadastre_target_year
         self._dem_sampler = dem_sampler
-        # ADR-0024 stubs: silver paths for the road-class and isochrone
-        # joins — stored but not consumed until the join implementation
-        # lands (TDD stub step).
         self._road_class_features_path = road_class_features_path
         self._isochrone_cache_path = isochrone_cache_path
         self._isochrone_cache_resolution = isochrone_cache_resolution
@@ -263,6 +262,26 @@ class BuildObjectFeatures:
         # off).
         if self._dem_sampler is not None:
             enriched = compute_object_dem_features(enriched, dem_sampler=self._dem_sampler)
+        # Advanced road-network features (ADR-0024). Both blocks are
+        # LEFT JOINs from silver tables materialized by dedicated scripts
+        # (build_nearest_road_features.py per object;
+        # build_isochrone_cache_per_hex.py per res-11 hex). They run
+        # after the RAW_OBJECT_SCHEMA reset, so a rerun recomputes them
+        # from silver — the ADR-0022/0023 pattern. Opt-in: each join is
+        # skipped when its silver partition does not exist for the
+        # region.
+        if self._road_class_features_path is not None:
+            road_features = self._load_road_class_features(region_code)
+            if road_features is not None:
+                enriched = join_road_class_features(enriched, road_features)
+        if self._isochrone_cache_path is not None:
+            iso_cache = self._load_isochrone_cache(region_code)
+            if iso_cache is not None:
+                enriched = join_isochrone_features(
+                    enriched,
+                    iso_cache,
+                    resolution=self._isochrone_cache_resolution,
+                )
         # Filter feature_columns to those present (allows configuring a
         # superset in Settings — missing ones are simply skipped, not
         # errors, so per-class slices with different schemas don't crash).
@@ -276,6 +295,35 @@ class BuildObjectFeatures:
         for asset_class in asset_classes:
             slice_df = enriched.filter(pl.col("asset_class") == asset_class.value)
             self._store.save(region_code, asset_class, slice_df)
+
+    def _load_road_class_features(self, region_code: str) -> pl.DataFrame | None:
+        """Load the silver road-class-per-object table for the region.
+
+        Returns ``None`` when the partition does not exist, so the
+        pipeline skips the join entirely (same opt-in contract as the
+        macro-OKTMO loader).
+        """
+        base = self._road_class_features_path
+        if base is None:
+            return None
+        path = base / f"region={region_code}" / "data.parquet"
+        if not path.is_file():
+            return None
+        return pl.read_parquet(path)
+
+    def _load_isochrone_cache(self, region_code: str) -> pl.DataFrame | None:
+        """Load the per-hex isochrone cache for the region/resolution.
+
+        Returns ``None`` when the partition does not exist, so the
+        pipeline skips the join entirely.
+        """
+        base = self._isochrone_cache_path
+        if base is None:
+            return None
+        path = base / f"region={region_code}" / f"h3_p={self._isochrone_cache_resolution}" / "data.parquet"
+        if not path.is_file():
+            return None
+        return pl.read_parquet(path)
 
     def _load_macro_oktmo_features(self, region_code: str) -> pl.DataFrame | None:
         """Load the wide per-(oktmo, year) EMISS macro table for the region.
