@@ -71,6 +71,9 @@ class BuildObjectFeatures:
         macro_oktmo_features_path: Path | None = None,
         cadastre_target_year: int = 2024,
         dem_sampler: DemSamplerPort | None = None,
+        road_class_features_path: Path | None = None,
+        isochrone_cache_path: Path | None = None,
+        isochrone_cache_resolution: int = 11,
     ) -> None:
         self._reader = reader
         self._store = store
@@ -104,6 +107,12 @@ class BuildObjectFeatures:
         self._macro_oktmo_features_path = macro_oktmo_features_path
         self._cadastre_target_year = cadastre_target_year
         self._dem_sampler = dem_sampler
+        # ADR-0024 stubs: silver paths for the road-class and isochrone
+        # joins — stored but not consumed until the join implementation
+        # lands (TDD stub step).
+        self._road_class_features_path = road_class_features_path
+        self._isochrone_cache_path = isochrone_cache_path
+        self._isochrone_cache_resolution = isochrone_cache_resolution
 
     def execute(self, region_code: str, asset_classes: list[AssetClass]) -> None:
         stations = pl.read_csv(io.BytesIO(self._raw_data.read_bytes(self._stations_key)))

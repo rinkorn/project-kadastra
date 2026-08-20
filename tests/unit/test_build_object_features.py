@@ -204,6 +204,9 @@ def _usecase(
     macro_oktmo_features_path: Path | None = None,
     cadastre_target_year: int = 2024,
     dem_sampler: DemSamplerPort | None = None,
+    road_class_features_path: Path | None = None,
+    isochrone_cache_path: Path | None = None,
+    isochrone_cache_resolution: int = 11,
 ) -> BuildObjectFeatures:
     return BuildObjectFeatures(
         reader=store,
@@ -242,6 +245,9 @@ def _usecase(
         macro_oktmo_features_path=macro_oktmo_features_path,
         cadastre_target_year=cadastre_target_year,
         dem_sampler=dem_sampler,
+        road_class_features_path=road_class_features_path,
+        isochrone_cache_path=isochrone_cache_path,
+        isochrone_cache_resolution=isochrone_cache_resolution,
     )
 
 
@@ -1192,3 +1198,147 @@ def test_dem_columns_absent_when_sampler_not_wired() -> None:
     assert "elevation_m" not in df.columns
     assert "slope_deg_local" not in df.columns
     assert "relative_relief_500m_m" not in df.columns
+
+
+def _road_class_silver_rows() -> pl.DataFrame:
+    return pl.DataFrame(
+        [
+            {
+                "object_id": "way/apartment-1",
+                "nearest_road_class": "residential",
+                "dist_to_motorway_m": 2100.0,
+                "dist_to_primary_m": 900.0,
+                "dist_to_secondary_m": 250.0,
+                "dist_to_residential_m": 15.0,
+                "dist_to_pedestrian_m": 60.0,
+            }
+        ],
+        schema={
+            "object_id": pl.Utf8,
+            "nearest_road_class": pl.Utf8,
+            "dist_to_motorway_m": pl.Float64,
+            "dist_to_primary_m": pl.Float64,
+            "dist_to_secondary_m": pl.Float64,
+            "dist_to_residential_m": pl.Float64,
+            "dist_to_pedestrian_m": pl.Float64,
+        },
+    )
+
+
+def test_appends_road_class_columns_when_silver_present(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """ADR-0024 group 1: with road_class_features_path wired and the
+    silver table on disk, the 6 road-class columns land on the saved
+    partition, joined by object_id; objects missing from the table get
+    nulls. The join runs after the RAW_OBJECT_SCHEMA reset, so the
+    columns are recomputed from silver on every rerun."""
+    part_dir = tmp_path / "region=RU-KAZAN-AGG"
+    part_dir.mkdir(parents=True)
+    _road_class_silver_rows().write_parquet(part_dir / "data.parquet")
+
+    store = _FakeStore({AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)})
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(store, raw, road_class_features_path=tmp_path).execute(
+        "RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT]
+    )
+
+    df = store.calls[0].df
+    for col in (
+        "nearest_road_class",
+        "dist_to_motorway_m",
+        "dist_to_primary_m",
+        "dist_to_secondary_m",
+        "dist_to_residential_m",
+        "dist_to_pedestrian_m",
+    ):
+        assert col in df.columns
+    row_1 = df.filter(pl.col("object_id") == "way/apartment-1").row(0, named=True)
+    assert row_1["nearest_road_class"] == "residential"
+    assert row_1["dist_to_residential_m"] == 15.0
+    row_2 = df.filter(pl.col("object_id") == "way/apartment-2").row(0, named=True)
+    assert row_2["nearest_road_class"] is None
+
+
+def test_road_class_columns_absent_when_partition_missing(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Path wired but no ``region=…`` partition on disk → the join is
+    skipped entirely (no columns), matching the macro-oktmo opt-in."""
+    store = _FakeStore({AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)})
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(store, raw, road_class_features_path=tmp_path).execute(
+        "RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT]
+    )
+
+    df = store.calls[0].df
+    assert "nearest_road_class" not in df.columns
+    assert "dist_to_motorway_m" not in df.columns
+
+
+def _isochrone_cache_for_objects(objects: pl.DataFrame, resolution: int = 11) -> pl.DataFrame:
+    rows = []
+    for i, (lat, lon) in enumerate(objects.select(["lat", "lon"]).iter_rows()):
+        cell = h3.latlng_to_cell(lat, lon, resolution)
+        rows.append((cell, 1000.0 * (i + 1), 10 + i, i % 2))
+    return pl.DataFrame(
+        rows,
+        schema={
+            "h3_index": pl.Utf8,
+            "iso15_pop_count": pl.Float64,
+            "iso15_amenity_count": pl.Int64,
+            "iso15_metro_reach": pl.Int64,
+        },
+        orient="row",
+    ).unique(subset=["h3_index"], keep="first")
+
+
+def test_appends_isochrone_columns_when_cache_present(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """ADR-0024 group 2: with isochrone_cache_path wired and the per-hex
+    cache on disk, the 3 iso15_* columns land on the saved partition via
+    the object's res-11 cell."""
+    objects = _objects_for(AssetClass.APARTMENT)
+    part_dir = tmp_path / "region=RU-KAZAN-AGG" / "h3_p=11"
+    part_dir.mkdir(parents=True)
+    _isochrone_cache_for_objects(objects).write_parquet(part_dir / "data.parquet")
+
+    store = _FakeStore({AssetClass.APARTMENT: objects})
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(store, raw, isochrone_cache_path=tmp_path).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    for col in ("iso15_pop_count", "iso15_amenity_count", "iso15_metro_reach"):
+        assert col in df.columns
+    # Both test objects sit ~100 m apart — same res-11 cell or not, each
+    # must inherit exactly its own cell's cached values (no nulls here:
+    # the cache covers both cells).
+    assert df["iso15_pop_count"].null_count() == 0
+
+
+def test_isochrone_columns_absent_when_partition_missing(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Path wired but no cache partition on disk → the join is skipped
+    entirely (no columns)."""
+    store = _FakeStore({AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)})
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(store, raw, isochrone_cache_path=tmp_path).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "iso15_pop_count" not in df.columns
+    assert "iso15_amenity_count" not in df.columns
+    assert "iso15_metro_reach" not in df.columns
