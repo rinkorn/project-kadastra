@@ -9,10 +9,15 @@ fedstat.ru отдаёт plain-HTTP клиентам (curl/httpx) SPA-оболо�
    там фильтры (filter_field_id → values {filter_value_id: title}) и
    раскладка pivot (left_columns/top_columns). Логика по мотивам
    R-пакета fedstatAPIr (fedstat_get_data_ids / parse_js1 / parse_js2).
-3. POST form-urlencoded на https://www.fedstat.ru/indicator/data.do?format=excel
-   прямо из контекста страницы (fetch) — все значения всех фильтров
-   (полная выгрузка индикатора), бинарный xls возвращаем как base64.
-4. Сохраняем в data/raw/emiss/{id}/raw_{дата}.xls (+ filters js рядом,
+3. Скачивание воспроизводит родной экспорт UI (FGrid.downloadFile):
+   form POST на /indicator/downloadData.do?format=excel с hidden-полями
+   (id, lineObjectIds/columnObjectIds/groupObjectIds/filterObjectIds,
+   selectedFilterIds на КАЖДОЕ значение каждого фильтра = полная
+   выгрузка, title и struts-токен из #downloadTokenHolder). Файл
+   ловим через expect_download. Важно: data.do?format=excel из
+   fedstatAPIr больше не работает — сервер отдаёт HTML-страницу
+   индикатора; актуальный endpoint — downloadData.do + struts token.
+4. Сохраняем в data/raw/emiss/{id}/raw_{дата}.xls (+ filters json рядом,
    чтобы парсер/отладка не ходили на сайт повторно).
 
 Запуск:
@@ -84,59 +89,67 @@ EXTRACT_FGRID_JS = """() => {
   });
 }"""
 
-POST_FETCH_JS = """async ({url, body}) => {
+# fetch POST на downloadData.do (актуальный export endpoint; data.do из
+# fedstatAPIr мёртв — отдаёт HTML). Struts token обязателен — берём из
+# #downloadTokenHolder. Бинарный xls возвращаем как base64.
+POST_DOWNLOAD_JS = """async ({url, body}) => {
   const resp = await fetch(url, {
     method: 'POST',
-    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+    headers: {'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'},
     body
   });
   const contentType = resp.headers.get('content-type') || '';
-  if (!resp.ok) return {status: resp.status, contentType};
+  const disposition = resp.headers.get('content-disposition') || '';
   const bytes = new Uint8Array(await resp.arrayBuffer());
   let binary = '';
   const chunk = 0x8000;
   for (let i = 0; i < bytes.length; i += chunk) {
     binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
   }
-  return {status: resp.status, contentType, b64: btoa(binary)};
+  return {status: resp.status, contentType, disposition, size: bytes.length, b64: btoa(binary)};
+}"""
+
+READ_TOKEN_JS = """() => {
+  const holder = document.querySelector('#downloadTokenHolder');
+  if (!holder) return null;
+  const nameInput = holder.querySelector('input[name="struts.token.name"]');
+  const tokenInput = holder.querySelector('input[name="token"]');
+  if (!nameInput || !tokenInput) return null;
+  return {tokenName: nameInput.value, token: tokenInput.value};
 }"""
 
 
-def build_post_body(fgrid: dict) -> str:
-    """Form-urlencoded body по образцу fedstatAPIr::fedstat_post_data_ids_filtered.
+def build_download_params(fgrid: dict) -> tuple[str, list[tuple[str, str]]]:
+    """Параметры для downloadData.do по образцу FGrid.savePreview(true).
 
-    Все значения всех фильтров → полная выгрузка индикатора. Раскладка
-    pivot (lineObjectIds/columnObjectIds) — дефолтная со страницы, как в
-    parse_js2: left_columns/groups/filterObjectIds → lineObjectIds,
-    top_columns → columnObjectIds; плюс filterObjectIds=0 (индикатор),
-    если "0" не встретился среди object ids.
+    Раскладка pivot — дефолтная со страницы: left_columns →
+    lineObjectIds, top_columns → columnObjectIds, groups →
+    groupObjectIds, filterObjectIds → filterObjectIds. selectedFilterIds
+    — на каждое значение каждого фильтра (полная выгрузка индикатора).
+    Возвращает (indicator_title, pairs).
     """
     filters = fgrid["filters"]
-    indicator_field = filters["0"]
-    indicator_value_id, indicator_value = next(iter(indicator_field["values"].items()))
+    indicator_value = next(iter(filters["0"]["values"].values()))
 
-    pairs: list[tuple[str, str]] = [
-        ("format", "excel"),
-        ("id", indicator_value_id),
-        ("indicator_title", indicator_value["title"]),
-    ]
-
-    object_ids_seen: list[str] = []
-    for key in ("left_columns", "groups", "filterObjectIds"):
-        for fid in fgrid.get(key) or []:
-            pairs.append(("lineObjectIds", str(fid)))
-            object_ids_seen.append(str(fid))
+    pairs: list[tuple[str, str]] = [("id", str(fgrid_id(filters)))]
+    for fid in fgrid.get("left_columns") or []:
+        pairs.append(("lineObjectIds", str(fid)))
     for fid in fgrid.get("top_columns") or []:
         pairs.append(("columnObjectIds", str(fid)))
-        object_ids_seen.append(str(fid))
-    if "0" not in object_ids_seen:
-        pairs.append(("filterObjectIds", "0"))
-
+    for fid in fgrid.get("groups") or []:
+        pairs.append(("groupObjectIds", str(fid)))
     for fid, field in filters.items():
         for vid in field.get("values", {}):
             pairs.append(("selectedFilterIds", f"{fid}_{vid}"))
+    for fid in fgrid.get("filterObjectIds") or []:
+        pairs.append(("filterObjectIds", str(fid)))
 
-    return urllib.parse.urlencode(pairs)
+    return indicator_value["title"], pairs
+
+
+def fgrid_id(filters: dict) -> str:
+    """Id индикатора = единственный value id поля '0' («Показатель»)."""
+    return next(iter(filters["0"]["values"].keys()))
 
 
 def main() -> int:
@@ -191,23 +204,36 @@ def main() -> int:
         for fid, field in fgrid["filters"].items():
             print(f"   field {fid}: {field.get('title')!r} nvalues={len(field.get('values', {}))}", flush=True)
 
-        body = build_post_body(fgrid)
-        print(f"=> POST body params: {body.count('&') + 1}", flush=True)
+        token = page.evaluate(READ_TOKEN_JS)
+        if not token:
+            ctx.close()
+            sys.exit("struts token (#downloadTokenHolder) not found on page")
+
+        title, pairs = build_download_params(fgrid)
+        pairs.append(("struts.token.name", token["tokenName"]))
+        pairs.append(("token", token["token"]))
+        pairs.append(("title", title))
+        body = urllib.parse.urlencode(pairs)
+        print(f"=> download params: {len(pairs)}", flush=True)
+
         result = None
         for attempt in range(4):
-            result = page.evaluate(POST_FETCH_JS, {"url": POST_URL, "body": body})
+            result = page.evaluate(
+                POST_DOWNLOAD_JS,
+                {"url": "https://www.fedstat.ru/indicator/downloadData.do?format=excel", "body": body},
+            )
             print(
                 f"=> POST attempt {attempt + 1}: status={result.get('status')} "
-                f"content-type={result.get('contentType')}",
+                f"ct={result.get('contentType')} size={result.get('size')}",
                 flush=True,
             )
-            if result.get("b64"):
+            if result.get("contentType", "").startswith("application/vnd.ms-excel"):
                 break
             time.sleep(5 * (attempt + 1))
         ctx.close()
 
-    if not result or not result.get("b64"):
-        sys.exit(f"POST data.do failed: {result}")
+    if not result or not result.get("contentType", "").startswith("application/vnd.ms-excel"):
+        sys.exit(f"download failed: {result}")
     payload = base64.b64decode(result["b64"])
     dst = out_dir / f"raw_{args.date}.xls"
     dst.write_bytes(payload)
