@@ -1,6 +1,6 @@
 # Эпик 001 — ЦОФ на сетке: сетка как инфраструктура расчёта ценообразующих факторов
 
-**Статус:** Предложено
+**Статус:** Реализовано (все 5 этапов, последний — [ADR-0028](../decisions/0028-representativeness-report.md))
 **Дата:** 2026-08-18
 **Источник методологии:** [grid-rationale.md](../grid-rationale.md) (§1–§12)
 **Связано:** [ADR-0010](../decisions/0010-methodology-compliance-roadmap.md) (roadmap), [ADR-0007](../decisions/0007-kazan-agglomeration-scope.md) (разрешения), [ADR-0024](../decisions/0024-road-network-advanced-features.md) (isochrone res=11), [hex-feature-layers.md](../hex-feature-layers.md) (три слоя)
@@ -78,7 +78,7 @@ ADR-0010 §1 фиксирует: «Используется ~5% методоло
 | Idempotency object-store | ✅ `BuildObjectFeatures.execute` сбрасывает в `RAW_OBJECT_SCHEMA` до join — повторный прогон не плодит `*_right`-дубликаты (контаминация A/B исправлена) |
 | Слой 1 собран на реальных данных | ✅ res 10, 177 131 ячейка × 119 ЦОФ-колонок (geom_distance/poly_area/zonal/road_density/metro/walk_dist) |
 | A/B против per-object baseline | ✅ валидный (чистый, без contamination): apartment/commercial — паритет WAPE; house (+0.0033) / landplot (+0.0052) — лёгкая просадка, устранённая overlap-weighting (реализован, отдельный retrain не гоняется — методология §12 реализована корректно, single-cell A/B уже показал паритет) |
-| Репрезентативность | ⏳ не начато (cheap win — сетка есть, обучение не нужно) |
+| Репрезентативность | ✅ отчёт построен ([ADR-0028](../decisions/0028-representativeness-report.md)): PSI+KS по 119 ЦОФ, сетка vs выборка; coverage 11.1 % ячеек, 66 ok / 4 moderate / 49 shift — сдвиг на дистанциях до POI ожидаем (объекты в НП, сетка — вся территория) |
 
 ## Риски и открытые вопросы
 
