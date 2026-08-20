@@ -131,6 +131,7 @@ def test_read_buildings_dir_returns_expected_polars_schema(tmp_path: Path) -> No
     assert df.schema["cost_index_rub_per_m2"] == pl.Float64
     assert df.schema["year_built"] == pl.Int64
     assert df.schema["floors"] == pl.Int64
+    assert df.schema["kadnum_quarter"] == pl.Utf8
     assert df.schema["polygon_wkt_3857"] == pl.Utf8
 
 
@@ -166,4 +167,6 @@ def test_read_landplots_dir_schema(tmp_path: Path) -> None:
     assert df.schema["cad_num"] == pl.Utf8
     assert df.schema["asset_class"] == pl.Utf8
     assert df.schema["land_record_category_type"] == pl.Utf8
+    assert df.schema["vri"] == pl.Utf8
+    assert df.schema["kadnum_quarter"] == pl.Utf8
     assert df.schema["cost_index_rub_per_m2"] == pl.Float64
