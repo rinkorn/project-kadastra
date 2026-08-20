@@ -54,6 +54,20 @@ class FakeRoadGraph:
     ) -> np.ndarray:
         return self.distance_matrix_m(from_coords, to_coords).min(axis=1)
 
+    # ADR-0024 topology accessors — no graph behind this fake.
+    def snap_node(self, coord: tuple[float, float]) -> tuple[int, float]:
+        raise ValueError("fake has no nodes")
+
+    def node_coord(self, node_id: int) -> tuple[float, float]:
+        raise ValueError("fake has no nodes")
+
+    def reachable_nodes_within_m(
+        self,
+        from_coord: tuple[float, float],
+        cutoff_m: float,
+    ) -> dict[int, float]:
+        return {}
+
 
 def _coverage(resolution: int) -> pl.DataFrame:
     cell = h3.latlng_to_cell(_KAZAN_LAT, _KAZAN_LON, resolution)

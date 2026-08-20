@@ -79,6 +79,15 @@ class NetworkxRoadGraph(RoadGraphPort):
         node_lat, node_lon = self._node_coords[node_id]
         return node_id, haversine_meters(lat, lon, float(node_lat), float(node_lon))
 
+    def snap_node(self, coord: _Coord) -> tuple[int, float]:
+        raise NotImplementedError
+
+    def node_coord(self, node_id: int) -> _Coord:
+        raise NotImplementedError
+
+    def reachable_nodes_within_m(self, from_coord: _Coord, cutoff_m: float) -> dict[int, float]:
+        raise NotImplementedError
+
     def distance_matrix_m(
         self,
         from_coords: list[_Coord],
