@@ -637,7 +637,7 @@ def test_feature_options_emits_descriptions_for_every_listed_feature(
     missing = [f for f in listed if not descriptions.get(f)]
     assert not missing, f"features without descriptions: {missing}"
     # Spot-check one explicit + one pattern-driven entry.
-    assert "0 — нет" in descriptions["mean_water_share_500m"]
+    assert "0 — нет" in descriptions["water_share_500m"]
     assert "Медианная цена" in descriptions["median_target_rub_per_m2"]
 
 

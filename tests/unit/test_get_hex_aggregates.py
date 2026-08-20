@@ -165,32 +165,35 @@ def test_default_model_is_ebm(tmp_path: Path) -> None:
     assert {r["hex"]: r["value"] for r in out}["8a"] == 42_000.0
 
 
-def test_numeric_features_includes_geo_and_age_means() -> None:
-    """ADR-0019/0020 mean_<col> aggregates must be advertised by
-    NUMERIC_FEATURES so the map UI's /api/feature_options call lists
-    them in the hex feature dropdown — otherwise the data is in the
-    parquet but invisible to the user."""
+def test_numeric_features_descriptors_only_no_cell_tsorf_duplicates() -> None:
+    """NUMERIC_FEATURES advertises base market/model metrics + per-object
+    descriptor means — nothing else. Слой-1 ЦОФ (dist/share/within/
+    count/road_length/metro means) are served by /api/cell_tsorf from the
+    cell ЦОФ store and must NOT reappear in the hex dropdown."""
     expected_subset = {
-        # Distance to nearest geometry — ADR-0019 layers use the
-        # ``dist_to_<layer>_m`` convention (legacy ``dist_metro_m`` /
-        # ``dist_entrance_m`` predate that and are also listed).
-        "mean_dist_to_water_m",
-        "mean_dist_to_park_m",
-        "mean_dist_to_school_m",
-        "mean_dist_to_railway_m",
-        "mean_dist_to_bus_stop_m",
-        # Polygonal share-in-buffer at 500 m.
-        "mean_water_share_500m",
-        "mean_park_share_500m",
-        # Road density + zonal count (legacy + ADR-0019 within_500m).
-        "mean_road_length_500m",
-        "mean_count_apartments_500m",
-        "mean_school_within_500m",
-        # Age (ADR-0020).
+        "count",
+        "median_target_rub_per_m2",
+        "median_pred_oof_rub_per_m2",
+        "median_residual_rub_per_m2",
+        "mean_levels",
+        "mean_flats",
+        "mean_area_m2",
+        "mean_year_built",
         "mean_age_years",
     }
     missing = expected_subset - set(NUMERIC_FEATURES)
     assert not missing, f"NUMERIC_FEATURES is missing {missing}"
+    for dropped in (
+        "mean_dist_to_water_m",
+        "mean_dist_to_school_m",
+        "mean_dist_metro_m",
+        "mean_dist_entrance_m",
+        "mean_water_share_500m",
+        "mean_road_length_500m",
+        "mean_count_apartments_500m",
+        "mean_school_within_500m",
+    ):
+        assert dropped not in NUMERIC_FEATURES
 
 
 def test_missing_model_partition_raises_filenotfound(tmp_path: Path) -> None:
