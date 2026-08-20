@@ -232,6 +232,8 @@ class Container:
             cell_walk_dist_reader=(ParquetFeatureStore(s.feature_store_path) if s.cell_tsorf_enabled else None),
             cell_tsorf_resolution=s.cell_tsorf_resolution,
             cell_tsorf_overlap_weighted=s.cell_tsorf_overlap_weighted,
+            macro_oktmo_features_path=(s.macro_oktmo_features_path if s.macro_emiss_enabled else None),
+            cadastre_target_year=s.cadastre_target_year,
         )
 
     def build_object_synthetic_target(self) -> BuildObjectSyntheticTarget:

@@ -173,6 +173,24 @@ class Settings(BaseSettings):
     # reads #61781 (apartments by center city, quarterly) for the inspector.
     emiss_silver_base_path: Path = Path("data/silver/emiss")
     emiss_market_reference_year: int = 2025
+
+    # ADR-0022: macro-territorial EMISS/БД ПМО features. Yearly indicators
+    # parsed to silver/emiss/{id}/ and joined wide into
+    # silver/macro_oktmo_features by scripts/build_macro_oktmo_features.py.
+    # BuildObjectFeatures joins them onto objects when macro_emiss_enabled
+    # and the wide table exists for the region. bdmo_* — БД ПМО (tochno.st,
+    # CC-BY); 43062 — fedstat уровень безработицы МОТ (субъектный разрез).
+    emiss_indicators_yearly: list[str] = [
+        "bdmo_8112027",  # численность населения на 1 января
+        "bdmo_8213002",  # среднемесячная зарплата работников организаций ГО/МР
+        "bdmo_8010001",  # ввод в действие жилых домов, м²
+        "bdmo_8401003",  # оборот розничной торговли, тыс. руб
+        "bdmo_8006001",  # общая площадь земель МО, га
+        "43062",  # уровень безработицы по методологии МОТ (субъект РФ)
+    ]
+    cadastre_target_year: int = 2024
+    macro_emiss_enabled: bool = True
+    macro_oktmo_features_path: Path = Path("data/silver/macro_oktmo_features")
     catboost_iterations: int = 500
     catboost_learning_rate: float = 0.05
     catboost_depth: int = 6
