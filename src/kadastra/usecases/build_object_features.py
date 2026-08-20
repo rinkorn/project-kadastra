@@ -12,6 +12,7 @@ from kadastra.etl.cell_overlap_weights import compute_overlap_weights
 from kadastra.etl.h3_coverage import add_h3_index
 from kadastra.etl.load_geometries import load_geojsonseq_geometries, load_geojsonseq_points
 from kadastra.etl.object_age_features import compute_object_age_features
+from kadastra.etl.object_dem_features import compute_object_dem_features
 from kadastra.etl.object_geom_distance_features import (
     compute_object_geom_distance_features,
 )
@@ -243,6 +244,16 @@ class BuildObjectFeatures:
             enriched,
             current_year=self._current_year_for_age_features,
         )
+        # Topographic DEM features (ADR-0023). Samples the silver DEM
+        # rasters (built by scripts/build_dem_silver.py from GLO-30 raw)
+        # at each object's (lat, lon). The columns are derived here,
+        # AFTER the RAW_OBJECT_SCHEMA reset above, so they are not part
+        # of the raw schema — a rerun recomputes them from the rasters.
+        # Opt-in: skipped when no dem_sampler is wired (composition root
+        # passes None when the silver layers are missing or the flag is
+        # off).
+        if self._dem_sampler is not None:
+            enriched = compute_object_dem_features(enriched, dem_sampler=self._dem_sampler)
         # Filter feature_columns to those present (allows configuring a
         # superset in Settings — missing ones are simply skipped, not
         # errors, so per-class slices with different schemas don't crash).
