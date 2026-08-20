@@ -47,6 +47,7 @@ from kadastra.usecases.build_hex_aggregates import BuildHexAggregates
 from kadastra.usecases.build_object_features import BuildObjectFeatures
 from kadastra.usecases.build_object_synthetic_target import BuildObjectSyntheticTarget
 from kadastra.usecases.build_region_coverage import BuildRegionCoverage
+from kadastra.usecases.build_representativeness_report import BuildRepresentativenessReport
 from kadastra.usecases.build_valuation_objects import BuildValuationObjects
 from kadastra.usecases.get_cell_tsorf import GetCellTsorf
 from kadastra.usecases.get_hex_aggregates import GetHexAggregates
@@ -316,6 +317,15 @@ class Container:
     def build_get_cell_tsorf(self) -> GetCellTsorf:
         s = self._settings
         return GetCellTsorf(ParquetFeatureStore(s.feature_store_path))
+
+    def build_representativeness_report(self) -> BuildRepresentativenessReport:
+        s = self._settings
+        return BuildRepresentativenessReport(
+            feature_store=ParquetFeatureStore(s.feature_store_path),
+            object_reader=ParquetValuationObjectStore(s.valuation_object_store_path),
+            output_base_path=s.representativeness_path,
+            resolution=s.cell_tsorf_resolution,
+        )
 
 
 def create_app(settings: Settings) -> FastAPI:

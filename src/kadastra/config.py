@@ -145,6 +145,9 @@ class Settings(BaseSettings):
     # without a usable polygon geometry fall back to centroid-by-point.
     cell_tsorf_overlap_weighted: bool = True
 
+    # Эпик 001 этап 5: representativeness report (grid ЦОФ distribution
+    # vs training-sample distribution) — parquet + markdown summary.
+    representativeness_path: Path = Path("data/gold/representativeness")
     nspd_silver_store_path: Path = Path("data/silver/nspd")
     nspd_buildings_raw_dir: Path = Path("data/raw/nspd/buildings-kazan")
     nspd_landplots_raw_dir: Path = Path("data/raw/nspd/landplots-kazan")
