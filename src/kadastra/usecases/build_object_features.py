@@ -16,6 +16,7 @@ from kadastra.etl.object_geom_distance_features import (
     compute_object_geom_distance_features,
 )
 from kadastra.etl.object_geometry_features import compute_object_geometry_features
+from kadastra.etl.object_macro_features import compute_object_macro_features
 from kadastra.etl.object_metro_features import compute_object_metro_features
 from kadastra.etl.object_municipality_features import (
     compute_object_municipality_features,
@@ -65,6 +66,8 @@ class BuildObjectFeatures:
         cell_walk_dist_reader: FeatureReaderPort | None = None,
         cell_tsorf_resolution: int = 10,
         cell_tsorf_overlap_weighted: bool = True,
+        macro_oktmo_features_path: Path | None = None,
+        cadastre_target_year: int = 2024,
     ) -> None:
         self._reader = reader
         self._store = store
@@ -95,6 +98,8 @@ class BuildObjectFeatures:
         self._cell_walk_dist_reader = cell_walk_dist_reader
         self._cell_tsorf_resolution = cell_tsorf_resolution
         self._cell_tsorf_overlap_weighted = cell_tsorf_overlap_weighted
+        self._macro_oktmo_features_path = macro_oktmo_features_path
+        self._cadastre_target_year = cadastre_target_year
 
     def execute(self, region_code: str, asset_classes: list[AssetClass]) -> None:
         stations = pl.read_csv(io.BytesIO(self._raw_data.read_bytes(self._stations_key)))
@@ -210,6 +215,19 @@ class BuildObjectFeatures:
                 object_params=object_params,
                 intra_raion_polygons=raion_polygons,
             )
+        # Macro-territorial EMISS features (ADR-0022). Left join on the
+        # 8-digit municipal OKTMO prefix of GAR-derived ``oktmo_full``;
+        # runs after the municipality block which produces that column.
+        # Opt-in: skipped when no macro table path is wired or the wide
+        # table was not built for the region yet.
+        if self._macro_oktmo_features_path is not None:
+            macro_table = self._load_macro_oktmo_features(region_code)
+            if macro_table is not None:
+                enriched = compute_object_macro_features(
+                    enriched,
+                    macro_table=macro_table,
+                    target_year=self._cadastre_target_year,
+                )
         # Object geometry features (ADR-0018). Reads polygon_wkt_3857
         # passthrough from ADR-0017 and derives 7 shape descriptors.
         # KeyError if the column is missing — that is an upstream
@@ -235,6 +253,23 @@ class BuildObjectFeatures:
         for asset_class in asset_classes:
             slice_df = enriched.filter(pl.col("asset_class") == asset_class.value)
             self._store.save(region_code, asset_class, slice_df)
+
+    def _load_macro_oktmo_features(self, region_code: str) -> pl.DataFrame | None:
+        """Load the wide per-(oktmo, year) EMISS macro table for the region.
+
+        Reads every ``region={code}/year=*/data.parquet`` partition
+        (ADR-0022 stores one wide row per oktmo per year; the year
+        alignment to ``cadastre_target_year`` happens inside
+        ``compute_object_macro_features``). Returns ``None`` when no
+        partition exists, so the pipeline skips the join entirely.
+        """
+        base = self._macro_oktmo_features_path
+        if base is None:
+            return None
+        paths = sorted(base.glob(f"region={region_code}/year=*/data.parquet"))
+        if not paths:
+            return None
+        return pl.concat([pl.read_parquet(p) for p in paths])
 
     def _load_object_params_lookup(self) -> pl.DataFrame | None:
         """Load the per-OBJECTID PARAMS pivot if configured and present.

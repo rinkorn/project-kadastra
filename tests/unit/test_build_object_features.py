@@ -1,5 +1,6 @@
 import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 import h3
@@ -184,6 +185,8 @@ def _usecase(
     cell_walk_dist_reader: FeatureReaderPort | None = None,
     cell_tsorf_resolution: int = 10,
     cell_tsorf_overlap_weighted: bool = False,
+    macro_oktmo_features_path: Path | None = None,
+    cadastre_target_year: int = 2024,
 ) -> BuildObjectFeatures:
     return BuildObjectFeatures(
         reader=store,
@@ -219,6 +222,8 @@ def _usecase(
         cell_walk_dist_reader=cell_walk_dist_reader,
         cell_tsorf_resolution=cell_tsorf_resolution,
         cell_tsorf_overlap_weighted=cell_tsorf_overlap_weighted,
+        macro_oktmo_features_path=macro_oktmo_features_path,
+        cadastre_target_year=cadastre_target_year,
     )
 
 
@@ -1032,3 +1037,85 @@ def test_joins_cell_tsorf_overlap_weighted() -> None:
     # Must lie strictly between the two extremes (proves it's a blend).
     assert 100.0 < float(df["dist_metro_m"][0]) < 200.0
     assert "h3_index" not in df.columns
+
+
+def _macro_wide_row(oktmo: str, year: int, salary: float) -> pl.DataFrame:
+    return pl.DataFrame(
+        {
+            "oktmo": [oktmo],
+            "year": [year],
+            "oktmo_avg_salary_rub": [salary],
+            "oktmo_population": [5000.0],
+            "oktmo_population_density": [50.0],
+            "oktmo_housing_volume_5y_m2": [12000.0],
+            "oktmo_unemployment_pct": [3.5],
+            "oktmo_retail_turnover_per_capita": [200000.0],
+        }
+    )
+
+
+def test_appends_macro_emiss_columns_when_table_present(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """ADR-0022: with macro_oktmo_features_path wired and a wide table on
+    disk, the 6 oktmo_* columns land on the saved partition. Test objects
+    carry no oktmo_full (no GAR lookups wired), so values are null — the
+    value-level join contract is covered by test_object_macro_features."""
+    part_dir = tmp_path / "region=RU-KAZAN-AGG" / "year=2024"
+    part_dir.mkdir(parents=True)
+    _macro_wide_row("92601000", 2024, 70000.0).write_parquet(part_dir / "data.parquet")
+
+    store = _FakeStore({AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)})
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(store, raw, macro_oktmo_features_path=tmp_path).execute(
+        "RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT]
+    )
+
+    df = store.calls[0].df
+    for col in (
+        "oktmo_avg_salary_rub",
+        "oktmo_population",
+        "oktmo_population_density",
+        "oktmo_housing_volume_5y_m2",
+        "oktmo_unemployment_pct",
+        "oktmo_retail_turnover_per_capita",
+    ):
+        assert col in df.columns
+        assert df[col].is_null().all()
+
+
+def test_macro_emiss_columns_absent_when_path_not_wired() -> None:
+    """ADR-0022: without macro_oktmo_features_path the step is a no-op —
+    no oktmo_* columns appear (feature-flagged via composition root)."""
+    store = _FakeStore({AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)})
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(store, raw).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "oktmo_avg_salary_rub" not in df.columns
+
+
+def test_macro_emiss_skipped_when_region_partition_missing(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Path wired but no ``region=…/year=*`` partition on disk → the join
+    is skipped entirely (no columns), matching the gar-lookup opt-in."""
+    store = _FakeStore({AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)})
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(store, raw, macro_oktmo_features_path=tmp_path).execute(
+        "RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT]
+    )
+
+    df = store.calls[0].df
+    assert "oktmo_avg_salary_rub" not in df.columns
