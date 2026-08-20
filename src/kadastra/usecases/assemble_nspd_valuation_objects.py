@@ -5,8 +5,9 @@ layer and the existing per-class object pipeline (features → train →
 infer). The output schema is the same as ``ParquetValuationObjectStore``
 already accepts (``object_id, asset_class, lat, lon, levels, flats``)
 plus a few NSPD-only extras (``area_m2``, ``year_built``, ``materials``,
-``cost_value_rub``) and the populated target column
-``synthetic_target_rub_per_m2``. The legacy column name is preserved so
+``cost_value_rub``), the ADR-0021 rich attributes (``underground_floors``,
+``kadnum_quarter``, ``vri``, ``category_zem``) and the populated target
+column ``synthetic_target_rub_per_m2``. The legacy column name is preserved so
 that ``BuildObjectFeatures`` and ``TrainObjectValuationModel`` keep
 working without changes; the value is the real ``cost_index`` from
 EГРН, not a synthetic proxy.
@@ -46,6 +47,16 @@ RAW_OBJECT_SCHEMA: dict[str, type[pl.DataType] | pl.DataType] = {
     # downstream feature builders can use the geometry without
     # re-loading silver. WGS84 conversion happens at the API edge.
     "polygon_wkt_3857": pl.Utf8,
+    # ADR-0021: rich ЕГРН/НСПД attributes. Per-class applicability is
+    # handled by nulls (vri/category_zem are landplot-only,
+    # underground_floors is building-only); the feature selector picks
+    # up the categorical/numeric columns automatically. Note: the
+    # ADR-0021 ``walls_material``/``floors_total`` features were already
+    # present in gold as ``materials``/``levels`` before this change.
+    "underground_floors": pl.Int64,
+    "kadnum_quarter": pl.Utf8,
+    "vri": pl.Utf8,
+    "category_zem": pl.Utf8,
 }
 
 
@@ -106,6 +117,8 @@ def _to_valuation_objects_buildings(silver: pl.DataFrame) -> pl.DataFrame:
             pl.col("floors").alias("levels"),
             pl.lit(None).cast(pl.Int64).alias("flats"),
             pl.col("cost_index_rub_per_m2").alias("synthetic_target_rub_per_m2"),
+            pl.lit(None).cast(pl.Utf8).alias("vri"),
+            pl.lit(None).cast(pl.Utf8).alias("category_zem"),
         ]
     ).select(list(RAW_OBJECT_SCHEMA.keys()))
 
@@ -119,5 +132,7 @@ def _to_valuation_objects_landplots(silver: pl.DataFrame) -> pl.DataFrame:
             pl.lit(None).cast(pl.Int64).alias("year_built"),
             pl.lit(None).cast(pl.Utf8).alias("materials"),
             pl.col("cost_index_rub_per_m2").alias("synthetic_target_rub_per_m2"),
+            pl.col("land_record_category_type").alias("category_zem"),
+            pl.lit(None).cast(pl.Int64).alias("underground_floors"),
         ]
     ).select(list(RAW_OBJECT_SCHEMA.keys()))
