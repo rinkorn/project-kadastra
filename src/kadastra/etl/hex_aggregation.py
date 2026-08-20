@@ -23,8 +23,11 @@ Output schema:
 - ``median_target_rub_per_m2`` (Float64)
 - ``median_pred_oof_rub_per_m2`` (Float64 / nullable)
 - ``median_residual_rub_per_m2`` (Float64 / nullable, = pred − true)
-- numeric means: ``mean_levels``, ``mean_flats``, ``mean_area_m2``,
-  ``mean_year_built`` — only those present in ``objects``.
+- numeric means of per-object descriptors: ``mean_levels``,
+  ``mean_flats``, ``mean_area_m2``, ``mean_year_built``,
+  ``mean_age_years`` — only those present in ``objects``. Слой-1 ЦОФ
+  are intentionally NOT mean-reduced here (the map reads them from
+  the cell ЦОФ store via ``/api/cell_tsorf``).
 - categorical mode: ``dominant_intra_city_raion``,
   ``dominant_mun_okrug_name``, ``dominant_settlement_name`` — only
   those present in ``objects``.
@@ -40,73 +43,20 @@ import polars as pl
 _TARGET = "synthetic_target_rub_per_m2"
 _PRED = "y_pred_oof"
 # Per-hex means. The aggregator only emits a `mean_<col>` row for
-# columns actually present in the input — so dropping an OSM extract
-# (e.g., no landfill polygons) just drops the matching map option,
-# never an all-null column. The list below is the full curated set
-# the map UI knows how to display; presence per-region varies.
+# columns actually present in the input — so a missing source column
+# just drops the matching map option, never an all-null column.
+#
+# Deliberately limited to per-object DESCRIPTORS (building/land
+# attributes). Слой-1 ЦОФ (dist_to_*, *_share_*, *_within_*,
+# count_*, road_length, metro) are NOT duplicated here: the map reads
+# those from the cell ЦОФ store via /api/cell_tsorf (ADR-0027), which
+# covers the full grid, not just cells with objects.
 _NUMERIC_MEANS: tuple[str, ...] = (
-    # Building / land descriptors
     "levels",
     "flats",
     "area_m2",
     "year_built",
     "age_years",
-    # ADR-0019 distance to nearest geometry of each layer (polygonal,
-    # linear, point-POI). Names follow the ``dist_to_<layer>_m``
-    # convention used by build_object_features for ADR-0019 layers;
-    # the legacy ``dist_metro_m`` / ``dist_entrance_m`` predate that
-    # convention and stay as-is.
-    "dist_to_water_m",
-    "dist_to_park_m",
-    "dist_to_forest_m",
-    "dist_to_industrial_m",
-    "dist_to_cemetery_m",
-    "dist_to_landfill_m",
-    "dist_to_powerline_m",
-    "dist_to_railway_m",
-    "dist_to_school_m",
-    "dist_to_kindergarten_m",
-    "dist_to_clinic_m",
-    "dist_to_hospital_m",
-    "dist_to_pharmacy_m",
-    "dist_to_supermarket_m",
-    "dist_to_cafe_m",
-    "dist_to_restaurant_m",
-    "dist_to_bus_stop_m",
-    "dist_to_tram_stop_m",
-    "dist_to_railway_station_m",
-    "dist_metro_m",
-    "dist_entrance_m",
-    # Polygonal share-in-buffer at the canonical 500 m radius. The
-    # other radii (100/300/800 m) are also on the per-object frame
-    # but only one is exposed on the hex map to keep the feature
-    # picker readable.
-    "water_share_500m",
-    "park_share_500m",
-    "forest_share_500m",
-    "industrial_share_500m",
-    "cemetery_share_500m",
-    # Road density.
-    "road_length_500m",
-    # Zonal density. Pre-existing ``count_*`` columns (legacy naming)
-    # plus per-POI ``<layer>_within_500m`` columns produced by the
-    # ADR-0019 zonal pipeline.
-    "count_stations_1km",
-    "count_entrances_500m",
-    "count_apartments_500m",
-    "count_houses_500m",
-    "count_commercial_500m",
-    "school_within_500m",
-    "kindergarten_within_500m",
-    "clinic_within_500m",
-    "hospital_within_500m",
-    "pharmacy_within_500m",
-    "supermarket_within_500m",
-    "cafe_within_500m",
-    "restaurant_within_500m",
-    "bus_stop_within_500m",
-    "tram_stop_within_500m",
-    "railway_station_within_500m",
 )
 _CATEGORICAL_MODES: tuple[str, ...] = (
     "intra_city_raion",
