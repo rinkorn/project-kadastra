@@ -109,6 +109,29 @@ POST_DOWNLOAD_JS = """async ({url, body}) => {
   return {status: resp.status, contentType, disposition, size: bytes.length, b64: btoa(binary)};
 }"""
 
+# Родной экспорт (FGrid.downloadFile): <form method=post> + submit —
+# браузер качает файл сам (стриминг на диск), playwright ловит через
+# expect_download. Фолбэк для крупных выгрузок, где fetch+b64 падает.
+SUBMIT_DOWNLOAD_JS = """({format, title, pairs, tokenName, token}) => {
+  const form = document.createElement('form');
+  form.method = 'post';
+  form.action = '/indicator/downloadData.do?format=' + format;
+  const add = (name, value) => {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = name;
+    input.value = value;
+    form.appendChild(input);
+  };
+  add('title', title);
+  add('struts.token.name', tokenName);
+  add('token', token);
+  for (const [name, value] of pairs) add(name, value);
+  form.style.display = 'none';
+  document.body.appendChild(form);
+  form.submit();
+}"""
+
 READ_TOKEN_JS = """() => {
   const holder = document.querySelector('#downloadTokenHolder');
   if (!holder) return null;
@@ -230,14 +253,34 @@ def main() -> int:
             if result.get("contentType", "").startswith("application/vnd.ms-excel"):
                 break
             time.sleep(5 * (attempt + 1))
-        ctx.close()
 
-    if not result or not result.get("contentType", "").startswith("application/vnd.ms-excel"):
-        sys.exit(f"download failed: {result}")
-    payload = base64.b64decode(result["b64"])
-    dst = out_dir / f"raw_{args.date}.xls"
-    dst.write_bytes(payload)
-    print(f"=> wrote {dst}  bytes={len(payload):,}", flush=True)
+        dst = out_dir / f"raw_{args.date}.xls"
+        if result and result.get("contentType", "").startswith("application/vnd.ms-excel"):
+            payload = base64.b64decode(result["b64"])
+            dst.write_bytes(payload)
+            ctx.close()
+        else:
+            # fetch+b64 падает на крупных выгрузках ("Failed to fetch") —
+            # фолбэк на родной form-submit, файл стримится браузером на диск.
+            print("=> fetch failed, fallback to form submit + expect_download", flush=True)
+            with page.expect_download(timeout=900_000) as dl_info:
+                page.evaluate(
+                    SUBMIT_DOWNLOAD_JS,
+                    {
+                        "format": "excel",
+                        "title": title,
+                        "pairs": pairs,
+                        "tokenName": token["tokenName"],
+                        "token": token["token"],
+                    },
+                )
+            download = dl_info.value
+            print(f"=> download: {download.suggested_filename}", flush=True)
+            download.save_as(str(dst))
+            ctx.close()
+
+    size = dst.stat().st_size
+    print(f"=> wrote {dst}  bytes={size:,}", flush=True)
     return 0
 
 
