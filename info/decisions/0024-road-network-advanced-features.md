@@ -1,7 +1,7 @@
 # ADR-0024: Продвинутые road-network ЦОФ
 
-**Статус:** Proposed
-**Дата:** 2026-04-26
+**Статус:** Accepted
+**Дата:** 2026-04-26 (реализовано 2026-08-20)
 **Реализует:** [info/grid-rationale.md §7](../grid-rationale.md) (Дистанционные ЦОФ — графовые), [§8](../grid-rationale.md) (Зональные).
 **Опирается на:** [ADR-0011](0011-graph-based-distance-features.md) (road graph уже построен, путевые расстояния от метро), [ADR-0019](0019-poi-distances-and-zonal-counts.md) (POI distance pattern).
 
@@ -139,3 +139,47 @@ nearest_road_classes: list[str] = ["motorway", "trunk", "primary",
 - **RAW_OBJECT_SCHEMA не расширялся.** Ловушка со сбросом фрейма в `RAW_OBJECT_SCHEMA` решается не добавлением колонок в схему, а паттерном ADR-0022/0023: обе группы джойнятся из silver **после** сброса (`join_road_class_features` / `join_isochrone_features`), поэтому перезапуск пересчитывает их из silver, а не теряет.
 - **Порт `RoadGraphPort` расширен** тремя методами (`snap_node`, `node_coord`, `reachable_nodes_within_m`) — изохроне нужны cutoff-Dijkstra и снэпы POI; реализация в `NetworkxRoadGraph`, фейки в тестах дополнены.
 - **Группа 3 (centrality) не делалась** — как и предписано спекой.
+
+## Результаты реализации (2026-08-20)
+
+- **Silver Группа 1.** `data/silver/road_class_per_object/region=RU-KAZAN-AGG/data.parquet` — 287 610 строк (все объекты 4 классов), 100% non-null по всем 6 колонкам. Ways: motorway=44, trunk=1 653, primary=3 043, secondary=4 269, tertiary=6 395, residential=12 731, service=37 962, unclassified=1 918, pedestrian-union=17 216.
+- **Silver Группа 2.** `data/silver/isochrone_cache/region=RU-KAZAN-AGG/h3_p=11/data.parquet` — 78 719 ячеек (все res-11 ячейки с объектами), cutoff 1200 м, посчитан за 31 с на 10 процессах. По ячейкам: `iso15_pop_count` p10/p50/p90 = 581 / 2 826 / 6 387 (max 267 630 — центр Казани), `iso15_amenity_count` p50=12, max=457, `iso15_metro_reach`=1 для 4 730 ячеек (6.0%).
+- **Примеры изохрон.** Центр (55.8313, 49.0904): pop≈267 630, amenity=309, metro=1. Окраина без графа/населения (55.7519, 49.3662): pop=0, amenity=0, metro=0 (вырожденная изохрона = своя ячейка — задокументированное поведение).
+- **Enrichment.** `join_road_class_features` + `join_isochrone_features` в `BuildObjectFeatures` (после DEM-шага, до relative). Полный прогон `scripts/build_object_features.py` на 4 классах (2026-08-20): все 9 колонок в gold, **non-null 100.0% во всех классах** (ячейки кэша порождены из объектов, поэтому промахов нет; `iso15_*` = 0 — это значение, не null):
+
+| asset_class | объектов | non-null (все 9 фич) | dist_to_motorway p50 | dist_to_residential p50 | iso15_pop p50 | iso15_amenity p50 | metro_reach=1 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| apartment | 1 089 | 100.0% | 6 159 м | 75 м | 3 484 | 87 | 18.0% |
+| house | 46 596 | 100.0% | 4 351 м | 29 м | 3 445 | 7 | 0.9% |
+| commercial | 42 411 | 100.0% | 4 958 м | 160 м | 2 245 | 15 | 4.7% |
+| landplot | 197 514 | 100.0% | 4 679 м | 71 м | 2 864 | 12 | 5.0% |
+
+- **Распределение `nearest_road_class` по классам объектов:**
+
+| class | apartment | house | commercial | landplot |
+| --- | --- | --- | --- | --- |
+| service | 773 | 19 910 | 35 814 | 116 415 |
+| residential | 74 | 24 883 | 4 169 | 65 260 |
+| pedestrian | 234 | 432 | 1 530 | 7 720 |
+| tertiary | 4 | 785 | 305 | 3 182 |
+| unclassified | 0 | 351 | 403 | 2 564 |
+| secondary | 3 | 157 | 145 | 1 203 |
+| primary | 1 | 76 | 41 | 756 |
+| trunk | 0 | 2 | 4 | 414 |
+
+Правдоподобно: house в основном у residential (53%), apartment/landplot — у service (дворовые проезды — ближайшая дорога почти всегда), motorway никогда не «ближайшая» (44 way на регион). Распределения дистанций у landplot: p50 до residential 71 м, до motorway 4.7 км — ожидаемые порядки.
+
+- **Тесты.** `tests/unit/test_build_nearest_road_features.py` (8), `tests/unit/test_object_road_class_features.py` (4), `tests/unit/test_object_isochrone_features.py` (8), +4 wiring-теста в `test_build_object_features.py`; фейки `RoadGraphPort` дополнены новыми методами порта. Суммарно 701 passed (baseline 663).
+
+### Замечание для будущих переобучений
+
+Новые колонки добавлены в gold **после** последнего обучения моделей;
+модели НЕ переобучались — финальное переобучение quartet на полном
+наборе фич будет отдельным шагом в конце программы расширения ЦОФ.
+При переобучении 8 числовых колонок и категориальная
+`nearest_road_class` (Utf8) подхватятся автоматически
+(`select_object_feature_columns`). Осторожно с `iso15_pop_count`:
+первое приближение населения (ОКТМО → ячейки с объектами) концентрирует
+население в заселённых ячейках и завышает пик в центре (267k за 15 минут
+— верхняя оценка); при появлении настоящего population grid фичу стоит
+пересчитать и сравнить важности.
