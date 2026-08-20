@@ -173,6 +173,16 @@ class Settings(BaseSettings):
     # reads #61781 (apartments by center city, quarterly) for the inspector.
     emiss_silver_base_path: Path = Path("data/silver/emiss")
     emiss_market_reference_year: int = 2025
+
+    # ADR-0022: macro-territorial EMISS features. Yearly indicators
+    # parsed to silver/emiss/{id}/ and joined wide into
+    # silver/macro_oktmo_features by scripts/build_macro_oktmo_features.py.
+    # BuildObjectFeatures joins them onto objects when macro_emiss_enabled
+    # and the wide table exists for the region.
+    emiss_indicators_yearly: list[str] = ["57792", "31074", "34466", "44164", "40464"]
+    cadastre_target_year: int = 2024
+    macro_emiss_enabled: bool = True
+    macro_oktmo_features_path: Path = Path("data/silver/macro_oktmo_features")
     catboost_iterations: int = 500
     catboost_learning_rate: float = 0.05
     catboost_depth: int = 6
