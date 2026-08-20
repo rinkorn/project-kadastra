@@ -286,4 +286,18 @@ lat/lon
 Слой 3 = локальный контекст объекта
 ```
 
+## Канонический порядок слоёв в UI карты
+
+Селектор Layer на карте идёт от места к объекту:
+
+```text
+ЦОФ-сетка (Слой 1, /api/cell_tsorf) → Hex aggregate (Слой 2, /api/hex_aggregates) → Object scatter (объекты)
+```
+
+Правило без дублирования: **hex_aggregates не содержит ЦОФ Слоя 1** — только метрики рынка/модели
+(`count`, `median_target/pred_oof/residual`), средние описатели самих объектов
+(`mean_levels/flats/area_m2/year_built/age_years`) и `dominant_*` (территориальные, per-object из ГАР).
+Все локационные ЦОФ (дистанции, доли, плотности, дороги, метро) на карте читаются только из Слоя 1
+через `/api/cell_tsorf` — там они посчитаны на всей сетке, а не усреднены по объектам.
+
 См. также: [grid-rationale.md](grid-rationale.md), [h3-primer.md](h3-primer.md), [data-sources.md](data-sources.md), [ADR-0012](decisions/0012-relative-features-via-h3-parent-aggregations.md).
