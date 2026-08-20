@@ -321,8 +321,7 @@
     <span class="badge" data-tip="Целевая метка модели — кадастровая стоимость ₽/м² по данным ЕГРН (cost_index). Пока используется как proxy реальных сделок (для пилота); по мере подключения данных рынка таргет может быть обновлён.&#10;&#10;y_pred_oof = honest out-of-fold прогноз на пространственной кросс-валидации.">target = ЕГРН cost_index</span>
     <label>Layer
       <select id="layer">
-        <option value="cell_tsorf">ЦОФ-сетка</option>
-        <option value="hex" selected>Hex aggregate</option>
+        <option value="grid" selected>Сетка</option>
         <option value="object">Object scatter</option>
       </select>
     </label>
@@ -345,12 +344,6 @@
         <option value="9">9 (~0.1 km²)</option>
         <option value="10">10 (~15k m²)</option>
       </select>
-    </label>
-    <label id="cell-tsorf-set-wrap" style="display:none">ЦОФ set
-      <select id="cell_feature_set"></select>
-    </label>
-    <label id="cell-tsorf-feature-wrap" style="display:none">ЦОФ
-      <select id="cell_feature"></select>
     </label>
     <label id="object-mode-wrap" style="display:none">Mode
       <select id="object_mode">
@@ -448,12 +441,10 @@
 // Тумблер «💡 подсказки» отключает их через body.tooltips-off.
 const TIPS = {
   controls: {
-    layer: 'Способ показа данных на карте. Слои идут от места к объекту: ЦОФ-сетка → Hex aggregate → Object scatter.\n\n«ЦОФ-сетка» — раскраска ячеек сетки H3 по сырым факторам Слоя 1 (дистанции, доли площадей, плотность POI), рассчитанным непосредственно на ячейках и не зависящим от объектов.\n\n«Hex aggregate» — в каждом гексе считается агрегат по объектам внутри: медиана цены, прогноз и ошибка модели, средние описатели зданий. Удобно искать пространственные паттерны и зоны переоценки/недооценки. ЦОФ местности здесь не дублируются — они в «ЦОФ-сетке».\n\n«Object scatter» — каждый объект показан отдельно: точкой или полигоном с реальной геометрией здания/участка. Удобно смотреть конкретные объекты и их признаки.',
-    asset_class: 'Тип недвижимости. Влияет и на источник данных, и на обученную модель — для каждого класса своя.\n\nВ режиме «Object scatter» нельзя выбрать «all» — точки объектов привязаны к классу, а у каждого класса свой набор признаков.',
-    hex_feature: 'Какой именно показатель усредняется/медианится по гексу и кодируется цветом.\n\nГруппы признаков:\n• «count» — количество объектов в гексе.\n• «median_target / pred / residual» — оценка стоимости и качества модели.\n• «mean_levels / flats / area / year_built / age» — описание самих объектов.\n• «dominant_*» — категориальный признак (район/округ/населённый пункт).\n\nЦОФ местности (расстояния, доли площадей, плотность POI) здесь не дублируются — смотрите их в режиме «ЦОФ-сетка».',
-    hex_resolution: 'Размер шестиугольника H3. Чем выше номер — тем мельче ячейки.\n\n• 7 (≈5 км²) — район города/пригород целиком.\n• 8 (≈0.7 км²) — несколько кварталов, дефолт.\n• 9 (≈0.1 км²) — один-два квартала.\n• 10 (≈15 000 м²) — отдельные дворы.\n\nНа мелких разрешениях ячейки с малым числом объектов становятся шумными и могут быть пустыми.',
-    cell_feature_set: 'Набор ценообразующих факторов (ЦОФ) Слоя 1 на сетке H3.\n\nКаждый набор вычисляется один раз на центрах ячеек и хранится независимо от объектов:\n• «geom_distance» — евклидовы расстояния до полигонов и линий (парки, вода, лес, ж/д).\n• «poly_area» — доли площади слоёв в буферах 100/300/500/800 м.\n• «zonal» — плотность и количество объектов/POI в окрестности.\n• «road_density» — длина дорожной сети в радиусе 500 м.\n• «metro» — доступность метрополитена.\n• «walk_dist» — пешеходные расстояния по графу OSM до точечных POI.',
-    cell_feature: 'Конкретный показатель Слоя 1, по которому окрашивается сетка ячеек H3.',
+    layer: 'Способ показа данных на карте.\n\n«Сетка» — единый режим для гексагонов H3: и агрегаты рынка/модели (медиана цены, прогноз, ошибка), и сырые ЦОФ местности (дистанции, доли площадей, плотность POI) выбираются одним списком Feature. Источник данных подбирается автоматически.\n\n«Object scatter» — каждый объект показан отдельно: точкой или полигоном с реальной геометрией здания/участка. Удобно смотреть конкретные объекты и их признаки.',
+    asset_class: 'Тип недвижимости. Влияет и на источник данных, и на обученную модель — для каждого класса своя.\n\nВ режиме «Object scatter» нельзя выбрать «all» — точки объектов привязаны к классу, а у каждого класса свой набор признаков.\n\nВ режиме «Сетка» при выборе ЦОФ местности селектор скрывается: факторы места не зависят от класса объектов.',
+    hex_feature: 'Какой показатель кодируется цветом ячеек сетки.\n\nГруппа «Рынок и модель» — агрегаты по объектам внутри гекса:\n• «count» — количество объектов.\n• «median_target / pred / residual» — цена, прогноз и ошибка модели.\n• «mean_levels / flats / area / year_built / age» — описание самих объектов.\n• «dominant_*» — категориальный признак (район/округ/населённый пункт).\n\nГруппы «ЦОФ местности: …» — сырые факторы Слоя 1 (дистанции, доли площадей, плотность POI), рассчитанные на самих ячейках сетки (res 10), а не на объектах. Для них Resolution/Asset class/Model неприменимы и скрываются.',
+    hex_resolution: 'Размер шестиугольника H3. Чем выше номер — тем мельче ячейки. Применяется только к агрегатам «Рынок и модель» — ЦОФ местности всегда на res 10.\n\n• 7 (≈5 км²) — район города/пригород целиком.\n• 8 (≈0.7 км²) — несколько кварталов, дефолт.\n• 9 (≈0.1 км²) — один-два квартала.\n• 10 (≈15 000 м²) — отдельные дворы.\n\nНа мелких разрешениях ячейки с малым числом объектов становятся шумными и могут быть пустыми.',
     object_mode: 'Чем раскрашивать отдельные объекты в режиме «Object scatter».\n\nГруппа «prediction» — посмотреть, как модель работает: фактическая цена, прогноз, ошибка, разбиение на фолды.\n\nГруппа «features» — посмотреть распределение конкретного признака объекта (площадь, этажность, расстояние до школы и т.п.) — то же, что для гексов, но без агрегирования.',
     model: 'Какой моделью оценивать стоимость и считать ошибку.\n\nВ системе обучены 4 модели разной природы — от простой линейной (для baseline) до CatBoost (максимальная точность, но «чёрный ящик»). Выбор модели меняет: out-of-fold прогноз (y_pred_oof), остаток (residual) и медианные агрегаты прогноза/остатка по гексам.\n\nИспользуйте: для проверки качества → CatBoost; для понимания вклада признаков → EBM или grey_tree.',
     scale: 'Как числовое значение признака переводится в цвет.\n\n• «linear (p2–p98)» — линейная шкала, обрезанная по 2-му и 98-му перцентилям. Выбросы не «съедают» всю цветовую гамму. Дефолт.\n• «log» — логарифмическая шкала от min до max. Полезна, когда значения растянуты на несколько порядков (цены, расстояния).\n• «linear» — простой линейный мап от min до max. Чувствителен к выбросам, но точно отражает шкалу.',
@@ -461,18 +452,10 @@ const TIPS = {
   },
   options: {
     // layer
-    hex: 'Карта разбита на одинаковые шестиугольники H3. В каждом — агрегат по объектам внутри (медиана цены/прогноза, счёт, средние описатели зданий).',
+    grid: 'Единый режим сетки H3: агрегаты рынка/модели и ЦОФ местности выбираются одним списком Feature.',
     object: 'Каждый объект показан отдельно: точкой или полигоном с реальной геометрией. Цвет — выбранный признак или прогноз.',
-    cell_tsorf: 'Сырые ценообразующие факторы (Слой 1), рассчитанные на ячейках сетки H3 (res 10).',
-    // cell_feature_set
-    geom_distance: 'Прямые расстояния (м) до ближайших полигональных/линейных объектов (водоёмы, парки, промзоны, ЛЭП, ж/д).',
-    poly_area: 'Доли площадей объектов (парки, вода, лес, промзоны) в радиусах 100/300/500/800 м.',
-    zonal: 'Зональная плотность и счётчики POI в окрестности (self-free).',
-    road_density: 'Суммарная длина дорог в радиусе 500 м (прокси связности дорожной сети).',
-    metro: 'Транспортная доступность метро (дистанция до станции/входа, количество входов).',
-    walk_dist: 'Пешеходная дистанция по графу OSM до ближайших точечных POI (школы, детсады, больницы, магазины...).',
     // asset_class
-    all: 'Объединение всех классов в одну карту. Доступно только в режиме hex (для object scatter нужен конкретный класс).',
+    all: 'Объединение всех классов в одну карту. Доступно только для агрегатов сетки (для object scatter нужен конкретный класс).',
     apartment: 'Квартиры в многоквартирных домах. Самый массовый класс — больше всего данных и наиболее точная модель.',
     house: 'Индивидуальные жилые дома (ИЖС): частные коттеджи, таунхаусы.',
     commercial: 'Коммерческая недвижимость: офисы, торговые помещения, склады, отдельные коммерческие здания.',
@@ -635,9 +618,14 @@ function applyStaticTooltips() {
 }
 
 function applyFeatureOptionTooltips() {
-  // Called after loadFeatureOptions and populateCellFeatures — features were just appended.
-  document.querySelectorAll('#hex_feature option, #object-mode-features-group option, #cell_feature option, #cell_feature_set option').forEach((opt) => {
-    const tip = describeFeature(opt.value) || TIPS.options[opt.value];
+  // Called after loadFeatureOptions — features were just appended.
+  // Grid-mode options carry a source prefix (``agg:<name>`` /
+  // ``cell:<set>:<name>``); strip it before the description lookup.
+  document.querySelectorAll('#hex_feature option, #object-mode-features-group option').forEach((opt) => {
+    const raw = opt.value.startsWith('agg:') ? opt.value.slice(4)
+      : opt.value.startsWith('cell:') ? opt.value.split(':').slice(2).join(':')
+      : opt.value;
+    const tip = describeFeature(raw) || TIPS.options[raw];
     if (tip) opt.title = tip;
   });
 }
@@ -1059,13 +1047,35 @@ async function loadFeatureOptions() {
   const r = await fetch('/api/feature_options');
   featureOptions = await r.json();
   featureDescriptions = featureOptions.feature_descriptions || {};
+  // Unified «Сетка» feature dropdown: aggregates (Слой 2) and cell ЦОФ
+  // (Слой 1) in one list, grouped by optgroup. Option values carry the
+  // source prefix — ``agg:<name>`` reads /api/hex_aggregates,
+  // ``cell:<set>:<name>`` reads /api/cell_tsorf. The data source is a
+  // rendering detail, not something the user switches between.
   const sel = document.getElementById('hex_feature');
   sel.innerHTML = '';
+  const aggGroup = document.createElement('optgroup');
+  aggGroup.label = 'Рынок и модель (агрегаты по объектам)';
   for (const f of [...featureOptions.numeric_features, ...featureOptions.categorical_features]) {
     const opt = document.createElement('option');
-    opt.value = f; opt.textContent = f;
+    opt.value = `agg:${f}`; opt.textContent = f;
     if (f === 'median_target_rub_per_m2') opt.selected = true;
-    sel.appendChild(opt);
+    aggGroup.appendChild(opt);
+  }
+  sel.appendChild(aggGroup);
+  const cellFs = featureOptions.cell_tsorf_features || {};
+  const setNames = featureOptions.cell_tsorf_feature_sets || Object.keys(cellFs);
+  for (const fs of setNames) {
+    const feats = cellFs[fs] || [];
+    if (!feats.length) continue;
+    const group = document.createElement('optgroup');
+    group.label = `ЦОФ местности: ${fs}`;
+    for (const f of feats) {
+      const opt = document.createElement('option');
+      opt.value = `cell:${fs}:${f}`; opt.textContent = f;
+      group.appendChild(opt);
+    }
+    sel.appendChild(group);
   }
   // Object scatter mode dropdown — append per-object features as a
   // second optgroup. Renderer treats anything that isn't fold_id/
@@ -1077,43 +1087,29 @@ async function loadFeatureOptions() {
     opt.value = f; opt.textContent = f;
     objGroup.appendChild(opt);
   }
-  // ADR-0027 «ЦОФ-сетка» mode: two-level selector (feature_set → feature).
-  // feature_options.cell_tsorf_features is {set: [features]}; empty
-  // sets (not yet built in this region) produce an empty optgroup.
-  const setSel = document.getElementById('cell_feature_set');
-  const featSel = document.getElementById('cell_feature');
-  setSel.innerHTML = '';
-  featSel.innerHTML = '';
-  const cellFs = featureOptions.cell_tsorf_features || {};
-  const setNames = featureOptions.cell_tsorf_feature_sets || Object.keys(cellFs);
-  let firstSetWithFeatures = null;
-  for (const fs of setNames) {
-    const opt = document.createElement('option');
-    opt.value = fs; opt.textContent = fs;
-    setSel.appendChild(opt);
-    if (firstSetWithFeatures === null && (cellFs[fs] || []).length > 0) firstSetWithFeatures = fs;
-  }
-  if (firstSetWithFeatures !== null) setSel.value = firstSetWithFeatures;
-  populateCellFeatures(cellFs);
+  applyFeatureOptionTooltips();
 }
 
-function populateCellFeatures(cellFs) {
-  const setSel = document.getElementById('cell_feature_set');
-  const featSel = document.getElementById('cell_feature');
-  featSel.innerHTML = '';
-  const feats = cellFs[setSel.value] || [];
-  for (const f of feats) {
-    const opt = document.createElement('option');
-    opt.value = f; opt.textContent = f;
-    featSel.appendChild(opt);
+// The selected grid feature's data source: ``agg`` (hex_aggregates,
+// Слой 2, res 7–10, per model/asset_class) or ``cell`` (Слой 1 cell
+// ЦОФ store, fixed res = cell_tsorf_resolution, model-independent).
+function gridFeatureSource() {
+  const v = document.getElementById('hex_feature').value;
+  return v.startsWith('cell:') ? 'cell' : 'agg';
+}
+
+async function fetchGrid() {
+  if (gridFeatureSource() === 'cell') {
+    const [, fs, f] = document.getElementById('hex_feature').value.split(':');
+    return fetchCellTsorf(fs, f);
   }
-  applyFeatureOptionTooltips();
+  return fetchHex();
 }
 
 async function fetchHex() {
   const resolution = +document.getElementById('hex_resolution').value;
   const ac = document.getElementById('asset_class').value;
-  const feature = document.getElementById('hex_feature').value;
+  const feature = document.getElementById('hex_feature').value.slice(4); // strip "agg:"
   const model = document.getElementById('model').value;
   const r = await fetch(
     `/api/hex_aggregates?resolution=${resolution}&asset_class=${ac}` +
@@ -1151,14 +1147,12 @@ async function fetchObjects() {
   return await r.json();
 }
 
-// ADR-0027 «ЦОФ-сетка»: raw Слой 1 cell ЦОФ from the feature store
-// (not object-derived aggregates). Resolution is the cell_tsorf
-// resolution the backend served in feature_options. Reuses renderHex
-// — the H3HexagonLayer just eats [{hex, value}].
-async function fetchCellTsorf() {
+// Слой 1 cell ЦОФ from the feature store (not object-derived
+// aggregates). Resolution is the cell_tsorf resolution the backend
+// served in feature_options. Reuses renderHex — the H3HexagonLayer
+// just eats [{hex, value}].
+async function fetchCellTsorf(fs, f) {
   const res = featureOptions.cell_tsorf_resolution || 10;
-  const fs = document.getElementById('cell_feature_set').value;
-  const f = document.getElementById('cell_feature').value;
   const r = await fetch(
     `/api/cell_tsorf?resolution=${res}&feature_set=${encodeURIComponent(fs)}` +
     `&feature=${encodeURIComponent(f)}`
@@ -1518,8 +1512,8 @@ function redrawWithSelection() {
 // ---------- inspector panel ----------
 
 async function showHexInspector(hex, payload) {
-  // ADR-0027 «ЦОФ-сетка»: a clicked cell carries asset_class='grid' and
-  // has no hex_aggregates row — route to the Layer 1 cell inspector
+  // A clicked cell from a ЦОФ (cell:*) feature carries asset_class='grid'
+  // and has no hex_aggregates row — route to the Layer 1 cell inspector
   // instead of /api/hex_aggregates/{h3} (which 404s for grid cells).
   if (payload.asset_class === 'grid') return showCellTsorfInspector(hex, payload);
   showPanel();
@@ -1586,9 +1580,9 @@ const CELL_TSORF_SET_LABELS = {
   walk_dist: 'Пешеходные дистанции по графу',
 };
 
-// Inspector for a single Слой 1 cell (ЦОФ-сетка mode). Fetches every
-// built feature set for the clicked h3_index and renders them as
-// grouped sections — the cell analog of renderHexDetailSections.
+// Inspector for a single Слой 1 cell (ЦОФ feature in «Сетка» mode).
+// Fetches every built feature set for the clicked h3_index and renders
+// them as grouped sections — the cell analog of renderHexDetailSections.
 async function showCellTsorfInspector(hex, payload) {
   showPanel();
   selectedItem = hexSelection(hex, payload);
@@ -1948,8 +1942,8 @@ function hexSelection(hex, payload) {
     label: hex.hex,
     geometry: h3BoundaryGeometry(hex.hex),
     center: h3Center(hex.hex),
-    // Grid cells (ЦОФ-сетка) have no hex_aggregates partition — fetch
-    // the full Слой 1 cell detail instead so compare-mode works the
+    // Cells from ЦОФ (cell:*) features have no hex_aggregates partition —
+    // fetch the full Слой 1 cell detail instead so compare-mode works the
     // same way single-inspector does (asset_class==='grid' branch).
     fetch: isGrid
       ? () => fetchCellDetail(hex.hex, payload.resolution)
@@ -2101,7 +2095,7 @@ function comparisonTable(da, db, kind) {
   return out.join('');
 }
 
-// Cell (ЦОФ-сетка) comparison: detail is nested
+// Cell (Слой 1 ЦОФ) comparison: detail is nested
 // {feature_set: {feature: value}}. Render sets in the fixed known
 // order (then unknown alpha), each set as a section header followed
 // by per-feature rows with a numeric Δ column. A feature present in
@@ -2391,27 +2385,23 @@ document.addEventListener('click', (ev) => {
 async function refresh() {
   clearCompareSelections();
   const layer = document.getElementById('layer').value;
-  const isHex = layer === 'hex';
+  const isGrid = layer === 'grid';
   const isObj = layer === 'object';
-  const isCell = layer === 'cell_tsorf';
-  document.getElementById('hex-feature-wrap').style.display = isHex ? '' : 'none';
-  document.getElementById('hex-resolution-wrap').style.display = isHex ? '' : 'none';
+  // Within «Сетка», the selected feature picks the data source: agg:*
+  // (hex aggregates, res 7–10, per model/asset_class) or cell:*
+  // (Слой 1 ЦОФ, fixed res, model-independent). Resolution, asset
+  // class and model only make sense for aggregates — hide them for ЦОФ.
+  const isAggFeature = isGrid && gridFeatureSource() === 'agg';
+  document.getElementById('hex-feature-wrap').style.display = isGrid ? '' : 'none';
+  document.getElementById('hex-resolution-wrap').style.display = isAggFeature ? '' : 'none';
   document.getElementById('object-mode-wrap').style.display = isObj ? '' : 'none';
-  document.getElementById('cell-tsorf-set-wrap').style.display = isCell ? '' : 'none';
-  document.getElementById('cell-tsorf-feature-wrap').style.display = isCell ? '' : 'none';
-  // Hex and object layers honour ?model= (ADR-0016 quartet). ЦОФ-сетка
-  // is input features — independent of model/asset_class, hide both.
-  document.getElementById('model-wrap').style.display = isCell ? 'none' : '';
-  document.getElementById('asset_class').parentElement.style.display = isCell ? 'none' : '';
+  document.getElementById('model-wrap').style.display = (isObj || isAggFeature) ? '' : 'none';
+  document.getElementById('asset_class').parentElement.style.display = (isObj || isAggFeature) ? '' : 'none';
   const stat = document.getElementById('stat');
   stat.textContent = 'loading…';
   try {
-    if (isHex) {
-      const payload = await fetchHex();
-      lastDataset = { kind: 'hex', payload };
-      renderHex(payload);
-    } else if (isCell) {
-      const payload = await fetchCellTsorf();
+    if (isGrid) {
+      const payload = await fetchGrid();
       lastDataset = { kind: 'hex', payload };
       renderHex(payload);
     } else {
@@ -2433,18 +2423,8 @@ function recolor() {
   else renderObjects(lastDataset.payload);
 }
 
-['layer', 'asset_class', 'hex_feature', 'hex_resolution', 'model',
- 'cell_feature_set', 'cell_feature'].forEach(id =>
-  document.getElementById(id).addEventListener('change', (ev) => {
-    // Switching ЦОФ set just repopulates the feature list; changing
-    // the feature (or set) needs a re-fetch.
-    if (id === 'cell_feature_set') {
-      populateCellFeatures(featureOptions.cell_tsorf_features || {});
-      refresh();
-    } else {
-      refresh();
-    }
-  })
+['layer', 'asset_class', 'hex_feature', 'hex_resolution', 'model'].forEach(id =>
+  document.getElementById(id).addEventListener('change', refresh)
 );
 ['object_mode', 'scale'].forEach(id =>
   document.getElementById(id).addEventListener('change', recolor)
