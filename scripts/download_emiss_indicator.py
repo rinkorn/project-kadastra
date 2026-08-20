@@ -180,7 +180,17 @@ def main() -> int:
     ap.add_argument("indicator_id")
     ap.add_argument("--out-dir", type=Path, default=None)
     ap.add_argument("--date", default=date.today().isoformat())
+    ap.add_argument(
+        "--format",
+        choices=["excel", "sdmx"],
+        default="excel",
+        help="excel — pivot xls (названия без кодов территорий); "
+        "sdmx — XML с кодами классификаторов (ОКТМО/ОКАТО), нужен для джойнов",
+    )
     args = ap.parse_args()
+
+    ext = "xls" if args.format == "excel" else "xml"
+    ok_content_type = "application/vnd.ms-excel" if args.format == "excel" else "text/xml"
 
     out_dir = args.out_dir or Path("data/raw/emiss") / args.indicator_id
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -243,19 +253,22 @@ def main() -> int:
         for attempt in range(4):
             result = page.evaluate(
                 POST_DOWNLOAD_JS,
-                {"url": "https://www.fedstat.ru/indicator/downloadData.do?format=excel", "body": body},
+                {
+                    "url": f"https://www.fedstat.ru/indicator/downloadData.do?format={args.format}",
+                    "body": body,
+                },
             )
             print(
                 f"=> POST attempt {attempt + 1}: status={result.get('status')} "
                 f"ct={result.get('contentType')} size={result.get('size')}",
                 flush=True,
             )
-            if result.get("contentType", "").startswith("application/vnd.ms-excel"):
+            if result.get("contentType", "").startswith(ok_content_type):
                 break
             time.sleep(5 * (attempt + 1))
 
-        dst = out_dir / f"raw_{args.date}.xls"
-        if result and result.get("contentType", "").startswith("application/vnd.ms-excel"):
+        dst = out_dir / f"raw_{args.date}.{ext}"
+        if result and result.get("contentType", "").startswith(ok_content_type):
             payload = base64.b64decode(result["b64"])
             dst.write_bytes(payload)
             ctx.close()
@@ -267,7 +280,7 @@ def main() -> int:
                 page.evaluate(
                     SUBMIT_DOWNLOAD_JS,
                     {
-                        "format": "excel",
+                        "format": args.format,
                         "title": title,
                         "pairs": pairs,
                         "tokenName": token["tokenName"],
