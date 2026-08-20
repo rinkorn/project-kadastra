@@ -10,6 +10,7 @@ import pytest
 
 from kadastra.domain.asset_class import AssetClass
 from kadastra.etl.haversine import haversine_meters
+from kadastra.ports.dem_sampler import DemSamplerPort
 from kadastra.ports.feature_reader import FeatureReaderPort
 from kadastra.ports.road_graph import RoadGraphPort
 from kadastra.ports.valuation_object_reader import ValuationObjectReaderPort
@@ -187,6 +188,7 @@ def _usecase(
     cell_tsorf_overlap_weighted: bool = False,
     macro_oktmo_features_path: Path | None = None,
     cadastre_target_year: int = 2024,
+    dem_sampler: DemSamplerPort | None = None,
 ) -> BuildObjectFeatures:
     return BuildObjectFeatures(
         reader=store,
@@ -224,6 +226,7 @@ def _usecase(
         cell_tsorf_overlap_weighted=cell_tsorf_overlap_weighted,
         macro_oktmo_features_path=macro_oktmo_features_path,
         cadastre_target_year=cadastre_target_year,
+        dem_sampler=dem_sampler,
     )
 
 
@@ -1119,3 +1122,58 @@ def test_macro_emiss_skipped_when_region_partition_missing(tmp_path) -> None:  #
 
     df = store.calls[0].df
     assert "oktmo_avg_salary_rub" not in df.columns
+
+
+class _FakeDemSampler:
+    """Constant-value DemSamplerPort fake for wiring tests."""
+
+    def sample_elevation(self, *, lat: float, lon: float) -> float | None:
+        return 83.0
+
+    def sample_slope_deg(self, *, lat: float, lon: float) -> float | None:
+        return 4.2
+
+    def sample_relative_relief(self, *, lat: float, lon: float) -> float | None:
+        return 35.0
+
+
+def test_appends_dem_columns_when_sampler_wired() -> None:
+    """ADR-0023: with a DemSamplerPort wired, the three topographic
+    columns land on the saved partition. The DEM columns are derived
+    inside the usecase (after the RAW_OBJECT_SCHEMA reset), so they do
+    NOT belong to the raw schema — a rerun recomputes them from the
+    silver rasters."""
+    store = _FakeStore({AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)})
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(store, raw, dem_sampler=_FakeDemSampler()).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    for col in ("elevation_m", "slope_deg_local", "relative_relief_500m_m"):
+        assert col in df.columns
+    row = df.row(0, named=True)
+    assert row["elevation_m"] == 83.0
+    assert row["slope_deg_local"] == 4.2
+    assert row["relative_relief_500m_m"] == 35.0
+
+
+def test_dem_columns_absent_when_sampler_not_wired() -> None:
+    """ADR-0023: without a dem_sampler the step is a no-op — no DEM
+    columns appear (feature-flagged via composition root)."""
+    store = _FakeStore({AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)})
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(store, raw).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "elevation_m" not in df.columns
+    assert "slope_deg_local" not in df.columns
+    assert "relative_relief_500m_m" not in df.columns

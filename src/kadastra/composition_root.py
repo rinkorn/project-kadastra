@@ -14,6 +14,7 @@ from kadastra.adapters.parquet_coverage_store import ParquetCoverageStore
 from kadastra.adapters.parquet_feature_store import ParquetFeatureStore
 from kadastra.adapters.parquet_nspd_silver_store import ParquetNspdSilverStore
 from kadastra.adapters.parquet_valuation_object_store import ParquetValuationObjectStore
+from kadastra.adapters.rasterio_dem_sampler import RasterioDemSampler
 from kadastra.adapters.s3_raw_data import S3RawData
 from kadastra.api.auth import BearerAuthMiddleware
 from kadastra.api.routes import make_api_router
@@ -43,6 +44,7 @@ from kadastra.usecases.build_cell_road_features import (
 from kadastra.usecases.build_cell_zonal_features import (
     BuildCellZonalFeatures,
 )
+from kadastra.usecases.build_dem_silver import BuildDemSilver
 from kadastra.usecases.build_hex_aggregates import BuildHexAggregates
 from kadastra.usecases.build_object_features import BuildObjectFeatures
 from kadastra.usecases.build_object_synthetic_target import BuildObjectSyntheticTarget
@@ -199,6 +201,30 @@ class Container:
     def build_road_graph(self) -> RoadGraphPort:
         return NetworkxRoadGraph.from_parquet(self._settings.road_graph_edges_path)
 
+    def build_dem_silver(self) -> BuildDemSilver:
+        s = self._settings
+        return BuildDemSilver(
+            dem_raw_dir=s.dem_raw_dir,
+            output_base_path=s.dem_silver_base_path,
+            relief_radius_m=s.dem_relief_radius_m,
+        )
+
+    def build_dem_sampler(self) -> RasterioDemSampler | None:
+        """ADR-0023: sampler over the silver DEM rasters for the region.
+
+        Returns None (the BuildObjectFeatures DEM step is skipped) when
+        the silver layers were not built for the region yet — mirrors
+        the gar-lookup / macro-oktmo opt-in pattern.
+        """
+        s = self._settings
+        base = s.dem_silver_base_path / f"region={s.region_code}"
+        elevation = base / "elevation.tif"
+        slope = base / "slope_deg.tif"
+        relief = base / "relative_relief_500m.tif"
+        if not (elevation.is_file() and slope.is_file() and relief.is_file()):
+            return None
+        return RasterioDemSampler(elevation_path=elevation, slope_path=slope, relief_path=relief)
+
     def build_object_features(self) -> BuildObjectFeatures:
         s = self._settings
         store = ParquetValuationObjectStore(s.valuation_object_store_path)
@@ -234,6 +260,7 @@ class Container:
             cell_tsorf_overlap_weighted=s.cell_tsorf_overlap_weighted,
             macro_oktmo_features_path=(s.macro_oktmo_features_path if s.macro_emiss_enabled else None),
             cadastre_target_year=s.cadastre_target_year,
+            dem_sampler=(self.build_dem_sampler() if s.dem_features_enabled else None),
         )
 
     def build_object_synthetic_target(self) -> BuildObjectSyntheticTarget:

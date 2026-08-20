@@ -191,6 +191,16 @@ class Settings(BaseSettings):
     cadastre_target_year: int = 2024
     macro_emiss_enabled: bool = True
     macro_oktmo_features_path: Path = Path("data/silver/macro_oktmo_features")
+
+    # ADR-0023: topographic features from DEM. Raw Copernicus GLO-30
+    # tiles (© DLR) in dem_raw_dir are merged/reprojected/derived into
+    # three silver rasters by scripts/build_dem_silver.py;
+    # BuildObjectFeatures samples them per object when the silver layers
+    # exist for the region (else the step is skipped).
+    dem_raw_dir: Path = Path("data/raw/dem")
+    dem_silver_base_path: Path = Path("data/silver/dem")
+    dem_relief_radius_m: float = 500.0
+    dem_features_enabled: bool = True
     catboost_iterations: int = 500
     catboost_learning_rate: float = 0.05
     catboost_depth: int = 6

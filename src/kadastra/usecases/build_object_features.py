@@ -12,6 +12,7 @@ from kadastra.etl.cell_overlap_weights import compute_overlap_weights
 from kadastra.etl.h3_coverage import add_h3_index
 from kadastra.etl.load_geometries import load_geojsonseq_geometries, load_geojsonseq_points
 from kadastra.etl.object_age_features import compute_object_age_features
+from kadastra.etl.object_dem_features import compute_object_dem_features
 from kadastra.etl.object_geom_distance_features import (
     compute_object_geom_distance_features,
 )
@@ -26,6 +27,7 @@ from kadastra.etl.object_polygon_features import compute_object_polygon_features
 from kadastra.etl.object_road_features import compute_object_road_features
 from kadastra.etl.object_zonal_features import compute_object_zonal_features
 from kadastra.etl.relative_features import compute_relative_features
+from kadastra.ports.dem_sampler import DemSamplerPort
 from kadastra.ports.feature_reader import FeatureReaderPort
 from kadastra.ports.raw_data import RawDataPort
 from kadastra.ports.road_graph import RoadGraphPort
@@ -68,6 +70,7 @@ class BuildObjectFeatures:
         cell_tsorf_overlap_weighted: bool = True,
         macro_oktmo_features_path: Path | None = None,
         cadastre_target_year: int = 2024,
+        dem_sampler: DemSamplerPort | None = None,
     ) -> None:
         self._reader = reader
         self._store = store
@@ -100,6 +103,7 @@ class BuildObjectFeatures:
         self._cell_tsorf_overlap_weighted = cell_tsorf_overlap_weighted
         self._macro_oktmo_features_path = macro_oktmo_features_path
         self._cadastre_target_year = cadastre_target_year
+        self._dem_sampler = dem_sampler
 
     def execute(self, region_code: str, asset_classes: list[AssetClass]) -> None:
         stations = pl.read_csv(io.BytesIO(self._raw_data.read_bytes(self._stations_key)))
@@ -240,6 +244,16 @@ class BuildObjectFeatures:
             enriched,
             current_year=self._current_year_for_age_features,
         )
+        # Topographic DEM features (ADR-0023). Samples the silver DEM
+        # rasters (built by scripts/build_dem_silver.py from GLO-30 raw)
+        # at each object's (lat, lon). The columns are derived here,
+        # AFTER the RAW_OBJECT_SCHEMA reset above, so they are not part
+        # of the raw schema — a rerun recomputes them from the rasters.
+        # Opt-in: skipped when no dem_sampler is wired (composition root
+        # passes None when the silver layers are missing or the flag is
+        # off).
+        if self._dem_sampler is not None:
+            enriched = compute_object_dem_features(enriched, dem_sampler=self._dem_sampler)
         # Filter feature_columns to those present (allows configuring a
         # superset in Settings — missing ones are simply skipped, not
         # errors, so per-class slices with different schemas don't crash).
