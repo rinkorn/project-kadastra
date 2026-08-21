@@ -83,6 +83,28 @@ class EbmQuartetModel:
             terms.append({"feature": name, "value": value, "contribution": float(score)})
         return {"intercept": intercept, "terms": terms}
 
+    def eval_terms(self, X: np.ndarray) -> np.ndarray:
+        """Per-sample, per-term contributions — (n_samples, n_terms).
+
+        ``intercept() + eval_terms(X).sum(axis=1) == predict(X)``.
+        """
+        if self._model is None:
+            raise RuntimeError("EbmQuartetModel.eval_terms before fit")
+        terms = self._model.eval_terms(X)
+        return np.asarray(terms, dtype=np.float64)
+
+    def intercept(self) -> float:
+        """Global intercept of the fitted EBM."""
+        if self._model is None:
+            raise RuntimeError("EbmQuartetModel.intercept before fit")
+        return float(np.asarray(self._model.intercept_, dtype=np.float64).ravel()[0])
+
+    def term_feature_indices(self) -> list[tuple[int, ...]]:
+        """Feature indices per term (length-1 for mains, 2 for interactions)."""
+        if self._model is None:
+            raise RuntimeError("EbmQuartetModel.term_feature_indices before fit")
+        return [tuple(int(i) for i in idxs) for idxs in self._model.term_features_]
+
     def serialize(self) -> bytes:
         if self._model is None:
             raise RuntimeError("EbmQuartetModel.serialize before fit")

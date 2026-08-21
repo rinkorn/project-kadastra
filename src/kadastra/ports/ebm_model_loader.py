@@ -18,5 +18,28 @@ class EbmExplainerPort(Protocol):
     def explain(self, X: Any, feature_names: list[str]) -> dict[str, Any]: ...
 
 
+class EbmScorerPort(Protocol):
+    """The subset of ``EbmQuartetModel`` used by the cell valuation layer
+    (ADR-0029): batch prediction + additive term decomposition."""
+
+    def predict(self, X: Any) -> Any: ...
+
+    def eval_terms(self, X: Any) -> Any: ...
+
+    def intercept(self) -> float: ...
+
+    def term_feature_indices(self) -> list[tuple[int, ...]]: ...
+
+
 class EbmModelLoaderPort(Protocol):
     def load_latest(self, asset_class: AssetClass) -> EbmExplainerPort: ...
+
+
+class EbmScorerLoaderPort(Protocol):
+    """Loader port returning the richer scoring interface (ADR-0029).
+
+    Structural protocol — ``LocalEbmModelLoader`` satisfies both this
+    and :class:`EbmModelLoaderPort` without code changes.
+    """
+
+    def load_latest(self, asset_class: AssetClass) -> EbmScorerPort: ...

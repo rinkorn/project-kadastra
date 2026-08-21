@@ -31,6 +31,8 @@ pattern).
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
@@ -188,3 +190,37 @@ def join_road_class_features(objects: pl.DataFrame, road_features: pl.DataFrame)
 
     right = road_features.select(["object_id", *ROAD_CLASS_FEATURE_COLUMNS])
     return objects.join(right, on="object_id", how="left")
+
+
+def parse_major_road_ways(raw_payload: bytes) -> dict[str, list[list[tuple[float, float]]]]:
+    """Parse the Overpass major-roads JSON into normalized ``ways_by_class``.
+
+    Shared by ``scripts/build_nearest_road_features.py`` (per-object
+    silver) and the Слой 1 enrichment builder (ADR-0029) so both read
+    the same raw the same way.
+    """
+    payload: dict[str, Any] = json.loads(raw_payload)
+    ways_by_class: dict[str, list[list[tuple[float, float]]]] = {}
+    for element in payload.get("elements", []) or []:
+        if element.get("type") != "way" or not element.get("geometry"):
+            continue
+        cls = normalize_highway_class((element.get("tags") or {}).get("highway"))
+        if cls is None:
+            continue
+        way = [(float(p["lat"]), float(p["lon"])) for p in element["geometry"]]
+        ways_by_class.setdefault(cls, []).append(way)
+    return ways_by_class
+
+
+def parse_minor_road_ways(path: Path) -> dict[str, list[list[tuple[float, float]]]]:
+    """Parse the minor-roads parquet (``coords_json`` = ``[[lon, lat], ...]``)."""
+    ways_by_class: dict[str, list[list[tuple[float, float]]]] = {}
+    df = pl.read_parquet(path)
+    for highway, coords_json in df.select(["highway", "coords_json"]).iter_rows():
+        cls = normalize_highway_class(highway)
+        if cls is None:
+            continue
+        pairs = json.loads(coords_json)
+        way = [(float(lat), float(lon)) for lon, lat in pairs]
+        ways_by_class.setdefault(cls, []).append(way)
+    return ways_by_class

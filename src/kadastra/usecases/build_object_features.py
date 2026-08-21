@@ -4,13 +4,16 @@ from pathlib import Path
 from typing import Any, cast
 
 import polars as pl
-from shapely.geometry import shape
 from shapely.geometry.base import BaseGeometry
 
 from kadastra.domain.asset_class import AssetClass
 from kadastra.etl.cell_overlap_weights import compute_overlap_weights
 from kadastra.etl.h3_coverage import add_h3_index
-from kadastra.etl.load_geometries import load_geojsonseq_geometries, load_geojsonseq_points
+from kadastra.etl.load_geometries import (
+    load_geojsonseq_geometries,
+    load_geojsonseq_points,
+    load_named_geojsonseq_polygons,
+)
 from kadastra.etl.object_age_features import compute_object_age_features
 from kadastra.etl.object_cbd_distance import compute_cbd_distance
 from kadastra.etl.object_dem_features import compute_object_dem_features
@@ -420,45 +423,14 @@ class BuildObjectFeatures:
         return pl.read_parquet(path)
 
     def _load_intra_raion_polygons(self) -> list[tuple[str, BaseGeometry]]:
-        """Load (short_name, geometry) pairs from a GeoJSON-seq file.
+        """Load (short_name, geometry) pairs from the OSM raions file.
 
-        Each feature is expected to be a Polygon/MultiPolygon with at
-        least a ``name`` property (e.g. "Советский район"). Returns an
-        empty list if the file is not configured or not present, which
-        downgrades the spatial-join step to a no-op (address regex
-        still runs as fallback).
+        Delegates to ``load_named_geojsonseq_polygons`` — empty list when
+        the file is not configured/present, which downgrades the
+        spatial-join step to a no-op (address regex still runs as
+        fallback).
         """
-        path = self._osm_raions_geojson_path
-        if path is None or not path.is_file():
-            return []
-        named: list[tuple[str, BaseGeometry]] = []
-        with path.open("r", encoding="utf-8") as f:
-            for raw_line in f:
-                line = raw_line.strip()
-                if not line:
-                    continue
-                if line.startswith("\x1e"):
-                    line = line.lstrip("\x1e").strip()
-                    if not line:
-                        continue
-                feature = json.loads(line)
-                geom = feature.get("geometry")
-                props = feature.get("properties") or {}
-                if geom is None:
-                    continue
-                full_name = (props.get("name") or "").strip()
-                if not full_name:
-                    continue
-                # Drop trailing " район" (or " р-н") so the value
-                # matches the short form produced by the address regex
-                # path ("Советский район" → "Советский").
-                short = full_name
-                for suffix in (" район", " р-н"):
-                    if short.endswith(suffix):
-                        short = short[: -len(suffix)].strip()
-                        break
-                named.append((short, shape(geom)))
-        return named
+        return load_named_geojsonseq_polygons(self._osm_raions_geojson_path)
 
     def _load_poly_area_layers(self) -> dict[str, list[BaseGeometry]]:
         return self._load_layer_geometries(self._poly_area_layer_paths)

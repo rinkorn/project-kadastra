@@ -74,3 +74,41 @@ def load_geojsonseq_points(path_str: str) -> pl.DataFrame:
             lons.append(float(pt_x))
             lats.append(float(pt_y))
     return pl.DataFrame({"lat": lats, "lon": lons})
+
+
+def load_named_geojsonseq_polygons(path: Path | None) -> list[tuple[str, BaseGeometry]]:
+    """Load ``(short_name, geometry)`` pairs from a GeoJSON-seq file.
+
+    Each feature is expected to be a Polygon/MultiPolygon with at least
+    a ``name`` property (e.g. OSM admin_level=9 raions). Trailing
+    " район" / " р-н" suffixes are dropped so values match the short
+    form produced by the address-regex path. Missing/None path → empty
+    list (downgrades the spatial join to a no-op).
+    """
+    if path is None or not path.is_file():
+        return []
+    named: list[tuple[str, BaseGeometry]] = []
+    with path.open("r", encoding="utf-8") as f:
+        for raw_line in f:
+            line = raw_line.strip()
+            if not line:
+                continue
+            if line.startswith("\x1e"):
+                line = line.lstrip("\x1e").strip()
+                if not line:
+                    continue
+            feature = json.loads(line)
+            geom = feature.get("geometry")
+            props = feature.get("properties") or {}
+            if geom is None:
+                continue
+            full_name = (props.get("name") or "").strip()
+            if not full_name:
+                continue
+            short = full_name
+            for suffix in (" район", " р-н"):
+                if short.endswith(suffix):
+                    short = short[: -len(suffix)].strip()
+                    break
+            named.append((short, shape(geom)))
+    return named
