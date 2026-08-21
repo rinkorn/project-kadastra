@@ -208,6 +208,7 @@ def _usecase(
     isochrone_cache_path: Path | None = None,
     isochrone_cache_resolution: int = 11,
     cbd_coords: dict[str, tuple[float, float]] | None = None,
+    heritage_silver_path: Path | None = None,
 ) -> BuildObjectFeatures:
     return BuildObjectFeatures(
         reader=store,
@@ -250,6 +251,7 @@ def _usecase(
         isochrone_cache_path=isochrone_cache_path,
         isochrone_cache_resolution=isochrone_cache_resolution,
         cbd_coords=cbd_coords,
+        heritage_silver_path=heritage_silver_path,
     )
 
 
@@ -1383,3 +1385,71 @@ def test_cbd_distance_absent_for_unknown_region() -> None:
     )
 
     assert "dist_to_cbd_m" not in store.calls[0].df.columns
+
+
+def _heritage_silver_frame() -> pl.DataFrame:
+    return pl.DataFrame(
+        [
+            {
+                "osm_id": "n1",
+                "ref_egrokn": "161510400850006",
+                "heritage_level": "2",
+                "name": "Памятник",
+                "lat": KAZAN_LAT,
+                "lon": KAZAN_LON,
+                "polygon_wkt": None,
+            }
+        ],
+        schema={
+            "osm_id": pl.Utf8,
+            "ref_egrokn": pl.Utf8,
+            "heritage_level": pl.Utf8,
+            "name": pl.Utf8,
+            "lat": pl.Float64,
+            "lon": pl.Float64,
+            "polygon_wkt": pl.Utf8,
+        },
+    )
+
+
+def test_appends_heritage_columns_when_silver_present(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """ADR-0025 п. 2: with heritage_silver_path wired and the silver ОКН
+    layer on disk, the 4 heritage columns land on the saved partition.
+    The fixture ОКН sits exactly at object 1's coords → dist 0, is_heritage 1."""
+    part_dir = tmp_path / "region=RU-KAZAN-AGG"
+    part_dir.mkdir(parents=True)
+    _heritage_silver_frame().write_parquet(part_dir / "data.parquet")
+
+    store = _FakeStore({AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)})
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(store, raw, heritage_silver_path=tmp_path).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    for col in ("is_heritage_object", "dist_to_nearest_heritage_m", "count_heritage_500m", "inside_heritage_zone"):
+        assert col in df.columns
+    row_1 = df.row(0, named=True)
+    assert row_1["dist_to_nearest_heritage_m"] == pytest.approx(0.0, abs=1.0)
+    assert row_1["is_heritage_object"] == 1
+    # Point-only layer → fallback: object 2 is ~100 m north → boundary;
+    # assert only non-null here, exact fallback covered by unit tests.
+    assert df["inside_heritage_zone"].null_count() == 0
+
+
+def test_heritage_columns_absent_when_partition_missing(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Path wired but no silver partition on disk → block skipped."""
+    store = _FakeStore({AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)})
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(store, raw, heritage_silver_path=tmp_path).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    assert "dist_to_nearest_heritage_m" not in df.columns
