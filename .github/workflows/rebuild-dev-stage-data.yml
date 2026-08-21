@@ -18,6 +18,10 @@ jobs:
           echo "${{ secrets.DEV_STAGE_SSH_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -p ${{ vars.DEV_STAGE_PORT }} ${{ vars.DEV_STAGE_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+          # Long steps (Overpass pull can run 10+ min) must not idle:
+          # without SSH-level keepalives NATs/firewalls drop the session
+          # mid-step ("client_loop: send disconnect: Broken pipe").
+          printf 'Host *\n  ServerAliveInterval 30\n  ServerAliveCountMax 40\n' >> ~/.ssh/config
 
       - name: Build scripts image from current sources
         run: |
