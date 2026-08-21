@@ -122,6 +122,10 @@ Landplot-варианты (топ-5 ВРИ): Садоводство (490 м²), 
 - Новый usecase `BuildCellValuation` + скрипты `build_cell_enrichment_features.py`, `build_cell_valuation.py`.
 - UI/API не трогаем — только gold-слой и ADR.
 
+## Вывод на карту (2026-08-21, дополнение)
+
+Слой выведен в веб-UI: `GET /api/cell_valuation` (`asset_class`, `variant`, `metric` = `reference`|`location_score` → `[{hex, value, covered}]`) и `GET /api/cell_valuation/{h3_index}` (деталь по всем вариантам) + режим «Стоимость типового объекта» в `map.html` (usecase `GetCellValuation`). Ячейки с `sample_covered=false` рендерятся приглушённо (alpha × 0.35) — обязательный сигнал экстраполяции из «Рисков» ниже. Payload — вся сетка региона целиком (~177k строк на класс/вариант), как у остальных слоёв карты (без вьюпорт-фильтрации, см. ADR-0027).
+
 ## Риски и границы
 
 - **Экстраполяция** — главный риск (см. связь с ADR-0028 выше). Флаг `sample_covered` обязателен для потребителя.

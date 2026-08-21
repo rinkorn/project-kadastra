@@ -62,6 +62,7 @@ from kadastra.usecases.build_region_coverage import BuildRegionCoverage
 from kadastra.usecases.build_representativeness_report import BuildRepresentativenessReport
 from kadastra.usecases.build_valuation_objects import BuildValuationObjects
 from kadastra.usecases.get_cell_tsorf import GetCellTsorf
+from kadastra.usecases.get_cell_valuation import GetCellValuation
 from kadastra.usecases.get_hex_aggregates import GetHexAggregates
 from kadastra.usecases.get_market_reference import GetMarketReference
 from kadastra.usecases.infer_object_valuation import InferObjectValuation
@@ -363,6 +364,10 @@ class Container:
         s = self._settings
         return GetCellTsorf(ParquetFeatureStore(s.feature_store_path))
 
+    def build_get_cell_valuation(self) -> GetCellValuation:
+        s = self._settings
+        return GetCellValuation(ParquetCellValuationStore(s.cell_valuation_store_path))
+
     def build_representativeness_report(self) -> BuildRepresentativenessReport:
         s = self._settings
         return BuildRepresentativenessReport(
@@ -431,6 +436,7 @@ def create_app(settings: Settings) -> FastAPI:
             get_market_reference=container.build_get_market_reference(),
             market_reference_year=settings.emiss_market_reference_year,
             get_cell_tsorf=container.build_get_cell_tsorf(),
+            get_cell_valuation=container.build_get_cell_valuation(),
         )
     )
     app.include_router(make_web_router(templates_dir))
