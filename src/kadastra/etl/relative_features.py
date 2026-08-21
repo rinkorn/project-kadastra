@@ -89,11 +89,44 @@ def compute_parent_aggregates(
     """Training-time parent-cell aggregates for relative features (ADR-0029).
 
     Long frame, one row per ``(parent_res, parent_h3)``: ``count`` plus
-    per feature ``{f}__median``, ``{f}``__p25``, ``{f}__p75``. Computed
+    per feature ``{f}__median``, ``{f}__p25``, ``{f}__p75``. Computed
     over the training frame itself (all asset classes combined) — the
     same scope :func:`compute_relative_features` uses at train time.
     """
-    raise NotImplementedError
+    frames: list[pl.DataFrame] = []
+    for r in parent_resolutions:
+        parent_col = f"_parent_p{r}"
+        if objects.is_empty():
+            agg = pl.DataFrame(
+                schema={
+                    "parent_res": pl.Int64,
+                    "parent_h3": pl.Utf8,
+                    "count": pl.UInt32,
+                    **{f"{f}__{stat}": pl.Float64 for f in feature_columns for stat in ("median", "p25", "p75")},
+                }
+            )
+            frames.append(agg)
+            continue
+        parents = [
+            h3.latlng_to_cell(float(la), float(lo), r)
+            for la, lo in zip(objects["lat"].to_list(), objects["lon"].to_list(), strict=True)
+        ]
+        with_parent = objects.with_columns(pl.Series(parent_col, parents, dtype=pl.Utf8))
+        agg_exprs: list[pl.Expr] = [pl.len().cast(pl.UInt32).alias("count")]
+        for f in feature_columns:
+            if f not in objects.columns:
+                continue
+            f_expr = pl.col(f).cast(pl.Float64)
+            agg_exprs.extend(
+                [
+                    f_expr.median().alias(f"{f}__median"),
+                    f_expr.quantile(0.25, "linear").alias(f"{f}__p25"),
+                    f_expr.quantile(0.75, "linear").alias(f"{f}__p75"),
+                ]
+            )
+        agg = with_parent.group_by(parent_col).agg(agg_exprs).rename({parent_col: "parent_h3"})
+        frames.append(agg.with_columns(pl.lit(r, dtype=pl.Int64).alias("parent_res")))
+    return pl.concat(frames, how="diagonal_relaxed") if frames else pl.DataFrame()
 
 
 def join_relative_features(
@@ -112,4 +145,51 @@ def join_relative_features(
     gold), not from ``frame`` itself. Rows whose parent has no aggregate
     get nulls.
     """
-    raise NotImplementedError
+    # Idempotency: drop pre-existing outputs before recomputing.
+    drop_cols = [f"count_p{r}" for r in parent_resolutions]
+    for r in parent_resolutions:
+        for f in feature_columns:
+            drop_cols.extend([f"{f}__rel_p{r}_diff_med", f"{f}__rel_p{r}_ratio_med", f"{f}__rel_p{r}_z_iqr"])
+    out = frame.drop([c for c in drop_cols if c in frame.columns])
+
+    for r in parent_resolutions:
+        count_col = f"count_p{r}"
+        if out.is_empty():
+            out = out.with_columns(pl.lit(None, dtype=pl.UInt32).alias(count_col))
+            for f in feature_columns:
+                out = out.with_columns(
+                    [
+                        pl.lit(None, dtype=pl.Float64).alias(f"{f}__rel_p{r}_diff_med"),
+                        pl.lit(None, dtype=pl.Float64).alias(f"{f}__rel_p{r}_ratio_med"),
+                        pl.lit(None, dtype=pl.Float64).alias(f"{f}__rel_p{r}_z_iqr"),
+                    ]
+                )
+            continue
+
+        parents = [
+            h3.latlng_to_cell(float(la), float(lo), r)
+            for la, lo in zip(out["lat"].to_list(), out["lon"].to_list(), strict=True)
+        ]
+        keyed = out.with_columns(pl.Series("_parent", parents, dtype=pl.Utf8))
+        right = (
+            aggregates.filter(pl.col("parent_res") == r)
+            .drop("parent_res")
+            .rename({f"{f}__{s}": f"_{f}__{s}" for f in feature_columns for s in ("median", "p25", "p75")})
+            .rename({"parent_h3": "_parent", "count": count_col})
+        )
+        out = keyed.join(right, on="_parent", how="left").drop("_parent")
+
+        for f in feature_columns:
+            med = pl.col(f"_{f}__median")
+            p25 = pl.col(f"_{f}__p25")
+            p75 = pl.col(f"_{f}__p75")
+            f_expr = pl.col(f).cast(pl.Float64)
+            iqr = p75 - p25
+            out = out.with_columns(
+                [
+                    (f_expr - med).alias(f"{f}__rel_p{r}_diff_med"),
+                    pl.when(med == 0).then(None).otherwise(f_expr / med).alias(f"{f}__rel_p{r}_ratio_med"),
+                    pl.when(iqr == 0).then(None).otherwise((f_expr - med) / iqr).alias(f"{f}__rel_p{r}_z_iqr"),
+                ]
+            ).drop([f"_{f}__median", f"_{f}__p25", f"_{f}__p75"])
+    return out
