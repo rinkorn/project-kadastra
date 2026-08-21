@@ -148,6 +148,13 @@ class Settings(BaseSettings):
     # Эпик 001 этап 5: representativeness report (grid ЦОФ distribution
     # vs training-sample distribution) — parquet + markdown summary.
     representativeness_path: Path = Path("data/gold/representativeness")
+
+    # ADR-0029: cell valuation layer — per-cell reference-object price and
+    # EBM location score on the Слой 1 anchor grid. Output parquet layout
+    # mirrors the valuation-object store (region=/asset_class= partitions).
+    cell_valuation_store_path: Path = Path("data/gold/cell_valuation")
+    landplot_vri_top_n: int = 5
+
     nspd_silver_store_path: Path = Path("data/silver/nspd")
     nspd_buildings_raw_dir: Path = Path("data/raw/nspd/buildings-kazan")
     nspd_landplots_raw_dir: Path = Path("data/raw/nspd/landplots-kazan")

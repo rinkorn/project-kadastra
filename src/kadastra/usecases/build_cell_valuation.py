@@ -41,6 +41,18 @@ from kadastra.ports.valuation_object_store import ValuationObjectStorePort
 
 _TARGET_COLUMN = "synthetic_target_rub_per_m2"
 
+# Слой 1 sets joined for scoring: the six ADR-0027 sets plus the
+# ADR-0029 ``enrichment`` set (ADR-0021..0025 features per cell).
+CELL_VALUATION_FEATURE_SETS: tuple[str, ...] = (
+    "geom_distance",
+    "poly_area",
+    "zonal",
+    "road_density",
+    "metro",
+    "walk_dist",
+    "enrichment",
+)
+
 
 def _infer_literal_dtype(value: object) -> pl.DataType | type[pl.DataType]:
     """Literal dtype for a template attribute absent from the gold schema."""

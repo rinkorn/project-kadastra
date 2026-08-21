@@ -19,6 +19,10 @@ from kadastra.adapters.s3_raw_data import S3RawData
 from kadastra.api.auth import BearerAuthMiddleware
 from kadastra.api.routes import make_api_router
 from kadastra.config import Settings
+from kadastra.etl.object_road_class_features import (
+    parse_major_road_ways,
+    parse_minor_road_ways,
+)
 from kadastra.ml.train import CatBoostParams
 from kadastra.ports.model_loader import ModelLoaderPort
 from kadastra.ports.model_registry import ModelRegistryPort
@@ -26,6 +30,7 @@ from kadastra.ports.road_graph import RoadGraphPort
 from kadastra.usecases.assemble_nspd_valuation_objects import (
     AssembleNspdValuationObjects,
 )
+from kadastra.usecases.build_cell_enrichment_features import BuildCellEnrichmentFeatures
 from kadastra.usecases.build_cell_geom_distance_features import (
     BuildCellGeomDistanceFeatures,
 )
@@ -40,6 +45,10 @@ from kadastra.usecases.build_cell_polygon_features import (
 )
 from kadastra.usecases.build_cell_road_features import (
     BuildCellRoadFeatures,
+)
+from kadastra.usecases.build_cell_valuation import (
+    CELL_VALUATION_FEATURE_SETS,
+    BuildCellValuation,
 )
 from kadastra.usecases.build_cell_zonal_features import (
     BuildCellZonalFeatures,
@@ -360,6 +369,43 @@ class Container:
             object_reader=ParquetValuationObjectStore(s.valuation_object_store_path),
             output_base_path=s.representativeness_path,
             resolution=s.cell_tsorf_resolution,
+        )
+
+    def build_cell_enrichment_features(self) -> BuildCellEnrichmentFeatures:
+        s = self._settings
+        raw_data = self.build_s3_raw_data()
+        ways_by_class = parse_major_road_ways(raw_data.read_bytes(s.roads_key))
+        for cls, ways in parse_minor_road_ways(s.minor_road_ways_path).items():
+            ways_by_class.setdefault(cls, []).extend(ways)
+        return BuildCellEnrichmentFeatures(
+            coverage_reader=ParquetCoverageStore(s.coverage_store_path),
+            feature_store=ParquetFeatureStore(s.feature_store_path),
+            object_reader=ParquetValuationObjectStore(s.valuation_object_store_path),
+            cbd_coords=s.cbd_coords,
+            dem_sampler=(self.build_dem_sampler() if s.dem_features_enabled else None),
+            ways_by_class=ways_by_class,
+            heritage_silver_path=s.heritage_silver_path,
+            zouit_silver_path=s.zouit_silver_path,
+            isochrone_cache_path=s.isochrone_cache_path,
+            isochrone_cache_resolution=s.isochrone_cache_resolution,
+            macro_oktmo_features_path=(s.macro_oktmo_features_path if s.macro_emiss_enabled else None),
+            cadastre_target_year=s.cadastre_target_year,
+            osm_raions_geojson_path=s.osm_raions_geojson_path,
+        )
+
+    def build_cell_valuation(self) -> BuildCellValuation:
+        s = self._settings
+        return BuildCellValuation(
+            cell_feature_reader=ParquetFeatureStore(s.feature_store_path),
+            object_reader=ParquetValuationObjectStore(s.valuation_object_store_path),
+            ebm_loader=LocalEbmModelLoader(s.model_registry_path),
+            output_store=ParquetValuationObjectStore(s.cell_valuation_store_path),
+            cell_feature_sets=CELL_VALUATION_FEATURE_SETS,
+            resolution=s.cell_tsorf_resolution,
+            relative_parent_resolutions=s.relative_feature_parent_resolutions,
+            relative_feature_columns=s.relative_feature_columns,
+            current_year=s.current_year_for_age_features,
+            landplot_vri_top_n=s.landplot_vri_top_n,
         )
 
 
