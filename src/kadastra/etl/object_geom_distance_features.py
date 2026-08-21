@@ -21,6 +21,8 @@ from shapely.geometry.base import BaseGeometry
 from shapely.ops import transform as shapely_transform
 from shapely.ops import unary_union
 
+from kadastra.etl.dissolved_layers import DissolvedLayers
+
 # UTM-39N — same projection as the share-feature pipeline.
 _TO_UTM = Transformer.from_crs("EPSG:4326", "EPSG:32639", always_xy=True)
 
@@ -52,6 +54,7 @@ def compute_object_geom_distance_features(
     objects: pl.DataFrame,
     *,
     geometries_by_layer: dict[str, list[BaseGeometry]],
+    dissolved: DissolvedLayers | None = None,
 ) -> pl.DataFrame:
     """Append ``dist_to_<layer>_m`` columns: distance in metres
     (EPSG:32639 UTM-39N) from each object to the nearest geometry of

@@ -49,6 +49,8 @@ from shapely.geometry.base import BaseGeometry
 from shapely.ops import transform as shapely_transform
 from shapely.ops import unary_union
 
+from kadastra.etl.dissolved_layers import DissolvedLayers
+
 # UTM zone 39N — same projection used by the agglomeration boundary
 # build script; minimal area distortion (≤ 0.1 %) at Kazan latitude.
 _TO_UTM = Transformer.from_crs("EPSG:4326", "EPSG:32639", always_xy=True)
@@ -83,6 +85,7 @@ def compute_object_polygon_features(
     *,
     polygons_by_layer: dict[str, list[BaseGeometry]],
     radii_m: list[int],
+    dissolved: DissolvedLayers | None = None,
 ) -> pl.DataFrame:
     if not polygons_by_layer or not radii_m:
         return objects
