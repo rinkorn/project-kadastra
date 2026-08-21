@@ -61,7 +61,7 @@ from kadastra.usecases.train_object_valuation_model import TrainObjectValuationM
 from kadastra.usecases.train_quartet import TrainQuartet
 from kadastra.web.routes import make_web_router
 
-_OBJECT_RUN_NAME_PREFIX = "catboost-object-"
+_OBJECT_RUN_NAME_PREFIX = "quartet-object-"  # ADR-0016 quartet runs; primary artifact is the CatBoost model.cbm
 
 
 class Container:
