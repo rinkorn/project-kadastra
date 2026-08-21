@@ -22,9 +22,7 @@ Output:
 
 from __future__ import annotations
 
-import json
 import sys
-from typing import Any
 
 import polars as pl
 
@@ -34,37 +32,9 @@ from kadastra.config import Settings
 from kadastra.domain.asset_class import AssetClass
 from kadastra.etl.object_road_class_features import (
     compute_nearest_road_features,
-    normalize_highway_class,
+    parse_major_road_ways,
+    parse_minor_road_ways,
 )
-
-
-def load_major_ways(raw_payload: bytes) -> dict[str, list[list[tuple[float, float]]]]:
-    """Parse the Overpass major-roads JSON into normalized ways_by_class."""
-    payload: dict[str, Any] = json.loads(raw_payload)
-    ways_by_class: dict[str, list[list[tuple[float, float]]]] = {}
-    for element in payload.get("elements", []) or []:
-        if element.get("type") != "way" or not element.get("geometry"):
-            continue
-        cls = normalize_highway_class((element.get("tags") or {}).get("highway"))
-        if cls is None:
-            continue
-        way = [(float(p["lat"]), float(p["lon"])) for p in element["geometry"]]
-        ways_by_class.setdefault(cls, []).append(way)
-    return ways_by_class
-
-
-def load_minor_ways(path) -> dict[str, list[list[tuple[float, float]]]]:
-    """Parse the minor-roads parquet (coords_json = [[lon, lat], ...])."""
-    ways_by_class: dict[str, list[list[tuple[float, float]]]] = {}
-    df = pl.read_parquet(path)
-    for highway, coords_json in df.select(["highway", "coords_json"]).iter_rows():
-        cls = normalize_highway_class(highway)
-        if cls is None:
-            continue
-        pairs = json.loads(coords_json)
-        way = [(float(lat), float(lon)) for lon, lat in pairs]
-        ways_by_class.setdefault(cls, []).append(way)
-    return ways_by_class
 
 
 def main() -> int:
@@ -83,8 +53,8 @@ def main() -> int:
     print(f"=> objects: {objects.height:,}", flush=True)
 
     raw_data = container.build_s3_raw_data()
-    ways_by_class = load_major_ways(raw_data.read_bytes(settings.roads_key))
-    minor = load_minor_ways(settings.minor_road_ways_path)
+    ways_by_class = parse_major_road_ways(raw_data.read_bytes(settings.roads_key))
+    minor = parse_minor_road_ways(settings.minor_road_ways_path)
     for cls, ways in minor.items():
         ways_by_class.setdefault(cls, []).extend(ways)
     print(
