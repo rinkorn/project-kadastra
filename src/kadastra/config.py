@@ -163,6 +163,12 @@ class Settings(BaseSettings):
     # ``scripts/extract_osm_polygons.py --layers raions``.
     osm_raions_geojson_path: Path = Path("data/raw/osm/kazan-agg-raions.geojsonseq")
 
+    # ADR-0025 п. 1: per-region CBD anchor (lat, lon) for dist_to_cbd_m.
+    # Kazan: Kremlin / пл. Свободы. Regions without an entry get no column.
+    cbd_coords: dict[str, tuple[float, float]] = {
+        "RU-KAZAN-AGG": (55.7975, 49.1066),
+    }
+
     road_graph_edges_path: Path = Path("data/silver/road_graph/edges.parquet")
     model_registry_path: Path = Path("data/models")
     # Per-hex aggregates (BuildHexAggregates output): consumed by the

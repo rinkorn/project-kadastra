@@ -12,6 +12,7 @@ from kadastra.etl.cell_overlap_weights import compute_overlap_weights
 from kadastra.etl.h3_coverage import add_h3_index
 from kadastra.etl.load_geometries import load_geojsonseq_geometries, load_geojsonseq_points
 from kadastra.etl.object_age_features import compute_object_age_features
+from kadastra.etl.object_cbd_distance import compute_cbd_distance
 from kadastra.etl.object_dem_features import compute_object_dem_features
 from kadastra.etl.object_geom_distance_features import (
     compute_object_geom_distance_features,
@@ -136,6 +137,12 @@ class BuildObjectFeatures:
         # are dropped before recomputing.
         raw_cols = [c for c in RAW_OBJECT_SCHEMA if c in combined.columns]
         combined = combined.select(raw_cols)
+        # CBD distance (ADR-0025 п. 1). Pure haversine on lat/lon with a
+        # per-region constant anchor — recomputed after the RAW reset on
+        # every run; skipped entirely for regions without a CBD anchor.
+        if region_code in self._cbd_coords:
+            cbd_lat, cbd_lon = self._cbd_coords[region_code]
+            combined = compute_cbd_distance(combined, cbd_lat=cbd_lat, cbd_lon=cbd_lon)
         # ADR-0027 §12: overlap-weighted assignment of cell ЦОФ to each
         # object — a large footprint blending the features of every res
         # cell it covers, weighted by area share, instead of inheriting

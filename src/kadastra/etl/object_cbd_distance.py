@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import polars as pl
 
+from kadastra.etl.haversine import haversine_meters
+
 
 def compute_cbd_distance(
     objects: pl.DataFrame,
@@ -22,4 +24,13 @@ def compute_cbd_distance(
     Objects with null coordinates get a null distance; an empty frame
     gets an empty Float64 column so the schema stays stable.
     """
-    raise NotImplementedError
+    if objects.height == 0:
+        return objects.with_columns(pl.lit(None, dtype=pl.Float64).alias("dist_to_cbd_m"))
+
+    distances: list[float | None] = []
+    for lat, lon in objects.select(["lat", "lon"]).iter_rows():
+        if lat is None or lon is None:
+            distances.append(None)
+        else:
+            distances.append(haversine_meters(lat, lon, cbd_lat, cbd_lon))
+    return objects.with_columns(pl.Series("dist_to_cbd_m", distances, dtype=pl.Float64))
