@@ -81,11 +81,16 @@ jobs:
           set -euo pipefail
           # - raions: intra-city raion polygons (build_object_features)
           # - water: ADR-0030 water-crossing filter (build_road_graph_artifact)
+          #   + ADR-0032 water_share_*/dist_to_water_m cell ЦОФ
+          # - park..railway: остальные poly_area/geom_distance слои
+          #   (config.py) — входы build_cell_polygon_features и
+          #   build_cell_geom_distance_features
           # - school..railway_station: point-POI слои walk_dist_layer_names —
           #   входы build_cell_graph_distance_features и
           #   build_isochrone_cache_per_hex (читают GeoJSON-seq с диска)
           for layer in \
             raions water \
+            park forest industrial cemetery landfill powerline railway \
             school kindergarten clinic hospital pharmacy supermarket \
             cafe restaurant bus_stop tram_stop railway_station; do
             uv run python scripts/download_file_from_s3.py \
@@ -125,11 +130,23 @@ jobs:
           uv run python scripts/build_cell_graph_distance_features.py
           uv run python scripts/build_isochrone_cache_per_hex.py
 
+      - name: Rebuild polygon/geom-distance cell features (ADR-0019/0032)
+        run: |
+          set -euo pipefail
+          # water_share_* / dist_to_water_m и остальные polygon/geom ЦОФ
+          # зависят от raw-слоёв (водный слой меняется по ADR-0032) —
+          # без этого шага ЦОФ-стор продолжал бы отдавать воду по
+          # старому geojsonseq. Пишут в тот же silver/features, который
+          # заливается шагом ниже.
+          uv run python scripts/build_cell_polygon_features.py
+          uv run python scripts/build_cell_geom_distance_features.py
+
       - name: Upload road graph + graph-distance features to S3
         run: |
           set -euo pipefail
           # silver/features was downloaded from S3 above, so re-uploading
-          # the whole prefix only replaces the rebuilt metro/walk_dist sets.
+          # the whole prefix only replaces the rebuilt metro/walk_dist/
+          # polygon/geom-distance sets.
           uv run python scripts/upload_dir_to_s3.py \
             --src data/silver/road_graph \
             --prefix Kadatastr/silver/road_graph
