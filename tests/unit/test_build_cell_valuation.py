@@ -151,8 +151,8 @@ def test_reference_price_uses_template_and_cell_location() -> None:
     out = store.saved[AssetClass.HOUSE]
     row_a = out.filter(pl.col("h3_index") == _CELL_A)
     # Template: median area 80, mode materials brick →
-    # 100_000 − 1_000 + 10·80 + 5_000 = 105_800.
-    assert row_a["reference_rub_per_m2"][0] == pytest.approx(105_800.0)
+    # 100_000 − 1_000 + 10·80 + 5_000 = 104_800.
+    assert row_a["reference_rub_per_m2"][0] == pytest.approx(104_800.0)
     row_b = out.filter(pl.col("h3_index") == _CELL_B)
     assert row_b["reference_rub_per_m2"][0] == pytest.approx(100_000 - 25_000 + 800 + 5_000)
 
@@ -237,7 +237,7 @@ def test_relative_features_computed_from_gold_aggregates() -> None:
     out = store.saved[AssetClass.HOUSE]
     row_a = out.filter(pl.col("h3_index") == _CELL_A)
     # Median gold area = 80; template area = 80 → rel diff = 0 → base price.
-    assert row_a["reference_rub_per_m2"][0] == pytest.approx(105_800.0)
+    assert row_a["reference_rub_per_m2"][0] == pytest.approx(104_800.0)
     row_b = out.filter(pl.col("h3_index") == _CELL_B)
     # No parent aggregate → rel term null → NaN → 0 contribution.
     assert row_b["reference_rub_per_m2"][0] == pytest.approx(100_000 - 25_000 + 800 + 5_000)
