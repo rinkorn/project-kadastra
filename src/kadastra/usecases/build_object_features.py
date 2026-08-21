@@ -12,11 +12,13 @@ from kadastra.etl.cell_overlap_weights import compute_overlap_weights
 from kadastra.etl.h3_coverage import add_h3_index
 from kadastra.etl.load_geometries import load_geojsonseq_geometries, load_geojsonseq_points
 from kadastra.etl.object_age_features import compute_object_age_features
+from kadastra.etl.object_cbd_distance import compute_cbd_distance
 from kadastra.etl.object_dem_features import compute_object_dem_features
 from kadastra.etl.object_geom_distance_features import (
     compute_object_geom_distance_features,
 )
 from kadastra.etl.object_geometry_features import compute_object_geometry_features
+from kadastra.etl.object_heritage_features import compute_object_heritage_features
 from kadastra.etl.object_isochrone_features import join_isochrone_features
 from kadastra.etl.object_macro_features import compute_object_macro_features
 from kadastra.etl.object_metro_features import compute_object_metro_features
@@ -28,6 +30,7 @@ from kadastra.etl.object_polygon_features import compute_object_polygon_features
 from kadastra.etl.object_road_class_features import join_road_class_features
 from kadastra.etl.object_road_features import compute_object_road_features
 from kadastra.etl.object_zonal_features import compute_object_zonal_features
+from kadastra.etl.object_zouit_features import join_zouit_features
 from kadastra.etl.relative_features import compute_relative_features
 from kadastra.ports.dem_sampler import DemSamplerPort
 from kadastra.ports.feature_reader import FeatureReaderPort
@@ -76,6 +79,9 @@ class BuildObjectFeatures:
         road_class_features_path: Path | None = None,
         isochrone_cache_path: Path | None = None,
         isochrone_cache_resolution: int = 11,
+        cbd_coords: dict[str, tuple[float, float]] | None = None,
+        heritage_silver_path: Path | None = None,
+        zouit_features_path: Path | None = None,
     ) -> None:
         self._reader = reader
         self._store = store
@@ -112,6 +118,9 @@ class BuildObjectFeatures:
         self._road_class_features_path = road_class_features_path
         self._isochrone_cache_path = isochrone_cache_path
         self._isochrone_cache_resolution = isochrone_cache_resolution
+        self._cbd_coords = cbd_coords or {}
+        self._heritage_silver_path = heritage_silver_path
+        self._zouit_features_path = zouit_features_path
 
     def execute(self, region_code: str, asset_classes: list[AssetClass]) -> None:
         stations = pl.read_csv(io.BytesIO(self._raw_data.read_bytes(self._stations_key)))
@@ -134,6 +143,12 @@ class BuildObjectFeatures:
         # are dropped before recomputing.
         raw_cols = [c for c in RAW_OBJECT_SCHEMA if c in combined.columns]
         combined = combined.select(raw_cols)
+        # CBD distance (ADR-0025 п. 1). Pure haversine on lat/lon with a
+        # per-region constant anchor — recomputed after the RAW reset on
+        # every run; skipped entirely for regions without a CBD anchor.
+        if region_code in self._cbd_coords:
+            cbd_lat, cbd_lon = self._cbd_coords[region_code]
+            combined = compute_cbd_distance(combined, cbd_lat=cbd_lat, cbd_lon=cbd_lon)
         # ADR-0027 §12: overlap-weighted assignment of cell ЦОФ to each
         # object — a large footprint blending the features of every res
         # cell it covers, weighted by area share, instead of inheriting
@@ -282,6 +297,26 @@ class BuildObjectFeatures:
                     iso_cache,
                     resolution=self._isochrone_cache_resolution,
                 )
+        # Heritage / ОКН features (ADR-0025 п. 2). Computed inline from
+        # the silver ОКН layer (built by scripts/build_heritage_silver.py
+        # from the OSM extract — Минкульт open-data API is unreachable
+        # from our network). The layer is tiny (~200 objects), so no
+        # per-object materialization is needed. Opt-in: skipped when the
+        # silver partition does not exist for the region.
+        if self._heritage_silver_path is not None:
+            heritage = self._load_heritage_objects(region_code)
+            if heritage is not None:
+                enriched = compute_object_heritage_features(enriched, heritage=heritage)
+        # ЗОУИТ features (ADR-0025 п. 3). LEFT JOIN from the per-object
+        # silver table materialized by scripts/build_zouit_features.py
+        # (spatial join of object points against the НСПД layer-36302
+        # zone polygons — the ADR's hypothetical attrs.zouit_intersection
+        # field does not exist; see «Аудит данных»). Opt-in: skipped
+        # when the silver partition does not exist for the region.
+        if self._zouit_features_path is not None:
+            zouit_features = self._load_zouit_features(region_code)
+            if zouit_features is not None:
+                enriched = join_zouit_features(enriched, zouit_features)
         # Filter feature_columns to those present (allows configuring a
         # superset in Settings — missing ones are simply skipped, not
         # errors, so per-class slices with different schemas don't crash).
@@ -295,6 +330,36 @@ class BuildObjectFeatures:
         for asset_class in asset_classes:
             slice_df = enriched.filter(pl.col("asset_class") == asset_class.value)
             self._store.save(region_code, asset_class, slice_df)
+
+    def _load_heritage_objects(self, region_code: str) -> pl.DataFrame | None:
+        """Load the silver ОКН layer for the region.
+
+        Returns ``None`` when the partition does not exist, so the
+        pipeline skips the heritage block entirely (same opt-in contract
+        as the road-class loader).
+        """
+        base = self._heritage_silver_path
+        if base is None:
+            return None
+        path = base / f"region={region_code}" / "data.parquet"
+        if not path.is_file():
+            return None
+        return pl.read_parquet(path)
+
+    def _load_zouit_features(self, region_code: str) -> pl.DataFrame | None:
+        """Load the silver per-object ЗОУИТ table for the region.
+
+        Returns ``None`` when the partition does not exist, so the
+        pipeline skips the join entirely (same opt-in contract as the
+        road-class loader).
+        """
+        base = self._zouit_features_path
+        if base is None:
+            return None
+        path = base / f"region={region_code}" / "data.parquet"
+        if not path.is_file():
+            return None
+        return pl.read_parquet(path)
 
     def _load_road_class_features(self, region_code: str) -> pl.DataFrame | None:
         """Load the silver road-class-per-object table for the region.

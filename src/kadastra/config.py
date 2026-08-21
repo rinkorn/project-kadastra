@@ -163,6 +163,32 @@ class Settings(BaseSettings):
     # ``scripts/extract_osm_polygons.py --layers raions``.
     osm_raions_geojson_path: Path = Path("data/raw/osm/kazan-agg-raions.geojsonseq")
 
+    # ADR-0025 п. 1: per-region CBD anchor (lat, lon) for dist_to_cbd_m.
+    # Kazan: Kremlin / пл. Свободы. Regions without an entry get no column.
+    cbd_coords: dict[str, tuple[float, float]] = {
+        "RU-KAZAN-AGG": (55.7975, 49.1066),
+    }
+
+    # ADR-0025 п. 2: cultural heritage (ОКН). The Минкульт open-data API
+    # is unreachable from our network, so the source is an OSM extract
+    # (backup on S3). scripts/build_heritage_silver.py parses the raw
+    # GeoJSON-seq into heritage_silver_path; BuildObjectFeatures then
+    # computes the 4 heritage features inline (the layer is tiny).
+    heritage_raw_geojson_path: Path = Path("data/raw/osm/kazan-agg-heritage.geojsonseq")
+    heritage_silver_path: Path = Path("data/silver/heritage")
+
+    # ADR-0025 п. 3: ЗОУИТ — bulk dump of НСПД layer 36302 for
+    # Tatarstan (177 663 zone polygons, EPSG:3857). The ADR's
+    # hypothetical attrs.zouit_intersection field does not exist, so the
+    # features come from a real spatial join against the zone polygons.
+    # scripts/build_zouit_silver.py parses the page dump into
+    # zouit_silver_path (bbox-filtered to the region); scripts/
+    # build_zouit_features.py materializes the per-object table that
+    # BuildObjectFeatures LEFT JOINs (ADR-0022/0023/0024 pattern).
+    zouit_raw_dir: Path = Path("data/raw/nspd/zouit-tatarstan")
+    zouit_silver_path: Path = Path("data/silver/zouit_zones")
+    zouit_features_path: Path = Path("data/silver/zouit_per_object")
+
     road_graph_edges_path: Path = Path("data/silver/road_graph/edges.parquet")
     model_registry_path: Path = Path("data/models")
     # Per-hex aggregates (BuildHexAggregates output): consumed by the
