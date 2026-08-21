@@ -11,6 +11,8 @@ from shapely.geometry.base import BaseGeometry
 
 from kadastra.domain.asset_class import AssetClass
 from kadastra.etl.haversine import haversine_meters
+from kadastra.etl.load_geometries import load_geojsonseq_points
+from kadastra.etl.object_zonal_features import compute_object_zonal_features
 from kadastra.ports.dem_sampler import DemSamplerPort
 from kadastra.ports.feature_reader import FeatureReaderPort
 from kadastra.ports.road_graph import RoadGraphPort
@@ -1594,3 +1596,73 @@ def test_shared_osm_layers_read_and_dissolved_once_per_execute(tmp_path: Path, m
     assert float(df["dist_to_water_m"][0]) == 0.0
     # School point sits exactly on the first object.
     assert float(df["dist_to_school_m"][0]) < 1.0
+
+
+def test_zonal_poi_layer_shares_parse_with_geom_distance_block(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Perf: a POI layer used both as a zonal count layer (ADR-0019
+    part 4) and as a geom-distance layer must be read from disk exactly
+    once per execute. The zonal block applies its point transform
+    (Point as-is, else centroid, empty skipped) to the parsed geometries
+    already cached for the distance block instead of re-reading the
+    GeoJSON-seq. Values must stay bit-identical to the standalone
+    ``load_geojsonseq_points`` computation."""
+    school_path = tmp_path / "school.geojsonseq"
+    d = 0.0001
+    school_path.write_text(
+        # Point exactly on object 1; a symmetric polygon whose centroid is
+        # the same spot; an empty and a null geometry that must be skipped.
+        '{"type":"Feature","properties":{},'
+        f'"geometry":{{"type":"Point","coordinates":[{KAZAN_LON},{KAZAN_LAT}]}}}}\n'
+        '{"type":"Feature","properties":{},"geometry":{"type":"Polygon","coordinates":[[['
+        f"{KAZAN_LON - d},{KAZAN_LAT - d}],[{KAZAN_LON + d},{KAZAN_LAT - d}],"
+        f"[{KAZAN_LON + d},{KAZAN_LAT + d}],[{KAZAN_LON - d},{KAZAN_LAT + d}],"
+        f"[{KAZAN_LON - d},{KAZAN_LAT - d}]]]}}}}\n"
+        '{"type":"Feature","properties":{},"geometry":{"type":"Point","coordinates":[]}}\n'
+        '{"type":"Feature","properties":{},"geometry":null}\n'
+    )
+
+    open_counts: dict[str, int] = {}
+    real_open = Path.open
+
+    def _counting_open(self: Path, *args: object, **kwargs: object) -> object:
+        open_counts[str(self)] = open_counts.get(str(self), 0) + 1
+        return real_open(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "open", _counting_open)
+
+    objects = _objects_for(AssetClass.APARTMENT)
+    store = _FakeStore({AssetClass.APARTMENT: objects})
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        zonal_layer_names=["school"],
+        zonal_radii_m=[50],
+        geom_distance_layer_paths={"school": str(school_path)},
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    # One disk read for the whole execute, shared by both blocks.
+    assert open_counts.get(str(school_path), 0) == 1
+
+    df = store.calls[0].df
+    # Bit-equivalence with the baseline point-layer computation (asserted
+    # before the baseline read so the counter above sees only execute()).
+    baseline = compute_object_zonal_features(
+        objects,
+        layers={"school": load_geojsonseq_points(str(school_path))},
+        radii_m=[50],
+    )
+    saved_col = df.select(["object_id", "school_within_50m"]).sort("object_id")
+    base_col = baseline.select(["object_id", "school_within_50m"]).sort("object_id")
+    assert saved_col.equals(base_col)
+    # Concrete expectation: point + polygon centroid sit on object 1
+    # (2 hits), ~100 m from object 2 (0 hits at 50 m); empty/null skipped.
+    assert df.filter(pl.col("object_id") == "way/apartment-1")["school_within_50m"][0] == 2
+    assert df.filter(pl.col("object_id") == "way/apartment-2")["school_within_50m"][0] == 0
+    # The distance block still consumes the same shared layer.
+    assert float(df.filter(pl.col("object_id") == "way/apartment-1")["dist_to_school_m"][0]) < 1.0

@@ -65,6 +65,13 @@ class GeoJsonSeqLayerLoader:
     def load_layers(self, paths: dict[str, str]) -> dict[str, list[BaseGeometry]]:
         return {name: self.load(path_str) for name, path_str in paths.items()}
 
+    def load_points(self, path_str: str) -> pl.DataFrame:
+        raise NotImplementedError
+
+
+def points_from_geometries(geometries: list[BaseGeometry]) -> pl.DataFrame:
+    raise NotImplementedError
+
 
 def load_geojsonseq_points(path_str: str) -> pl.DataFrame:
     """Read a GeoJSON-seq file and return one (lat, lon) per feature.
