@@ -22,13 +22,15 @@ The script is idempotent: if the output file exists and ``--force``
 is not passed, it exits without re-downloading. Polite to Overpass:
 single connection, 600 s timeout, default endpoint
 ``https://overpass-api.de/api/interpreter`` (override via
-``--endpoint``).
+``--endpoint``). Transient failures (429/5xx, e.g. the 504 Overpass
+returns under load) are retried with exponential backoff.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 import httpx
@@ -38,6 +40,13 @@ import httpx
 _DEFAULT_BBOX = "55.39,48.51,56.16,49.74"
 _DEFAULT_OUT = Path("data/raw/osm/kazan_walking_network.json")
 _DEFAULT_ENDPOINT = "https://overpass-api.de/api/interpreter"
+
+# Overpass answers 504/429 under load; the widened bbox + bridge union
+# (ADR-0030) makes the query heavier, so retry instead of failing the
+# whole rebuild run.
+_RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+_MAX_ATTEMPTS = 5
+_INITIAL_BACKOFF_S = 60.0
 
 _QUERY_TEMPLATE = """
 [out:json][timeout:600];
@@ -94,15 +103,31 @@ def main() -> None:
         "User-Agent": ("kadastra-pilot/0.1 (https://github.com/joeblackdev/kadastra; rinkorn.alb@gmail.com)"),
         "Accept": "application/json,*/*",
     }
+    r: httpx.Response | None = None
+    delay = _INITIAL_BACKOFF_S
     with httpx.Client(timeout=httpx.Timeout(900.0), headers=headers) as client:
-        try:
-            r = client.post(args.endpoint, data={"data": query})
-        except httpx.HTTPError as exc:
-            sys.exit(f"Overpass request failed: {exc}")
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            try:
+                r = client.post(args.endpoint, data={"data": query})
+            except httpx.HTTPError as exc:
+                reason = str(exc)
+            else:
+                if r.status_code == 200:
+                    break
+                reason = f"HTTP {r.status_code}: {r.text[:200]}"
+                if r.status_code not in _RETRYABLE_STATUS:
+                    sys.exit(f"Overpass returned {reason}")
+                r = None
+            if attempt == _MAX_ATTEMPTS:
+                sys.exit(f"Overpass request failed after {_MAX_ATTEMPTS} attempts: {reason}")
+            print(
+                f"  attempt {attempt}/{_MAX_ATTEMPTS} failed ({reason}); retrying in {delay:.0f}s",
+                flush=True,
+            )
+            time.sleep(delay)
+            delay *= 2
 
-    if r.status_code != 200:
-        sys.exit(f"Overpass returned HTTP {r.status_code}: {r.text[:500]}")
-
+    assert r is not None
     args.out.write_bytes(r.content)
     size_mb = len(r.content) / 1024 / 1024
     print(f"Saved {size_mb:.1f} MB to {args.out}", flush=True)
