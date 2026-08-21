@@ -10,6 +10,7 @@ from kadastra.adapters.local_oof_predictions_reader import LocalOofPredictionsRe
 from kadastra.adapters.mlflow_model_loader import MLflowModelLoader
 from kadastra.adapters.mlflow_model_registry import MLflowModelRegistry
 from kadastra.adapters.networkx_road_graph import NetworkxRoadGraph
+from kadastra.adapters.parquet_cell_valuation_store import ParquetCellValuationStore
 from kadastra.adapters.parquet_coverage_store import ParquetCoverageStore
 from kadastra.adapters.parquet_feature_store import ParquetFeatureStore
 from kadastra.adapters.parquet_nspd_silver_store import ParquetNspdSilverStore
@@ -399,7 +400,7 @@ class Container:
             cell_feature_reader=ParquetFeatureStore(s.feature_store_path),
             object_reader=ParquetValuationObjectStore(s.valuation_object_store_path),
             ebm_loader=LocalEbmModelLoader(s.model_registry_path),
-            output_store=ParquetValuationObjectStore(s.cell_valuation_store_path),
+            output_store=ParquetCellValuationStore(s.cell_valuation_store_path),
             cell_feature_sets=CELL_VALUATION_FEATURE_SETS,
             resolution=s.cell_tsorf_resolution,
             relative_parent_resolutions=s.relative_feature_parent_resolutions,

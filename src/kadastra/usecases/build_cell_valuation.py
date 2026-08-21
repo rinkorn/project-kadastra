@@ -34,10 +34,10 @@ from kadastra.etl.relative_features import compute_parent_aggregates, join_relat
 from kadastra.ml.cell_location_terms import sum_location_terms
 from kadastra.ml.object_feature_columns import select_object_feature_columns
 from kadastra.ml.object_feature_matrix import build_object_feature_matrix
+from kadastra.ports.cell_valuation_store import CellValuationStorePort
 from kadastra.ports.ebm_model_loader import EbmScorerLoaderPort
 from kadastra.ports.feature_reader import FeatureReaderPort
 from kadastra.ports.valuation_object_reader import ValuationObjectReaderPort
-from kadastra.ports.valuation_object_store import ValuationObjectStorePort
 
 _TARGET_COLUMN = "synthetic_target_rub_per_m2"
 
@@ -82,7 +82,7 @@ class BuildCellValuation:
         cell_feature_reader: FeatureReaderPort,
         object_reader: ValuationObjectReaderPort,
         ebm_loader: EbmScorerLoaderPort,
-        output_store: ValuationObjectStorePort,
+        output_store: CellValuationStorePort,
         *,
         cell_feature_sets: tuple[str, ...],
         resolution: int,
