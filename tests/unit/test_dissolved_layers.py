@@ -113,6 +113,7 @@ def test_polygon_features_with_shared_cache_bit_exact(union_counter: list[int]) 
 
     baseline_a = compute_object_polygon_features(objects_a, polygons_by_layer=layers, radii_m=[100, 800])
     baseline_b = compute_object_polygon_features(objects_b, polygons_by_layer=layers, radii_m=[100, 800])
+    union_counter[0] = 0
 
     cache = DissolvedLayers()
     out_a = compute_object_polygon_features(objects_a, polygons_by_layer=layers, radii_m=[100, 800], dissolved=cache)
@@ -130,6 +131,7 @@ def test_geom_distance_features_with_shared_cache_bit_exact(union_counter: list[
 
     baseline_a = compute_object_geom_distance_features(objects_a, geometries_by_layer=layers)
     baseline_b = compute_object_geom_distance_features(objects_b, geometries_by_layer=layers)
+    union_counter[0] = 0
 
     cache = DissolvedLayers()
     out_a = compute_object_geom_distance_features(objects_a, geometries_by_layer=layers, dissolved=cache)
