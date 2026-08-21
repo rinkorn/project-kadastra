@@ -169,6 +169,14 @@ class Settings(BaseSettings):
         "RU-KAZAN-AGG": (55.7975, 49.1066),
     }
 
+    # ADR-0025 п. 2: cultural heritage (ОКН). The Минкульт open-data API
+    # is unreachable from our network, so the source is an OSM extract
+    # (backup on S3). scripts/build_heritage_silver.py parses the raw
+    # GeoJSON-seq into heritage_silver_path; BuildObjectFeatures then
+    # computes the 4 heritage features inline (the layer is tiny).
+    heritage_raw_geojson_path: Path = Path("data/raw/osm/kazan-agg-heritage.geojsonseq")
+    heritage_silver_path: Path = Path("data/silver/heritage")
+
     road_graph_edges_path: Path = Path("data/silver/road_graph/edges.parquet")
     model_registry_path: Path = Path("data/models")
     # Per-hex aggregates (BuildHexAggregates output): consumed by the

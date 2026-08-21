@@ -18,6 +18,7 @@ from kadastra.etl.object_geom_distance_features import (
     compute_object_geom_distance_features,
 )
 from kadastra.etl.object_geometry_features import compute_object_geometry_features
+from kadastra.etl.object_heritage_features import compute_object_heritage_features
 from kadastra.etl.object_isochrone_features import join_isochrone_features
 from kadastra.etl.object_macro_features import compute_object_macro_features
 from kadastra.etl.object_metro_features import compute_object_metro_features
@@ -293,6 +294,16 @@ class BuildObjectFeatures:
                     iso_cache,
                     resolution=self._isochrone_cache_resolution,
                 )
+        # Heritage / ОКН features (ADR-0025 п. 2). Computed inline from
+        # the silver ОКН layer (built by scripts/build_heritage_silver.py
+        # from the OSM extract — Минкульт open-data API is unreachable
+        # from our network). The layer is tiny (~200 objects), so no
+        # per-object materialization is needed. Opt-in: skipped when the
+        # silver partition does not exist for the region.
+        if self._heritage_silver_path is not None:
+            heritage = self._load_heritage_objects(region_code)
+            if heritage is not None:
+                enriched = compute_object_heritage_features(enriched, heritage=heritage)
         # Filter feature_columns to those present (allows configuring a
         # superset in Settings — missing ones are simply skipped, not
         # errors, so per-class slices with different schemas don't crash).
@@ -306,6 +317,21 @@ class BuildObjectFeatures:
         for asset_class in asset_classes:
             slice_df = enriched.filter(pl.col("asset_class") == asset_class.value)
             self._store.save(region_code, asset_class, slice_df)
+
+    def _load_heritage_objects(self, region_code: str) -> pl.DataFrame | None:
+        """Load the silver ОКН layer for the region.
+
+        Returns ``None`` when the partition does not exist, so the
+        pipeline skips the heritage block entirely (same opt-in contract
+        as the road-class loader).
+        """
+        base = self._heritage_silver_path
+        if base is None:
+            return None
+        path = base / f"region={region_code}" / "data.parquet"
+        if not path.is_file():
+            return None
+        return pl.read_parquet(path)
 
     def _load_road_class_features(self, region_code: str) -> pl.DataFrame | None:
         """Load the silver road-class-per-object table for the region.
