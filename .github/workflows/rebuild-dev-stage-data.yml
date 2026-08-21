@@ -3,14 +3,41 @@ name: Rebuild dev-stage data
 on:
   workflow_dispatch:
 
+# Схема «VM = хостинг, compute — на GitHub-runner'е» (info/dev-rules.md):
+# весь compute (скачивание входов, пересчёт road graph / cell ЦОФ /
+# object features / hex aggregates, выгрузка результатов) идёт на
+# ubuntu-latest runner'е напрямую через `uv run` — без docker и без
+# занятой часами продажной машины. На VM по ssh остаётся только финал:
+# забрать пересчитанные префиксы с S3 в data/ (docker compose scripts +
+# download_dir_from_s3.py), restart контейнера, chown data/, healthcheck.
+#
+# Идемпотентность: download_dir_from_s3/upload_dir_to_s3 пропускают
+# файлы с совпадающим размером, пересчёты детерминированы (raw-сброс
+# схемы в BuildObjectFeatures и т.п.) — повторный запуск даёт тот же
+# результат.
+
 jobs:
   rebuild:
     name: Rebuild valuation_objects + hex_aggregates on dev-stage
     runs-on: ubuntu-latest
     env:
       DEPLOY_PATH: ${{ vars.DEV_STAGE_DEPLOY_PATH }}
+      # Settings (src/kadastra/config.py) читает S3_* напрямую из env —
+      # маппим DEV_STAGE_S3_* vars/secrets на них для всех compute-шагов
+      # (scripts/download_*/upload_* берут конфиг из того же Settings).
+      S3_ENDPOINT_URL: ${{ vars.DEV_STAGE_S3_ENDPOINT_URL }}
+      S3_BUCKET: ${{ vars.DEV_STAGE_S3_BUCKET }}
+      S3_ACCESS_KEY: ${{ secrets.DEV_STAGE_S3_ACCESS_KEY }}
+      S3_SECRET_KEY: ${{ secrets.DEV_STAGE_S3_SECRET_KEY }}
+      S3_REGION: ${{ vars.DEV_STAGE_S3_REGION }}
+      S3_ADDRESSING_STYLE: ${{ vars.DEV_STAGE_S3_ADDRESSING_STYLE }}
     steps:
       - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --frozen
 
       - name: Setup SSH
         run: |
@@ -23,122 +50,154 @@ jobs:
           # mid-step ("client_loop: send disconnect: Broken pipe").
           printf 'Host *\n  ServerAliveInterval 30\n  ServerAliveCountMax 40\n' >> ~/.ssh/config
 
-      - name: Build scripts image from current sources
+      - name: Download rebuild inputs from S3
+        run: |
+          set -euo pipefail
+          # Everything build_object_features (CELL_TSORF_ENABLED=true) and
+          # build_hex_aggregates read besides the gold objects:
+          # - silver/features: the Слой 1 cell ЦОФ store joined per object
+          # - silver/gar_lookup: GAR cadnum/municipality lookups
+          # - silver/coverage: H3-гексы покрытия региона (res 7–11) —
+          #   обязательный вход build_cell_metro_features /
+          #   build_cell_graph_distance_features; на VM лежит в data/
+          #   volume, на runner'е checkout её не содержит
+          # - models: OOF artifacts the hex aggregates join (latest quartet
+          #   run per class is picked; the whole prefix is mirrored so the
+          #   workflow stays correct as new runs land)
+          uv run python scripts/download_dir_from_s3.py \
+            --prefix Kadatastr/gold/valuation_objects \
+            --dst data/gold/valuation_objects
+          uv run python scripts/download_dir_from_s3.py \
+            --prefix Kadatastr/silver/features --dst data/silver/features
+          uv run python scripts/download_dir_from_s3.py \
+            --prefix Kadatastr/silver/gar_lookup --dst data/silver/gar_lookup
+          uv run python scripts/download_dir_from_s3.py \
+            --prefix Kadatastr/silver/coverage --dst data/silver/coverage
+          uv run python scripts/download_dir_from_s3.py \
+            --prefix Kadatastr/models --dst data/models
+
+      - name: Download raw OSM layers from S3
+        run: |
+          set -euo pipefail
+          # - raions: intra-city raion polygons (build_object_features)
+          # - water: ADR-0030 water-crossing filter (build_road_graph_artifact)
+          # - school..railway_station: point-POI слои walk_dist_layer_names —
+          #   входы build_cell_graph_distance_features и
+          #   build_isochrone_cache_per_hex (читают GeoJSON-seq с диска)
+          for layer in \
+            raions water \
+            school kindergarten clinic hospital pharmacy supermarket \
+            cafe restaurant bus_stop tram_stop railway_station; do
+            uv run python scripts/download_file_from_s3.py \
+              --key "Kadatastr/raw/osm/kazan-agg-${layer}.geojsonseq" \
+              --dst "data/raw/osm/kazan-agg-${layer}.geojsonseq"
+          done
+
+      - name: Fetch VM-only rebuild inputs over SSH
+        run: |
+          set -euo pipefail
+          # Opt-in входы build_object_features (ADR-0022..0025): DEM-растры,
+          # road-class-per-object, heritage/ОКН, ЗОУИТ, macro-EMISS. Эти
+          # silver-префиксы пока НЕ зеркалятся на S3 — живут только в data/
+          # на VM (deploy-ный rsync data/ носит с собой). Без них блоки
+          # молча скипаются и valuation_objects теряет колонки — поэтому
+          # забираем их с VM read-only (VM здесь — чистый хостинг данных).
+          # TODO: разово залить префиксы на S3 и заменить шаг на
+          # download_dir_from_s3 — тогда VM не участвует и в входах.
+          for d in dem road_class_per_object heritage zouit_per_object macro_oktmo_features; do
+            mkdir -p "data/silver/$d"
+            rsync -az \
+              -e "ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }}" \
+              "${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }}:${{ env.DEPLOY_PATH }}/data/silver/$d/" \
+              "data/silver/$d/"
+          done
+
+      - name: Rebuild road graph (ADR-0030)
+        run: |
+          set -euo pipefail
+          # Fresh OSM pull with the extended bbox (+12 km slack) and the
+          # bridge=yes union, then edges.parquet with OSM tags and the
+          # water-crossing filter against kazan-agg-water.geojsonseq
+          # (downloaded above).
+          uv run python scripts/download_walking_network.py --force
+          uv run python scripts/build_road_graph_artifact.py
+
+      - name: Rebuild graph-distance cell features (ADR-0030)
+        run: |
+          set -euo pipefail
+          # Everything computed off the road graph must be refreshed:
+          # metro ЦОФ, walk_dist_to_* ЦОФ and the 15-min isochrone cache.
+          uv run python scripts/build_cell_metro_features.py
+          uv run python scripts/build_cell_graph_distance_features.py
+          uv run python scripts/build_isochrone_cache_per_hex.py
+
+      - name: Upload road graph + graph-distance features to S3
+        run: |
+          set -euo pipefail
+          # silver/features was downloaded from S3 above, so re-uploading
+          # the whole prefix only replaces the rebuilt metro/walk_dist sets.
+          uv run python scripts/upload_dir_to_s3.py \
+            --src data/silver/road_graph \
+            --prefix Kadatastr/silver/road_graph
+          uv run python scripts/upload_dir_to_s3.py \
+            --src data/silver/features \
+            --prefix Kadatastr/silver/features
+          uv run python scripts/upload_dir_to_s3.py \
+            --src data/silver/isochrone_cache \
+            --prefix Kadatastr/silver/isochrone_cache
+
+      - name: Rebuild object features
+        env:
+          CELL_TSORF_ENABLED: "true"
+        run: uv run python scripts/build_object_features.py
+
+      - name: Rebuild hex aggregates
+        run: uv run python scripts/build_hex_aggregates.py
+
+      - name: Upload valuation_objects to S3
+        run: |
+          uv run python scripts/upload_dir_to_s3.py \
+            --src data/gold/valuation_objects \
+            --prefix Kadatastr/gold/valuation_objects
+
+      - name: Upload hex_aggregates to S3
+        run: |
+          uv run python scripts/upload_dir_to_s3.py \
+            --src data/gold/hex_aggregates \
+            --prefix Kadatastr/gold/hex_aggregates
+
+      # --- Дальше только VM (хостинг): pull пересчитанных префиксов с S3,
+      #     restart контейнера, chown, healthcheck. Compute на VM нет. ---
+
+      - name: Build scripts image on VM
         run: |
           # Scripts/ are baked into the image (only data/ is a volume), so
-          # the image must be rebuilt before any download_* step can use
-          # freshly deployed script changes.
+          # the image must be rebuilt before the download_dir_from_s3 steps
+          # below can use freshly deployed script changes.
           ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
             ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
             "cd ${{ env.DEPLOY_PATH }} && \
              docker compose --profile scripts build scripts"
 
-      - name: Download current valuation_objects from S3
+      - name: Pull rebuilt prefixes from S3 on VM
         run: |
+          # Compute уже отгрузил результаты на S3 — VM зеркалит их в свой
+          # data/ тем же идемпотентным download_dir_from_s3 (size-match
+          # skip). Только пересчитанные префиксы: road graph, cell ЦОФ,
+          # isochrone cache, valuation_objects, hex_aggregates.
           ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
             ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
             "cd ${{ env.DEPLOY_PATH }} && \
              docker compose --profile scripts run --rm scripts scripts/download_dir_from_s3.py \
-               --prefix Kadatastr/gold/valuation_objects \
-               --dst data/gold/valuation_objects"
-
-      - name: Download rebuild inputs from S3
-        run: |
-          # Everything build_object_features (CELL_TSORF_ENABLED=true) and
-          # build_hex_aggregates read besides the gold objects:
-          # - silver/features: the Слой 1 cell ЦОФ store joined per object
-          # - silver/gar_lookup: GAR cadnum/municipality lookups
-          # - raw/osm/kazan-agg-raions.geojsonseq: intra-city raion polygons
-          # - models: OOF artifacts the hex aggregates join (latest quartet
-          #   run per class is picked; the whole prefix is mirrored so the
-          #   workflow stays correct as new runs land)
-          ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
-            ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
-            "cd ${{ env.DEPLOY_PATH }} && \
+               --prefix Kadatastr/silver/road_graph --dst data/silver/road_graph && \
              docker compose --profile scripts run --rm scripts scripts/download_dir_from_s3.py \
                --prefix Kadatastr/silver/features --dst data/silver/features && \
              docker compose --profile scripts run --rm scripts scripts/download_dir_from_s3.py \
-               --prefix Kadatastr/silver/gar_lookup --dst data/silver/gar_lookup && \
+               --prefix Kadatastr/silver/isochrone_cache --dst data/silver/isochrone_cache && \
              docker compose --profile scripts run --rm scripts scripts/download_dir_from_s3.py \
-               --prefix Kadatastr/models --dst data/models && \
-             docker compose --profile scripts run --rm scripts scripts/download_file_from_s3.py \
-               --key Kadatastr/raw/osm/kazan-agg-raions.geojsonseq \
-               --dst data/raw/osm/kazan-agg-raions.geojsonseq && \
-             docker compose --profile scripts run --rm scripts scripts/download_file_from_s3.py \
-               --key Kadatastr/raw/osm/kazan-agg-water.geojsonseq \
-               --dst data/raw/osm/kazan-agg-water.geojsonseq"
-
-      - name: Rebuild road graph (ADR-0030)
-        run: |
-          # Fresh OSM pull with the extended bbox (+12 km slack) and the
-          # bridge=yes union, then edges.parquet with OSM tags and the
-          # water-crossing filter against kazan-agg-water.geojsonseq
-          # (downloaded above).
-          ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
-            ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
-            "cd ${{ env.DEPLOY_PATH }} && \
-             docker compose --profile scripts run --rm scripts scripts/download_walking_network.py --force && \
-             docker compose --profile scripts run --rm scripts scripts/build_road_graph_artifact.py"
-
-      - name: Rebuild graph-distance cell features (ADR-0030)
-        run: |
-          # Everything computed off the road graph must be refreshed:
-          # metro ЦОФ, walk_dist_to_* ЦОФ and the 15-min isochrone cache.
-          ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
-            ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
-            "cd ${{ env.DEPLOY_PATH }} && \
-             docker compose --profile scripts run --rm scripts scripts/build_cell_metro_features.py && \
-             docker compose --profile scripts run --rm scripts scripts/build_cell_graph_distance_features.py && \
-             docker compose --profile scripts run --rm scripts scripts/build_isochrone_cache_per_hex.py"
-
-      - name: Upload road graph + graph-distance features to S3
-        run: |
-          # silver/features was downloaded from S3 above, so re-uploading
-          # the whole prefix only replaces the rebuilt metro/walk_dist sets.
-          ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
-            ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
-            "cd ${{ env.DEPLOY_PATH }} && \
-             docker compose --profile scripts run --rm scripts scripts/upload_dir_to_s3.py \
-               --src data/silver/road_graph \
-               --prefix Kadatastr/silver/road_graph && \
-             docker compose --profile scripts run --rm scripts scripts/upload_dir_to_s3.py \
-               --src data/silver/features \
-               --prefix Kadatastr/silver/features && \
-             docker compose --profile scripts run --rm scripts scripts/upload_dir_to_s3.py \
-               --src data/silver/isochrone_cache \
-               --prefix Kadatastr/silver/isochrone_cache"
-
-      - name: Rebuild object features
-        run: |
-          ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
-            ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
-            "cd ${{ env.DEPLOY_PATH }} && \
-             docker compose --profile scripts run --rm -e CELL_TSORF_ENABLED=true scripts scripts/build_object_features.py"
-
-      - name: Rebuild hex aggregates
-        run: |
-          ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
-            ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
-            "cd ${{ env.DEPLOY_PATH }} && \
-             docker compose --profile scripts run --rm scripts scripts/build_hex_aggregates.py"
-
-      - name: Upload valuation_objects to S3
-        run: |
-          ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
-            ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
-            "cd ${{ env.DEPLOY_PATH }} && \
-             docker compose --profile scripts run --rm scripts scripts/upload_dir_to_s3.py \
-               --src data/gold/valuation_objects \
-               --prefix Kadatastr/gold/valuation_objects"
-
-      - name: Upload hex_aggregates to S3
-        run: |
-          ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
-            ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
-            "cd ${{ env.DEPLOY_PATH }} && \
-             docker compose --profile scripts run --rm scripts scripts/upload_dir_to_s3.py \
-               --src data/gold/hex_aggregates \
-               --prefix Kadatastr/gold/hex_aggregates"
+               --prefix Kadatastr/gold/valuation_objects --dst data/gold/valuation_objects && \
+             docker compose --profile scripts run --rm scripts scripts/download_dir_from_s3.py \
+               --prefix Kadatastr/gold/hex_aggregates --dst data/gold/hex_aggregates"
 
       - name: Restart dev-stage container to cold-pull fresh data
         run: |
@@ -149,8 +208,7 @@ jobs:
 
       - name: Fix data directory ownership for future CI/CD deploys
         run: |
-          # The rebuild downloads inputs and writes outputs as root
-          # (Docker) across data/ — gold, silver, models, raw. Re-own the
+          # The pull above writes into data/ as root (Docker). Re-own the
           # whole tree so the next deploy's rsync --delete can prune it.
           ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
             ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
