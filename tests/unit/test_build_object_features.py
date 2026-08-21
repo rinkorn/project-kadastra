@@ -209,6 +209,7 @@ def _usecase(
     isochrone_cache_resolution: int = 11,
     cbd_coords: dict[str, tuple[float, float]] | None = None,
     heritage_silver_path: Path | None = None,
+    zouit_features_path: Path | None = None,
 ) -> BuildObjectFeatures:
     return BuildObjectFeatures(
         reader=store,
@@ -252,6 +253,7 @@ def _usecase(
         isochrone_cache_resolution=isochrone_cache_resolution,
         cbd_coords=cbd_coords,
         heritage_silver_path=heritage_silver_path,
+        zouit_features_path=zouit_features_path,
     )
 
 
@@ -1453,3 +1455,68 @@ def test_heritage_columns_absent_when_partition_missing(tmp_path) -> None:  # ty
 
     df = store.calls[0].df
     assert "dist_to_nearest_heritage_m" not in df.columns
+
+
+def _zouit_silver_frame() -> pl.DataFrame:
+    return pl.DataFrame(
+        [
+            {
+                "object_id": "way/apartment-1",
+                "inside_zouit": 1,
+                "zouit_types": "power_line;water_protection",
+                "inside_water_protection": 1,
+            }
+        ],
+        schema={
+            "object_id": pl.Utf8,
+            "inside_zouit": pl.Int64,
+            "zouit_types": pl.Utf8,
+            "inside_water_protection": pl.Int64,
+        },
+    )
+
+
+def test_appends_zouit_columns_when_silver_present(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """ADR-0025 п. 3: with zouit_features_path wired and the per-object
+    silver table on disk, the 3 ЗОУИТ columns land on the saved
+    partition, joined by object_id; objects missing from the table get
+    nulls. The join runs after the RAW_OBJECT_SCHEMA reset (ADR-0022/
+    0023/0024 pattern), so the columns are recomputed from silver on
+    every rerun."""
+    part_dir = tmp_path / "region=RU-KAZAN-AGG"
+    part_dir.mkdir(parents=True)
+    _zouit_silver_frame().write_parquet(part_dir / "data.parquet")
+
+    store = _FakeStore({AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)})
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(store, raw, zouit_features_path=tmp_path).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    for col in ("inside_zouit", "zouit_types", "inside_water_protection"):
+        assert col in df.columns
+    row_1 = df.row(0, named=True)
+    assert row_1["inside_zouit"] == 1
+    assert row_1["zouit_types"] == "power_line;water_protection"
+    assert df.row(1, named=True)["inside_zouit"] is None
+
+
+def test_zouit_columns_absent_when_partition_missing(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """Path wired but no silver partition on disk → the join is skipped
+    entirely (no columns)."""
+    store = _FakeStore({AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)})
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(store, raw, zouit_features_path=tmp_path).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT])
+
+    df = store.calls[0].df
+    for col in ("inside_zouit", "zouit_types", "inside_water_protection"):
+        assert col not in df.columns
