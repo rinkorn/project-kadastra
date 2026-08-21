@@ -159,6 +159,10 @@ class Settings(BaseSettings):
     nspd_buildings_raw_dir: Path = Path("data/raw/nspd/buildings-kazan")
     nspd_landplots_raw_dir: Path = Path("data/raw/nspd/landplots-kazan")
 
+    # ADR-0031: listings-as-target ETL (apartment, CIAN MVP-дамп).
+    listings_mvp_parquet_path: Path = Path("data/silver/listings-mvp/all.parquet")
+    listings_target_store_path: Path = Path("data/silver/listings_target")
+
     # ADR-0015: GAR-derived silver lookup tables for territorial features.
     gar_lookup_cadnum_index_path: Path = Path("data/silver/gar_lookup/cadnum_index.parquet")
     gar_lookup_mun_lookup_path: Path = Path("data/silver/gar_lookup/mun_lookup.parquet")
