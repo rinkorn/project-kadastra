@@ -29,6 +29,20 @@ class _FakeRoadGraph:
     ) -> np.ndarray:
         return self.distance_matrix_m(from_coords, to_coords).min(axis=1)
 
+    # ADR-0024 topology accessors — no graph behind this fake.
+    def snap_node(self, coord: tuple[float, float]) -> tuple[int, float]:
+        raise ValueError("fake has no nodes")
+
+    def node_coord(self, node_id: int) -> tuple[float, float]:
+        raise ValueError("fake has no nodes")
+
+    def reachable_nodes_within_m(
+        self,
+        from_coord: tuple[float, float],
+        cutoff_m: float,
+    ) -> dict[int, float]:
+        return {}
+
 
 def _cell_frame(cell: str) -> pl.DataFrame:
     return pl.DataFrame({"h3_index": [cell]})
@@ -83,6 +97,20 @@ def test_unreachable_points_yield_far_sentinel() -> None:
             to_coords: list[tuple[float, float]],
         ) -> np.ndarray:
             return self.distance_matrix_m(from_coords, to_coords).min(axis=1)
+
+        # ADR-0024 topology accessors — no graph behind this fake.
+        def snap_node(self, coord: tuple[float, float]) -> tuple[int, float]:
+            raise ValueError("fake has no nodes")
+
+        def node_coord(self, node_id: int) -> tuple[float, float]:
+            raise ValueError("fake has no nodes")
+
+        def reachable_nodes_within_m(
+            self,
+            from_coord: tuple[float, float],
+            cutoff_m: float,
+        ) -> dict[int, float]:
+            return {}
 
     df = compute_cell_graph_distance_features(
         _cell_frame(cell),

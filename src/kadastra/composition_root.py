@@ -261,6 +261,9 @@ class Container:
             macro_oktmo_features_path=(s.macro_oktmo_features_path if s.macro_emiss_enabled else None),
             cadastre_target_year=s.cadastre_target_year,
             dem_sampler=(self.build_dem_sampler() if s.dem_features_enabled else None),
+            road_class_features_path=s.road_class_features_path,
+            isochrone_cache_path=s.isochrone_cache_path,
+            isochrone_cache_resolution=s.isochrone_cache_resolution,
         )
 
     def build_object_synthetic_target(self) -> BuildObjectSyntheticTarget:

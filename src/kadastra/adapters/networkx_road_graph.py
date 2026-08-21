@@ -79,6 +79,27 @@ class NetworkxRoadGraph(RoadGraphPort):
         node_lat, node_lon = self._node_coords[node_id]
         return node_id, haversine_meters(lat, lon, float(node_lat), float(node_lon))
 
+    def snap_node(self, coord: _Coord) -> tuple[int, float]:
+        return self._snap(coord[0], coord[1])
+
+    def node_coord(self, node_id: int) -> _Coord:
+        lat, lon = self._node_coords[node_id]
+        return float(lat), float(lon)
+
+    def reachable_nodes_within_m(self, from_coord: _Coord, cutoff_m: float) -> dict[int, float]:
+        if cutoff_m < 0:
+            raise ValueError(f"cutoff_m must be non-negative; got {cutoff_m}")
+        node, snap_m = self._snap(from_coord[0], from_coord[1])
+        if snap_m > cutoff_m:
+            return {}
+        dists = nx.single_source_dijkstra_path_length(
+            self._graph,
+            node,
+            cutoff=cutoff_m - snap_m,
+            weight="length_m",
+        )
+        return {n: float(d + snap_m) for n, d in dists.items()}
+
     def distance_matrix_m(
         self,
         from_coords: list[_Coord],

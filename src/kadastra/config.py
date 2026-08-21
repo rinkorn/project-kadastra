@@ -201,6 +201,24 @@ class Settings(BaseSettings):
     dem_silver_base_path: Path = Path("data/silver/dem")
     dem_relief_radius_m: float = 500.0
     dem_features_enabled: bool = True
+
+    # ADR-0024: advanced road-network features. Group 1 (nearest road
+    # class + per-class distances) is materialized per object by
+    # scripts/build_nearest_road_features.py into
+    # road_class_features_path; Group 2 (15-min walking isochrone
+    # enrichment) is cached per res-11 hex by
+    # scripts/build_isochrone_cache_per_hex.py into isochrone_cache_path.
+    # BuildObjectFeatures LEFT JOINs both when the silver tables exist
+    # for the region (else the steps are skipped). minor_road_ways_path
+    # is the OSM extract of minor-class ways (service/footway/
+    # residential/...) with coords_json — the existing road graph and
+    # the major-roads raw carry no highway classes (ADR-0024 «Аудит»).
+    minor_road_ways_path: Path = Path("data/raw/osm/kazan-agg-minor_road_ways.parquet")
+    road_class_features_path: Path = Path("data/silver/road_class_per_object")
+    isochrone_cache_path: Path = Path("data/silver/isochrone_cache")
+    isochrone_walking_speed_m_per_min: float = 80.0
+    isochrone_walking_time_min: int = 15
+    isochrone_cache_resolution: int = 11
     catboost_iterations: int = 500
     catboost_learning_rate: float = 0.05
     catboost_depth: int = 6

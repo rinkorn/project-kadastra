@@ -37,6 +37,21 @@ class _HaversineRoadGraph(RoadGraphPort):
     ) -> np.ndarray:
         return self.distance_matrix_m(from_coords, to_coords).min(axis=1)
 
+    # ADR-0024 topology accessors — this fake has no graph, so there is
+    # nothing to snap to or reach. Not exercised by these tests.
+    def snap_node(self, coord: tuple[float, float]) -> tuple[int, float]:
+        raise ValueError("haversine fake has no nodes")
+
+    def node_coord(self, node_id: int) -> tuple[float, float]:
+        raise ValueError("haversine fake has no nodes")
+
+    def reachable_nodes_within_m(
+        self,
+        from_coord: tuple[float, float],
+        cutoff_m: float,
+    ) -> dict[int, float]:
+        return {}
+
 
 _FAKE_GRAPH = _HaversineRoadGraph()
 
@@ -314,6 +329,20 @@ def test_disconnected_object_yields_far_sentinel_not_inf() -> None:
             to_coords: list[tuple[float, float]],
         ) -> np.ndarray:
             return self.distance_matrix_m(from_coords, to_coords).min(axis=1)
+
+        # ADR-0024 topology accessors — no graph behind this fake.
+        def snap_node(self, coord: tuple[float, float]) -> tuple[int, float]:
+            raise ValueError("disconnected fake has no nodes")
+
+        def node_coord(self, node_id: int) -> tuple[float, float]:
+            raise ValueError("disconnected fake has no nodes")
+
+        def reachable_nodes_within_m(
+            self,
+            from_coord: tuple[float, float],
+            cutoff_m: float,
+        ) -> dict[int, float]:
+            return {}
 
     objects = _objects(
         [
