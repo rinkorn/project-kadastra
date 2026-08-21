@@ -6,10 +6,17 @@ computed by single-source Dijkstra from each target node — N targets
 means N Dijkstras, each O((V+E) log V), independent of how many source
 points are queried (the typical access pattern is "many objects vs
 few POIs", where this is much faster than per-pair shortest_path).
+
+ADR-0030: builds keep only the **largest connected component**. Real OSM
+extracts carry hundreds of detached slivers (unlinked road stubs,
+islands, dropped phantom crossings); snapping into one of them made the
+object unreachable from everything and produced inf distances. With the
+main component kept, ``_snap`` always lands on the routable network.
 """
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -20,6 +27,8 @@ from scipy.spatial import cKDTree  # pyright: ignore[reportAttributeAccessIssue]
 
 from kadastra.etl.haversine import haversine_meters
 from kadastra.ports.road_graph import RoadGraphPort
+
+logger = logging.getLogger(__name__)
 
 _Coord = tuple[float, float]
 _EDGES_SCHEMA = ("from_lat", "from_lon", "to_lat", "to_lon", "length_m")
@@ -49,7 +58,44 @@ class NetworkxRoadGraph(RoadGraphPort):
                 coord_to_id[to_coord],
                 length_m=float(length),
             )
-        return cls(graph, np.asarray(node_coords, dtype=np.float64))
+        return cls._largest_connected_component(graph, node_coords)
+
+    @classmethod
+    def _largest_connected_component(
+        cls,
+        graph: nx.Graph[int],
+        node_coords: list[_Coord],
+    ) -> NetworkxRoadGraph:
+        """Keep only the largest connected component (ADR-0030).
+
+        Node ids are re-indexed contiguously so ``node_coords`` stays a
+        plain positional array. Dropped nodes/edges are logged."""
+        if graph.number_of_nodes() == 0:
+            return cls(graph, np.asarray(node_coords, dtype=np.float64).reshape(0, 2))
+        components = list(nx.connected_components(graph))
+        if len(components) == 1:
+            return cls(graph, np.asarray(node_coords, dtype=np.float64))
+
+        largest = max(components, key=len)
+        sub = graph.subgraph(largest)
+        dropped_nodes = graph.number_of_nodes() - sub.number_of_nodes()
+        dropped_edges = graph.number_of_edges() - sub.number_of_edges()
+        logger.info(
+            "road graph: keeping largest connected component "
+            "(%d of %d nodes, %d of %d edges); dropped %d nodes / %d edges in %d small components",
+            sub.number_of_nodes(),
+            graph.number_of_nodes(),
+            sub.number_of_edges(),
+            graph.number_of_edges(),
+            dropped_nodes,
+            dropped_edges,
+            len(components) - 1,
+        )
+        old_ids = list(sub.nodes)
+        mapping = {old: new for new, old in enumerate(old_ids)}
+        new_graph: nx.Graph[int] = nx.relabel_nodes(sub, mapping)
+        new_coords = np.asarray([node_coords[old] for old in old_ids], dtype=np.float64)
+        return cls(new_graph, new_coords)
 
     @classmethod
     def from_parquet(cls, path: Path) -> NetworkxRoadGraph:
