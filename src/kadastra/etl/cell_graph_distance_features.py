@@ -16,8 +16,6 @@ import polars as pl
 from kadastra.etl.h3_coverage import h3_cells_to_latlng
 from kadastra.ports.road_graph import RoadGraphPort
 
-_FAR_SENTINEL_M = 1.0e9
-
 
 def compute_cell_graph_distance_features(
     cells: pl.DataFrame,
@@ -28,9 +26,10 @@ def compute_cell_graph_distance_features(
     """Append ``walk_dist_to_<layer>_m`` measured at each cell centre.
 
     ``cells`` must carry an ``h3_index`` column; each layer is a DataFrame
-    with ``lat``/``lon`` points. Unreachable points yield the far sentinel
-    (1e9), empty layers yield null. Returns the frame keyed by ``h3_index``
-    plus one column per layer; no lat/lon.
+    with ``lat``/``lon`` points. Unreachable points and empty layers both
+    yield null (ADR-0030 — the retired 1e9 sentinel was read by models as
+    "very far"). Returns the frame keyed by ``h3_index`` plus one column
+    per layer; no lat/lon.
     """
     if not point_layers:
         return cells
@@ -62,7 +61,7 @@ def compute_cell_graph_distance_features(
             for lat, lon in zip(layer_df["lat"].to_list(), layer_df["lon"].to_list(), strict=True)
         ]
         dist = road_graph.nearest_distance_m(coords, layer_coords)
-        dist_min = np.where(np.isinf(dist), _FAR_SENTINEL_M, dist)
-        new_columns.append(pl.Series(col, dist_min))
+        dist_min = np.where(np.isinf(dist), np.nan, dist)
+        new_columns.append(pl.Series(col, dist_min).fill_nan(None))
 
     return points.with_columns(new_columns).drop(["lat", "lon"])
