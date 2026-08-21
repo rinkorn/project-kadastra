@@ -15,6 +15,11 @@ Endpoints:
   ``geometry`` field with the object polygon in GeoJSON WGS84
   (re-projected from the gold ``polygon_wkt_3857`` column at the
   API edge). Powers the side panel + deck.gl PolygonLayer.
+- ``GET /api/cell_valuation`` — ADR-0029 cell valuation
+  ``[{hex, value, covered}]`` for an (asset_class, variant, metric)
+  triple. Drives the «Стоимость типового объекта» map mode.
+- ``GET /api/cell_valuation/{h3_index}`` — full cell-valuation rows
+  across reference variants for a single cell (cell inspector).
 
 The legacy ``/api/hex_features`` endpoint (sourced from the old gold
 hex feature store, never re-built after the move to the per-object
@@ -36,6 +41,10 @@ from kadastra.domain.feature_descriptions import describe_feature
 from kadastra.usecases.get_cell_tsorf import (
     CELL_TSORF_FEATURE_SETS,
     GetCellTsorf,
+)
+from kadastra.usecases.get_cell_valuation import (
+    CELL_VALUATION_METRICS,
+    GetCellValuation,
 )
 from kadastra.usecases.get_hex_aggregates import (
     ASSET_CLASS_VALUES,
@@ -85,6 +94,7 @@ def make_api_router(
     get_market_reference: GetMarketReference,
     market_reference_year: int,
     get_cell_tsorf: GetCellTsorf,
+    get_cell_valuation: GetCellValuation,
 ) -> APIRouter:
     router = APIRouter(prefix="/api")
 
@@ -285,6 +295,12 @@ def make_api_router(
             "cell_tsorf_resolution": _CELL_TSORF_RESOLUTION,
             "cell_tsorf_feature_sets": list(CELL_TSORF_FEATURE_SETS),
             "cell_tsorf_features": cell_tsorf,
+            # ADR-0029 cell valuation — the «Стоимость типового объекта»
+            # mode's selectors: metric list plus per-class reference
+            # variants (landplot's ВРИ alternatives; ``["default"]`` for
+            # the other classes, ``[]`` when the partition is unbuilt).
+            "cell_valuation_metrics": list(CELL_VALUATION_METRICS),
+            "cell_valuation_variants": get_cell_valuation.variant_map(region_code),
             # Single source of truth for per-feature tooltips. The map UI
             # reads this dict and falls back to nothing if a key is
             # missing — see domain/feature_descriptions.py.
@@ -333,6 +349,58 @@ def make_api_router(
         return {
             "region": region_code,
             "resolution": resolution,
+            "h3_index": h3_index,
+            "data": data,
+        }
+
+    @router.get("/cell_valuation")
+    def cell_valuation(
+        asset_class: str = Query(...),
+        variant: str = Query("default"),
+        metric: str = Query("reference"),
+    ) -> dict[str, Any]:
+        """ADR-0029 cell valuation for the map UI's «Стоимость типового
+        объекта» mode: ``[{hex, value, covered}]`` — predicted
+        reference-object ₽/м² (or pure location score) per cell.
+        ``covered`` flags cells with sample objects; the UI dims the
+        rest. ``variant`` selects the landplot ВРИ alternative
+        (``default`` for the other classes)."""
+        ac = _parse_asset_class(asset_class)
+        try:
+            data = get_cell_valuation.execute(region_code, ac, variant, metric)
+        except KeyError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return {
+            "region": region_code,
+            "asset_class": ac.value,
+            "variant": variant,
+            "metric": metric,
+            "data": data,
+        }
+
+    @router.get("/cell_valuation/{h3_index}")
+    def cell_valuation_detail(
+        h3_index: str,
+        asset_class: str = Query(...),
+    ) -> dict[str, Any]:
+        """Full cell-valuation row(s) for a single cell across every
+        reference variant (landplot's ВРИ alternatives side by side).
+        Feeds the cell inspector in «Стоимость типового объекта» mode."""
+        ac = _parse_asset_class(asset_class)
+        try:
+            data = get_cell_valuation.get_cell_detail(region_code, ac, h3_index)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if not data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"no cell valuation for h3_index={h3_index!r} asset_class={ac.value!r}",
+            )
+        return {
+            "region": region_code,
+            "asset_class": ac.value,
             "h3_index": h3_index,
             "data": data,
         }
