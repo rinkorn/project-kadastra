@@ -88,15 +88,22 @@ class EbmQuartetModel:
 
         ``intercept() + eval_terms(X).sum(axis=1) == predict(X)``.
         """
-        raise NotImplementedError
+        if self._model is None:
+            raise RuntimeError("EbmQuartetModel.eval_terms before fit")
+        terms = self._model.eval_terms(X)
+        return np.asarray(terms, dtype=np.float64)
 
     def intercept(self) -> float:
         """Global intercept of the fitted EBM."""
-        raise NotImplementedError
+        if self._model is None:
+            raise RuntimeError("EbmQuartetModel.intercept before fit")
+        return float(np.asarray(self._model.intercept_, dtype=np.float64).ravel()[0])
 
     def term_feature_indices(self) -> list[tuple[int, ...]]:
         """Feature indices per term (length-1 for mains, 2 for interactions)."""
-        raise NotImplementedError
+        if self._model is None:
+            raise RuntimeError("EbmQuartetModel.term_feature_indices before fit")
+        return [tuple(int(i) for i in idxs) for idxs in self._model.term_features_]
 
     def serialize(self) -> bytes:
         if self._model is None:
