@@ -44,7 +44,7 @@ class AssetClass(StrEnum):
 | Функция | Что делает |
 |---------|------------|
 | [`assemble_valuation_objects`](../../src/kadastra/etl/valuation_objects.py) | OSM CSV → `(object_id, asset_class, lat, lon, levels, flats)`; через `replace_strict` без Python-цикла на ~180k строк |
-| [`compute_object_metro_features`](../../src/kadastra/etl/object_metro_features.py) | `dist_metro_m`, `dist_entrance_m`, `count_stations_1km`, `count_entrances_500m`. Полный haversine-матрица, пустой набор станций → 1e9 м sentinel |
+| [`compute_object_metro_features`](../../src/kadastra/etl/object_metro_features.py) | `dist_metro_m`, `dist_entrance_m`, `count_stations_1km`, `count_entrances_500m`. Полный haversine-матрица, пустой набор станций → null (до [ADR-0030](0030-road-graph-water-components-bbox-fix.md) — 1e9 м sentinel) |
 | [`compute_object_road_features`](../../src/kadastra/etl/object_road_features.py) | `road_length_500m`. H3 res=9 bucketing — иначе 58k×100k сегментов не помещаются в RAM. K-ring подобран по радиусу |
 | [`compute_object_neighbor_features`](../../src/kadastra/etl/object_neighbor_features.py) | `count_apartments_500m`, `count_houses_500m`, `count_commercial_500m`. Исключает self из кандидатов до haversine-фильтра |
 | [`compute_object_synthetic_target`](../../src/kadastra/etl/object_synthetic_target.py) | Per-class `synthetic_target_rub_per_m2`, через `pl.when().then()` без Python-цикла |

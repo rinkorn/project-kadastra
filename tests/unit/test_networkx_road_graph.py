@@ -40,23 +40,56 @@ def test_distance_matrix_returns_graph_distance_through_intermediate_nodes() -> 
     assert out[0, 0] > haversine_meters(*a, *c)
 
 
-def test_distance_matrix_returns_inf_for_disconnected_components() -> None:
+def test_from_edges_keeps_only_largest_connected_component() -> None:
+    """ADR-0030: builds keep only the largest connected component.
+    Detached slivers (a few meters of digitized road with no link to the
+    network) used to poison ``_snap``: objects near them snapped into a
+    component with no path to anywhere and got inf distances downstream.
+    """
+    main_edges = [
+        ((0.0, 0.0), (0.001, 0.0), 111.0),
+        ((0.001, 0.0), (0.002, 0.0), 111.0),
+        ((0.002, 0.0), (0.003, 0.0), 111.0),
+    ]
+    island = ((10.0, 10.0), (10.001, 10.0), 111.0)
+
+    graph = NetworkxRoadGraph.from_edges([*main_edges, island])
+
+    # Only the 4 main-component nodes remain reachable; the island is gone.
+    reachable = graph.reachable_nodes_within_m((0.0, 0.0), cutoff_m=10_000.0)
+    assert len(reachable) == 4
+
+    # A query point at the dropped island snaps onto the main component.
+    node, snap_m = graph.snap_node((10.0, 10.0))
+    lat, _ = graph.node_coord(node)
+    assert lat < 1.0
+    assert snap_m > 1e6
+
+
+def test_distance_matrix_dropped_island_snaps_to_main_component() -> None:
+    """After main-component filtering there is no 'other component' to be
+    unreachable from: a query point at a dropped island snaps onto the
+    main component — the result is a huge but finite snap distance, not
+    inf."""
     a = (0.0, 0.0)
     b = (0.001, 0.0)
-    # A separate, disconnected segment far away.
+    e = (0.002, 0.0)
+    # A separate, smaller segment far away — dropped at build time.
     c = (10.0, 10.0)
     d = (10.001, 10.0)
 
     graph = NetworkxRoadGraph.from_edges(
         [
             (a, b, haversine_meters(*a, *b)),
+            (b, e, haversine_meters(*b, *e)),
             (c, d, haversine_meters(*c, *d)),
         ]
     )
 
     out = graph.distance_matrix_m(from_coords=[a], to_coords=[c])
 
-    assert math.isinf(out[0, 0])
+    assert math.isfinite(out[0, 0])
+    assert out[0, 0] > 1e6
 
 
 def test_distance_matrix_includes_snap_distance_to_nearest_node() -> None:
@@ -135,21 +168,24 @@ def test_nearest_distance_includes_snap_distance() -> None:
     assert out[0] == pytest.approx(expected, rel=1e-2)
 
 
-def test_nearest_distance_inf_for_disconnected_component() -> None:
+def test_nearest_distance_dropped_island_snaps_to_main_component() -> None:
     a = (0.0, 0.0)
     b = (0.001, 0.0)
+    e = (0.002, 0.0)
     c = (10.0, 10.0)
     d = (10.001, 10.0)
     graph = NetworkxRoadGraph.from_edges(
         [
             (a, b, haversine_meters(*a, *b)),
+            (b, e, haversine_meters(*b, *e)),
             (c, d, haversine_meters(*c, *d)),
         ]
     )
 
     out = graph.nearest_distance_m(from_coords=[a], to_coords=[c])
 
-    assert math.isinf(out[0])
+    assert math.isfinite(out[0])
+    assert out[0] > 1e6
 
 
 def test_nearest_distance_matches_matrix_min_for_multiple_targets() -> None:

@@ -278,7 +278,7 @@ def test_count_stations_1km_uses_graph_threshold_not_euclidean() -> None:
     assert result["count_stations_1km"][0] == 0
 
 
-def test_no_stations_yields_inf_distance_and_zero_counts() -> None:
+def test_no_stations_yields_null_distance_and_zero_counts() -> None:
     objects = _objects(
         [
             {
@@ -297,20 +297,17 @@ def test_no_stations_yields_inf_distance_and_zero_counts() -> None:
 
     assert result["count_stations_1km"][0] == 0
     assert result["count_entrances_500m"][0] == 0
-    # No reference points → use a sentinel that signals "unknown / never close":
-    # finite but very large, so downstream models treat it as "far".
-    assert result["dist_metro_m"][0] > 1e6
-    assert result["dist_entrance_m"][0] > 1e6
+    # ADR-0030: no reference points → null ("unknown"), not a numeric
+    # sentinel — the model must read it as missing, not "very far".
+    assert result["dist_metro_m"][0] is None
+    assert result["dist_entrance_m"][0] is None
 
 
-def test_disconnected_object_yields_far_sentinel_not_inf() -> None:
-    """If an object's nearest graph component has no path to any station,
-    the road graph returns inf for that pair. CatBoost's split logic
-    handles NaN cleanly but not inf — and we already use a finite
-    'far sentinel' (1e9 m) for the empty-stations branch. Treating
-    a disconnected object the same way keeps the downstream contract
-    consistent: dist_metro_m is always finite (NaN only when we say
-    so explicitly).
+def test_disconnected_object_yields_null_not_sentinel() -> None:
+    """If an object's graph position has no path to any station, the road
+    graph returns inf for that pair. ADR-0030: inf maps to null, not to
+    the old 1e9 sentinel — a finite fake value was read by the model as
+    "very far" and painted 'milliard-meter' artifacts over whole areas.
     """
 
     class _DisconnectedGraph(RoadGraphPort):
@@ -361,9 +358,7 @@ def test_disconnected_object_yields_far_sentinel_not_inf() -> None:
 
     result = compute_object_metro_features(objects, stations, entrances, road_graph=_DisconnectedGraph())
 
-    assert np.isfinite(result["dist_metro_m"][0])
-    assert np.isfinite(result["dist_entrance_m"][0])
-    assert result["dist_metro_m"][0] > 1e6
-    assert result["dist_entrance_m"][0] > 1e6
+    assert result["dist_metro_m"][0] is None
+    assert result["dist_entrance_m"][0] is None
     assert result["count_stations_1km"][0] == 0
     assert result["count_entrances_500m"][0] == 0

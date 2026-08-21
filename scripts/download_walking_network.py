@@ -5,10 +5,18 @@ edges-table parquet that NetworkxRoadGraph reads is a separate step
 (scripts/build_road_graph_artifact.py).
 
 Default bbox covers the 30 km Kazan-agglomeration buffer from
-ADR-0007 with some slack: ``55.5..56.05 lat, 48.7..49.55 lon``. The
-query selects ``highway=*`` excluding motorways/trunks (pedestrians
-don't walk on them and they distort travel-distance for everyone
-else).
+ADR-0007 **plus ~12 km of extra slack** (ADR-0030): ``55.39..56.16 lat,
+48.51..49.74 lon``. The graph is cut by this bbox, so objects near the
+agglomeration edge used to get inflated "route to the cut" distances;
+the extra ring keeps the full walking path inside the graph for any
+object we score.
+
+The query selects ``highway=*`` excluding motorways/trunk (pedestrians
+don't walk on them and they distort travel-distance for everyone else),
+in union with all ``bridge=yes`` ways regardless of class (ADR-0030) —
+the class filter used to drop real bridges with a pedestrian part
+(Millennium bridge is ``highway=trunk``). Motorways and motorway_links
+stay excluded even on bridges: pedestrians never walk there.
 
 The script is idempotent: if the output file exists and ``--force``
 is not passed, it exits without re-downloading. Polite to Overpass:
@@ -25,15 +33,22 @@ from pathlib import Path
 
 import httpx
 
-_DEFAULT_BBOX = "55.5,48.7,56.05,49.55"  # south, west, north, east
+# south, west, north, east — ADR-0007 buffer + ~12 km slack (ADR-0030):
+# 12 km ≈ 0.108° lat, ≈ 0.192° lon at Kazan latitude.
+_DEFAULT_BBOX = "55.39,48.51,56.16,49.74"
 _DEFAULT_OUT = Path("data/raw/osm/kazan_walking_network.json")
 _DEFAULT_ENDPOINT = "https://overpass-api.de/api/interpreter"
 
 _QUERY_TEMPLATE = """
 [out:json][timeout:600];
-way[\"highway\"]
-   [\"highway\"!~\"^(motorway|trunk|motorway_link|trunk_link|construction|proposed)$\"]
-   ({bbox});
+(
+  way[\"highway\"]
+     [\"highway\"!~\"^(motorway|trunk|motorway_link|trunk_link|construction|proposed)$\"]
+     ({bbox});
+  way[\"highway\"][\"bridge\"=\"yes\"]
+     [\"highway\"!~\"^(motorway|motorway_link|construction|proposed)$\"]
+     ({bbox});
+);
 out geom;
 """.strip()
 
@@ -43,7 +58,7 @@ def main() -> None:
     p.add_argument(
         "--bbox",
         default=_DEFAULT_BBOX,
-        help="south,west,north,east (default: Kazan agglomeration ~30 km buffer)",
+        help="south,west,north,east (default: Kazan agglomeration 30 km buffer + 12 km slack, ADR-0030)",
     )
     p.add_argument(
         "--out",

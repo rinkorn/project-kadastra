@@ -80,7 +80,9 @@ def test_empty_layer_yields_null_column() -> None:
     assert df["walk_dist_to_school_m"][0] is None
 
 
-def test_unreachable_points_yield_far_sentinel() -> None:
+def test_unreachable_points_yield_null() -> None:
+    """ADR-0030: unreachable (no graph path) → null, same semantics as an
+    empty layer; the old 1e9 sentinel was read by models as 'very far'."""
     cell = h3.latlng_to_cell(_KAZAN_LAT, _KAZAN_LON, 10)
 
     class _NoPathRoadGraph:
@@ -118,7 +120,7 @@ def test_unreachable_points_yield_far_sentinel() -> None:
         road_graph=_NoPathRoadGraph(),
     )
 
-    assert float(df["walk_dist_to_school_m"][0]) == 1.0e9
+    assert df["walk_dist_to_school_m"][0] is None
 
 
 def test_empty_cells_emits_null_columns() -> None:

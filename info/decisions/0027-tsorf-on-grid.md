@@ -40,7 +40,7 @@ kadastra/etl/cell_graph_distance_features.py ← compute_cell_graph_distance_fea
 
 - **Почему grid-only**: пешеходная дистанция по графу дорогая per-object (Дейкстра от каждой точки слоя); методология §17 «всё на сетке один раз». Per-object fallback нет — при `cell_tsorf_enabled=False` колонки `walk_dist_to_*` просто отсутствуют.
 - **Почему только точечные**: граф point-to-point, «пешеходный путь до ребра полигона» бессмыслен без точек входа. Полигональные/линейные слои (water, park, powerline, railway) остаются в `dist_to_*` (straight-line, ADR-0019).
-- **Непроходимые точки** → сентинел `1e9`, пустой слой → `null` (семантика как в метро).
+- **Непроходимые точки и пустой слой** → `null` (обновлено в [ADR-0030](0030-road-graph-water-components-bbox-fix.md); изначально был сентинел `1e9`, который модель читала как «очень далеко»).
 
 ## Multi-source Дейкстра (`nearest_distance_m`)
 
