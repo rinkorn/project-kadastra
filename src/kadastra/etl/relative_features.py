@@ -78,3 +78,38 @@ def compute_relative_features(
             )
 
     return out
+
+
+def compute_parent_aggregates(
+    objects: pl.DataFrame,
+    *,
+    parent_resolutions: list[int],
+    feature_columns: list[str],
+) -> pl.DataFrame:
+    """Training-time parent-cell aggregates for relative features (ADR-0029).
+
+    Long frame, one row per ``(parent_res, parent_h3)``: ``count`` plus
+    per feature ``{f}__median``, ``{f}``__p25``, ``{f}__p75``. Computed
+    over the training frame itself (all asset classes combined) — the
+    same scope :func:`compute_relative_features` uses at train time.
+    """
+    raise NotImplementedError
+
+
+def join_relative_features(
+    frame: pl.DataFrame,
+    aggregates: pl.DataFrame,
+    *,
+    parent_resolutions: list[int],
+    feature_columns: list[str],
+) -> pl.DataFrame:
+    """Attach relative features to NEW rows using fixed training aggregates.
+
+    Emits ``count_p{r}``, ``{f}__rel_p{r}_diff_med``,
+    ``{f}__rel_p{r}_ratio_med``, ``{f}__rel_p{r}_z_iqr`` per requested
+    resolution/feature — same formulas as :func:`compute_relative_features`,
+    but medians/quantiles/counts come from ``aggregates`` (training-time
+    gold), not from ``frame`` itself. Rows whose parent has no aggregate
+    get nulls.
+    """
+    raise NotImplementedError
