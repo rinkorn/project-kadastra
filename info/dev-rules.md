@@ -152,6 +152,7 @@ main ← dev-stage ← dev ← feature/xxx
 - **dev-stage** — staging. Защищён, прямые коммиты запрещены. Мерж только через PR/локальный merge из `dev`. **Push в dev-stage → deploy-dev-stage** (rsync + .env + `docker compose up -d --build` на VM).
 - **dev** — интеграционная. Защищён, прямые коммиты запрещены. Мерж только из feature-веток (через PR или локальный merge + push). Push в dev → CI (lint+test).
 - **feature/xxx** — ветки под задачу, создаются от `dev`. Вся разработка только здесь, **включая инфра-фиксы и docs**. **НЕ удаляются после merge** без явной просьбы.
+- **Ребейз feature-ветки на свежий `dev` прямо перед мержем** (`git checkout feature/xxx && git rebase origin/dev`): merge-пузырь тогда ответвляется от текущей вершины dev, и петли в графе идут последовательно, без переплетения. Переписывать можно ТОЛЬКО свою feature-ветку (force-push допустим для неё); `dev`, `dev-stage`, `main` никогда не ребейзятся и не форс-пушатся.
 
 > Никаких исключений «прямой коммит для инфра-фиксов / hotfix» — всё через `feature/xxx → dev → dev-stage → main`. Если deploy на VM сломан и нужен срочный фикс — он живёт в `feature/hotfix-xxx`, мержится в `dev`, оттуда в `dev-stage`, дальше CI деплоит. Это медленнее на 30 секунд, чем «прямой push», но сохраняет линейность истории и даёт CI прогнать lint+test перед деплоем.
 
@@ -338,7 +339,7 @@ checkout → SSH setup → rsync → generate .env on VM → docker compose up -
 
 1. `uv run pytest` — все тесты проходят.
 2. **Ждать подтверждения** перед мержем.
-3. `git checkout dev && git pull && git merge feature/xxx --no-ff && git push`.
+3. `git checkout feature/xxx && git rebase origin/dev` (см. правило ребейза в Branching), затем `git checkout dev && git pull && git merge feature/xxx --no-ff && git push`.
 
 ### 4. Релиз
 
@@ -349,7 +350,7 @@ dev → merge в dev-stage → push в dev-stage → CI → deploy-dev-stage →
 ```
 
 1. Слить feature-ветку в `dev` (через PR или локальный `merge --no-ff`).
-2. Влить `dev → dev-stage`, запушить — CI прогонит lint+test, при успехе deploy-dev-stage задеплоит на VM.
+2. Влить `dev → dev-stage`: сначала `git checkout dev-stage && git merge --ff-only dev` (fast-forward — без лишнего merge-коммита в графе); `--no-ff` merge-коммит только если dev-stage реально расходится с dev (например, содержит свои коммиты). Запушить — CI прогонит lint+test, при успехе deploy-dev-stage задеплоит на VM.
 3. Проверить вручную на dev-stage.
 4. (когда подключим prod) PR `dev-stage → main` — deploy-prod бампит версию через PSR, генерирует tag.
 
