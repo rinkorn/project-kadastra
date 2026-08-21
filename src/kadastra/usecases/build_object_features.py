@@ -8,9 +8,10 @@ from shapely.geometry.base import BaseGeometry
 
 from kadastra.domain.asset_class import AssetClass
 from kadastra.etl.cell_overlap_weights import compute_overlap_weights
+from kadastra.etl.dissolved_layers import DissolvedLayers
 from kadastra.etl.h3_coverage import add_h3_index
 from kadastra.etl.load_geometries import (
-    load_geojsonseq_geometries,
+    GeoJsonSeqLayerLoader,
     load_geojsonseq_points,
     load_named_geojsonseq_polygons,
 )
@@ -188,6 +189,14 @@ class BuildObjectFeatures:
         else:
             zonal_layers = self._build_zonal_layers(enriched, stations, entrances)
             enriched = compute_object_zonal_features(enriched, layers=zonal_layers, radii_m=self._zonal_radii_m)
+        # Per-execute shared layer state: each OSM GeoJSON-seq path is
+        # parsed once and each layer is dissolved (project + union) once,
+        # reused across the polygon-share and geom-distance blocks —
+        # profiling showed the per-block redissolve of the polygonal
+        # layers (water/park/forest/industrial/cemetery) dominating the
+        # ETL runtime.
+        layer_loader = GeoJsonSeqLayerLoader()
+        dissolved_layers = DissolvedLayers()
         # Poly-area buffer features (ADR-0014 → ADR-0027). When the cell
         # grid store is wired in, share comes from Слой 1 (computed at
         # cell centres); otherwise the per-object fallback applies.
@@ -195,11 +204,12 @@ class BuildObjectFeatures:
             cell_share = self._cell_polygon_reader.load(region_code, self._cell_tsorf_resolution, "poly_area")
             enriched = self._join_cell_tsorf(enriched, cell_share, cell_join_weights)
         else:
-            poly_layers = self._load_poly_area_layers()
+            poly_layers = layer_loader.load_layers(self._poly_area_layer_paths)
             enriched = compute_object_polygon_features(
                 enriched,
                 polygons_by_layer=poly_layers,
                 radii_m=self._poly_area_radii_m,
+                dissolved=dissolved_layers,
             )
         # Geom-distance features (ADR-0019). Each entry is a path to an
         # OSM-extracted GeoJSON-seq with arbitrary geometries (Polygon /
@@ -210,8 +220,10 @@ class BuildObjectFeatures:
             cell_dist = self._cell_geom_distance_reader.load(region_code, self._cell_tsorf_resolution, "geom_distance")
             enriched = self._join_cell_tsorf(enriched, cell_dist, cell_join_weights)
         elif self._geom_distance_layer_paths:
-            distance_layers = self._load_layer_geometries(self._geom_distance_layer_paths)
-            enriched = compute_object_geom_distance_features(enriched, geometries_by_layer=distance_layers)
+            distance_layers = layer_loader.load_layers(self._geom_distance_layer_paths)
+            enriched = compute_object_geom_distance_features(
+                enriched, geometries_by_layer=distance_layers, dissolved=dissolved_layers
+            )
         # ADR-0027: walking distance to point POIs — grid-only (graph is too
         # expensive per-object; methodology §17 «всё на сетке один раз»).
         if self._cell_walk_dist_reader is not None:
@@ -431,12 +443,6 @@ class BuildObjectFeatures:
         fallback).
         """
         return load_named_geojsonseq_polygons(self._osm_raions_geojson_path)
-
-    def _load_poly_area_layers(self) -> dict[str, list[BaseGeometry]]:
-        return self._load_layer_geometries(self._poly_area_layer_paths)
-
-    def _load_layer_geometries(self, paths: dict[str, str]) -> dict[str, list[BaseGeometry]]:
-        return load_geojsonseq_geometries(paths)
 
     def _has_any_cell_reader(self) -> bool:
         return any(
