@@ -76,6 +76,7 @@ class BuildObjectFeatures:
         road_class_features_path: Path | None = None,
         isochrone_cache_path: Path | None = None,
         isochrone_cache_resolution: int = 11,
+        cbd_coords: dict[str, tuple[float, float]] | None = None,
     ) -> None:
         self._reader = reader
         self._store = store
@@ -112,6 +113,7 @@ class BuildObjectFeatures:
         self._road_class_features_path = road_class_features_path
         self._isochrone_cache_path = isochrone_cache_path
         self._isochrone_cache_resolution = isochrone_cache_resolution
+        self._cbd_coords = cbd_coords or {}
 
     def execute(self, region_code: str, asset_classes: list[AssetClass]) -> None:
         stations = pl.read_csv(io.BytesIO(self._raw_data.read_bytes(self._stations_key)))

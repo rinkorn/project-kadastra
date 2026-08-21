@@ -207,6 +207,7 @@ def _usecase(
     road_class_features_path: Path | None = None,
     isochrone_cache_path: Path | None = None,
     isochrone_cache_resolution: int = 11,
+    cbd_coords: dict[str, tuple[float, float]] | None = None,
 ) -> BuildObjectFeatures:
     return BuildObjectFeatures(
         reader=store,
@@ -248,6 +249,7 @@ def _usecase(
         road_class_features_path=road_class_features_path,
         isochrone_cache_path=isochrone_cache_path,
         isochrone_cache_resolution=isochrone_cache_resolution,
+        cbd_coords=cbd_coords,
     )
 
 
@@ -1342,3 +1344,42 @@ def test_isochrone_columns_absent_when_partition_missing(tmp_path) -> None:  # t
     assert "iso15_pop_count" not in df.columns
     assert "iso15_amenity_count" not in df.columns
     assert "iso15_metro_reach" not in df.columns
+
+
+def test_appends_cbd_distance_when_coords_configured() -> None:
+    """ADR-0025 п. 1: with the region present in cbd_coords, the saved
+    partition carries dist_to_cbd_m (haversine to the CBD anchor). The
+    fixture objects sit ~1.1 km from the Kazan CBD (55.7975, 49.1066)."""
+    store = _FakeStore({AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)})
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(store, raw, cbd_coords={"RU-KAZAN-AGG": (55.7975, 49.1066)}).execute(
+        "RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT]
+    )
+
+    df = store.calls[0].df
+    assert "dist_to_cbd_m" in df.columns
+    assert df.schema["dist_to_cbd_m"] == pl.Float64
+    dist = df["dist_to_cbd_m"][0]
+    assert dist == pytest.approx(haversine_meters(KAZAN_LAT, KAZAN_LON, 55.7975, 49.1066), rel=1e-6)
+
+
+def test_cbd_distance_absent_for_unknown_region() -> None:
+    """No CBD configured for the region → the column is skipped entirely
+    (per-region constant, ADR-0025 «CBD для не-Казани»)."""
+    store = _FakeStore({AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT)})
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(store, raw, cbd_coords={"RU-IRKUTSK-AGG": (52.2864, 104.2807)}).execute(
+        "RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT]
+    )
+
+    assert "dist_to_cbd_m" not in store.calls[0].df.columns
