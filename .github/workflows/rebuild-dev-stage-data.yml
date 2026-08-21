@@ -93,23 +93,17 @@ jobs:
               --dst "data/raw/osm/kazan-agg-${layer}.geojsonseq"
           done
 
-      - name: Fetch VM-only rebuild inputs over SSH
+      - name: Download ADR-0022..0025 inputs from S3
         run: |
           set -euo pipefail
           # Opt-in входы build_object_features (ADR-0022..0025): DEM-растры,
-          # road-class-per-object, heritage/ОКН, ЗОУИТ, macro-EMISS. Эти
-          # silver-префиксы пока НЕ зеркалятся на S3 — живут только в data/
-          # на VM (deploy-ный rsync data/ носит с собой). Без них блоки
-          # молча скипаются и valuation_objects теряет колонки — поэтому
-          # забираем их с VM read-only (VM здесь — чистый хостинг данных).
-          # TODO: разово залить префиксы на S3 и заменить шаг на
-          # download_dir_from_s3 — тогда VM не участвует и в входах.
+          # road-class-per-object, heritage/ОКН, ЗОУИТ, macro-EMISS. С
+          # 2026-08-21 зеркалятся на S3 (разовая заливка) — VM полностью
+          # вышла из входов rebuild'а. Без этих префиксов блоки молча
+          # скипаются и valuation_objects теряет колонки.
           for d in dem road_class_per_object heritage zouit_per_object macro_oktmo_features; do
-            mkdir -p "data/silver/$d"
-            rsync -az \
-              -e "ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }}" \
-              "${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }}:${{ env.DEPLOY_PATH }}/data/silver/$d/" \
-              "data/silver/$d/"
+            uv run python scripts/download_dir_from_s3.py \
+              --prefix "Kadatastr/silver/$d" --dst "data/silver/$d"
           done
 
       - name: Rebuild road graph (ADR-0030)
