@@ -47,7 +47,8 @@ class GeoJsonSeqLayerLoader:
     """Parse each GeoJSON-seq path at most once per pipeline run.
 
     ``poly_area_layer_paths`` and ``geom_distance_layer_paths`` reference
-    the same OSM extractions for the polygonal layers (water, park, …).
+    the same OSM extractions for the polygonal layers (water, park, …),
+    and zonal POI layers reuse the geom-distance paths as point counts.
     Sharing the parsed geometry lists between feature blocks both avoids
     re-reading the files and lets ``DissolvedLayers`` reuse the dissolve
     by list identity. Parsing is deterministic, so results are identical
@@ -65,6 +66,39 @@ class GeoJsonSeqLayerLoader:
     def load_layers(self, paths: dict[str, str]) -> dict[str, list[BaseGeometry]]:
         return {name: self.load(path_str) for name, path_str in paths.items()}
 
+    def load_points(self, path_str: str) -> pl.DataFrame:
+        """Points view of the cached layer, for zonal count blocks.
+
+        Applies the ``load_geojsonseq_points`` transform (Point as-is,
+        non-Point → centroid, empty skipped) to the already-parsed
+        geometry list, so a POI layer consumed both as zonal counts and
+        as geom-distance is read from disk once per pipeline run.
+        Missing file → typed empty frame, same as
+        ``load_geojsonseq_points``.
+        """
+        if not Path(path_str).is_file():
+            return pl.DataFrame({"lat": [], "lon": []}, schema={"lat": pl.Float64, "lon": pl.Float64})
+        return points_from_geometries(self.load(path_str))
+
+
+def points_from_geometries(geometries: list[BaseGeometry]) -> pl.DataFrame:
+    """Reduce parsed geometries to one ``(lat, lon)`` row per feature.
+
+    Point geometries pass through unchanged; LineString / Polygon /
+    Multi* are reduced to their centroid (in the same WGS84 CRS the
+    geometries were parsed in). Empty geometries are skipped.
+    """
+    lats: list[float] = []
+    lons: list[float] = []
+    for geom in geometries:
+        if geom.is_empty:
+            continue
+        pt = geom if geom.geom_type == "Point" else geom.centroid
+        pt_x, pt_y = pt.coords[0]
+        lons.append(float(pt_x))
+        lats.append(float(pt_y))
+    return pl.DataFrame({"lat": lats, "lon": lons})
+
 
 def load_geojsonseq_points(path_str: str) -> pl.DataFrame:
     """Read a GeoJSON-seq file and return one (lat, lon) per feature.
@@ -76,27 +110,7 @@ def load_geojsonseq_points(path_str: str) -> pl.DataFrame:
     path = Path(path_str)
     if not path.is_file():
         return pl.DataFrame({"lat": [], "lon": []}, schema={"lat": pl.Float64, "lon": pl.Float64})
-    lats: list[float] = []
-    lons: list[float] = []
-    with path.open("r", encoding="utf-8") as f:
-        for raw_line in f:
-            line = raw_line.strip()
-            if not line or line.startswith("\x1e"):
-                line = line.lstrip("\x1e").strip()
-                if not line:
-                    continue
-            feature = json.loads(line)
-            geom_dict = feature.get("geometry")
-            if geom_dict is None:
-                continue
-            geom = shape(geom_dict)
-            if geom.is_empty:
-                continue
-            pt = geom if geom.geom_type == "Point" else geom.centroid
-            pt_x, pt_y = pt.coords[0]
-            lons.append(float(pt_x))
-            lats.append(float(pt_y))
-    return pl.DataFrame({"lat": lats, "lon": lons})
+    return points_from_geometries(load_geojsonseq_geometries({"layer": path_str})["layer"])
 
 
 def load_named_geojsonseq_polygons(path: Path | None) -> list[tuple[str, BaseGeometry]]:

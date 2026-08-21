@@ -12,7 +12,6 @@ from kadastra.etl.dissolved_layers import DissolvedLayers
 from kadastra.etl.h3_coverage import add_h3_index
 from kadastra.etl.load_geometries import (
     GeoJsonSeqLayerLoader,
-    load_geojsonseq_points,
     load_named_geojsonseq_polygons,
 )
 from kadastra.etl.object_age_features import compute_object_age_features
@@ -178,6 +177,14 @@ class BuildObjectFeatures:
         else:
             enriched = compute_object_road_features(enriched, ways, radius_m=self._road_radius_m)
         enriched = compute_object_neighbor_features(enriched, radius_m=self._neighbor_radius_m)
+        # Per-execute shared layer state: each OSM GeoJSON-seq path is
+        # parsed once and each layer is dissolved (project + union) once,
+        # reused across the zonal-POI, polygon-share and geom-distance
+        # blocks — profiling showed the per-block re-read/redissolve of
+        # the polygonal layers (water/park/forest/industrial/cemetery)
+        # dominating the ETL runtime.
+        layer_loader = GeoJsonSeqLayerLoader()
+        dissolved_layers = DissolvedLayers()
         # Zonal density at multiple radii (ADR-0013). Layers are built
         # from the same payload: stations/entrances are the loaded CSVs;
         # apartments/houses/commercial come from `enriched` itself,
@@ -187,16 +194,8 @@ class BuildObjectFeatures:
             cell_zonal = self._cell_zonal_reader.load(region_code, self._cell_tsorf_resolution, "zonal")
             enriched = self._join_cell_tsorf(enriched, cell_zonal, cell_join_weights)
         else:
-            zonal_layers = self._build_zonal_layers(enriched, stations, entrances)
+            zonal_layers = self._build_zonal_layers(enriched, stations, entrances, layer_loader)
             enriched = compute_object_zonal_features(enriched, layers=zonal_layers, radii_m=self._zonal_radii_m)
-        # Per-execute shared layer state: each OSM GeoJSON-seq path is
-        # parsed once and each layer is dissolved (project + union) once,
-        # reused across the polygon-share and geom-distance blocks —
-        # profiling showed the per-block redissolve of the polygonal
-        # layers (water/park/forest/industrial/cemetery) dominating the
-        # ETL runtime.
-        layer_loader = GeoJsonSeqLayerLoader()
-        dissolved_layers = DissolvedLayers()
         # Poly-area buffer features (ADR-0014 → ADR-0027). When the cell
         # grid store is wired in, share comes from Слой 1 (computed at
         # cell centres); otherwise the per-object fallback applies.
@@ -515,6 +514,7 @@ class BuildObjectFeatures:
         enriched: pl.DataFrame,
         stations: pl.DataFrame,
         entrances: pl.DataFrame,
+        layer_loader: GeoJsonSeqLayerLoader,
     ) -> dict[str, pl.DataFrame]:
         # Layer name → AssetClass for self-class slices.
         class_layer_map = {
@@ -537,11 +537,9 @@ class BuildObjectFeatures:
                 )
             elif name in self._geom_distance_layer_paths:
                 # ADR-0019 part 4: OSM-extracted POI layer (school,
-                # bus_stop, ...). Reuse the same GeoJSON-seq file that
-                # geom-distance reads, centroiding non-Point features
-                # so the count helper sees lat/lon points uniformly.
-                layers[name] = self._load_zonal_poi_layer(self._geom_distance_layer_paths[name])
+                # bus_stop, ...). Reuses the geometries already parsed for
+                # the geom-distance block via the shared loader, applying
+                # the centroid transform so the count helper sees lat/lon
+                # points uniformly — no second disk read of the same file.
+                layers[name] = layer_loader.load_points(self._geom_distance_layer_paths[name])
         return layers
-
-    def _load_zonal_poi_layer(self, path_str: str) -> pl.DataFrame:
-        return load_geojsonseq_points(path_str)
