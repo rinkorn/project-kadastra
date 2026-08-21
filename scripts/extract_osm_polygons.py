@@ -29,6 +29,12 @@ hospital, supermarket), the filter uses ``nwa/`` so both forms land in
 the same file; downstream code centroids polygon features when a Point
 is needed (zonal counts) and uses geometries as-is for distance.
 
+The ``water`` layer additionally pulls linear waterways
+(``waterway=river|stream|canal|ditch|drain`` ways) and buffers them into
+polygons in a post-pass (ADR-0032), so rivers mapped only as lines reach
+the layer consumed by the map, ``dist_to_water_m`` / ``water_share_*``
+and the road-graph water filter (ADR-0030).
+
 The script is idempotent: skips any layer whose output already exists,
 unless ``--force`` is passed.
 """
@@ -43,6 +49,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from kadastra.etl.water_linear_waterways import buffer_linear_waterway_features
+
 # OSM tag filter expressions, one per layer.
 # Format follows osmium-tool's `tags-filter` rules: `<object-types>/<key=value>`.
 # Object-type prefixes: `n` nodes, `w` ways, `r` relations, `a` areas
@@ -53,6 +61,16 @@ _LAYER_FILTERS: dict[str, list[str]] = {
         "wa/natural=water",
         "wa/waterway=riverbank",
         "wa/landuse=reservoir",
+        # Linear waterways (river/stream/canal/ditch/drain axes) — most
+        # in-city rivers exist in OSM only as lines. They export as
+        # LineStrings here and are buffered into polygons by the
+        # post-pass in _extract_layer (ADR-0032), so map, dist_to_water
+        # and the road-graph water filter all see them.
+        "w/waterway=river",
+        "w/waterway=stream",
+        "w/waterway=canal",
+        "w/waterway=ditch",
+        "w/waterway=drain",
     ],
     "park": [
         "wa/leisure=park",
@@ -208,6 +226,37 @@ def _extract_layer(
 
     size_mb = out_path.stat().st_size / 1024 / 1024
     print(f"Wrote {out_path} ({size_mb:.1f} MB)")
+
+    if layer == "water":
+        _buffer_water_lines(out_path)
+
+
+def _buffer_water_lines(out_path: Path) -> None:
+    """Rewrite the water layer, replacing linear waterway features
+    (``waterway=river|stream|canal|ditch|drain`` LineStrings pulled in by
+    the layer's ``w/`` filters) with buffered polygons (ADR-0032).
+    Polygons (``natural=water`` / ``riverbank`` / ``reservoir``) pass
+    through untouched. Idempotent: the file above is regenerated from
+    PBF on every run, so lines are buffered exactly once."""
+    features = []
+    with out_path.open("rb") as f:
+        for chunk in f.read().split(b"\x1e"):
+            line = chunk.strip()
+            if not line:
+                continue
+            try:
+                features.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    transformed = buffer_linear_waterway_features(features)
+    n_buffered = sum(1 for old, new in zip(features, transformed, strict=True) if old is not new)
+    with out_path.open("wb") as f:
+        for feat in transformed:
+            f.write(b"\x1e")
+            f.write(json.dumps(feat, ensure_ascii=False).encode("utf-8"))
+            f.write(b"\n")
+    size_mb = out_path.stat().st_size / 1024 / 1024
+    print(f"  buffered {n_buffered} linear waterways into polygons ({size_mb:.1f} MB total)")
 
 
 def _extract_raions(src: Path, out_dir: Path, bbox: str, force: bool) -> None:
