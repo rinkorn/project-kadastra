@@ -18,15 +18,11 @@ import polars as pl
 import shapely
 from pyproj import Transformer
 from shapely.geometry.base import BaseGeometry
-from shapely.ops import transform as shapely_transform
-from shapely.ops import unary_union
+
+from kadastra.etl.dissolved_layers import DissolvedLayers
 
 # UTM-39N — same projection as the share-feature pipeline.
 _TO_UTM = Transformer.from_crs("EPSG:4326", "EPSG:32639", always_xy=True)
-
-
-def _project_lonlat(geom: BaseGeometry) -> BaseGeometry:
-    return shapely_transform(lambda x, y, z=None: _TO_UTM.transform(x, y), geom)
 
 
 def _flatten_to_parts(geom: BaseGeometry) -> list[BaseGeometry]:
@@ -52,6 +48,7 @@ def compute_object_geom_distance_features(
     objects: pl.DataFrame,
     *,
     geometries_by_layer: dict[str, list[BaseGeometry]],
+    dissolved: DissolvedLayers | None = None,
 ) -> pl.DataFrame:
     """Append ``dist_to_<layer>_m`` columns: distance in metres
     (EPSG:32639 UTM-39N) from each object to the nearest geometry of
@@ -61,6 +58,10 @@ def compute_object_geom_distance_features(
     Empty layers produce all-null columns. Empty input frames produce
     empty columns with the expected names so downstream schema is
     stable across asset-class slices.
+
+    The per-layer project + ``unary_union`` dissolve goes through the
+    shared ``DissolvedLayers`` cache when one is wired, so layers
+    already dissolved for the polygon-share block are reused here.
     """
     if not geometries_by_layer:
         return objects
@@ -77,6 +78,7 @@ def compute_object_geom_distance_features(
     obj_xs, obj_ys = _TO_UTM.transform(obj_lons, obj_lats)
     points = shapely.points(np.asarray(obj_xs), np.asarray(obj_ys))
 
+    cache = dissolved if dissolved is not None else DissolvedLayers()
     new_columns: list[pl.Series] = []
     for layer, polys in geometries_by_layer.items():
         col_name = f"dist_to_{layer}_m"
@@ -89,8 +91,7 @@ def compute_object_geom_distance_features(
                 )
             )
             continue
-        projected = [_project_lonlat(p) for p in polys]
-        merged = unary_union(projected)
+        merged = cache.dissolved(polys)
         parts = _flatten_to_parts(merged)
         if not parts:
             new_columns.append(pl.Series(col_name, [None] * n, dtype=pl.Float64))

@@ -43,6 +43,29 @@ def load_geojsonseq_geometries(paths: dict[str, str]) -> dict[str, list[BaseGeom
     return layers
 
 
+class GeoJsonSeqLayerLoader:
+    """Parse each GeoJSON-seq path at most once per pipeline run.
+
+    ``poly_area_layer_paths`` and ``geom_distance_layer_paths`` reference
+    the same OSM extractions for the polygonal layers (water, park, …).
+    Sharing the parsed geometry lists between feature blocks both avoids
+    re-reading the files and lets ``DissolvedLayers`` reuse the dissolve
+    by list identity. Parsing is deterministic, so results are identical
+    to calling ``load_geojsonseq_geometries`` per block.
+    """
+
+    def __init__(self) -> None:
+        self._by_path: dict[str, list[BaseGeometry]] = {}
+
+    def load(self, path_str: str) -> list[BaseGeometry]:
+        if path_str not in self._by_path:
+            self._by_path[path_str] = load_geojsonseq_geometries({"layer": path_str})["layer"]
+        return self._by_path[path_str]
+
+    def load_layers(self, paths: dict[str, str]) -> dict[str, list[BaseGeometry]]:
+        return {name: self.load(path_str) for name, path_str in paths.items()}
+
+
 def load_geojsonseq_points(path_str: str) -> pl.DataFrame:
     """Read a GeoJSON-seq file and return one (lat, lon) per feature.
 
