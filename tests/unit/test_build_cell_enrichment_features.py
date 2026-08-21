@@ -13,7 +13,9 @@ from kadastra.usecases.build_cell_enrichment_features import BuildCellEnrichment
 
 _LAT, _LON = 55.79, 49.11
 _CELL = h3.latlng_to_cell(_LAT, _LON, 10)
-_CELL_11 = h3.latlng_to_cell(_LAT, _LON, 11)
+# The isochrone join maps the cell CENTRE (not the anchor point) to res 11.
+_CELL_CENTER = h3.cell_to_latlng(_CELL)
+_CELL_11 = h3.latlng_to_cell(_CELL_CENTER[0], _CELL_CENTER[1], 11)
 
 
 class FakeCoverageReader:
@@ -71,7 +73,7 @@ def _heritage() -> pl.DataFrame:
             "ref_egrokn": [None],
             "heritage_level": ["1"],
             "name": ["ОКН"],
-            "lat": [_LAT + 0.0005],
+            "lat": [_LAT + 0.001],
             "lon": [_LON],
             "polygon_wkt": [None],
         }
@@ -166,14 +168,14 @@ def test_enrichment_columns_and_values(wired_paths: dict[str, Path]) -> None:
     _usecase(store, wired_paths).execute("RU-KAZAN-AGG", 10)
     out = store.saved["enrichment"]
     assert out["h3_index"].to_list() == [_CELL]
-    # CBD anchor is the cell centre itself.
-    assert out["dist_to_cbd_m"][0] == pytest.approx(0.0, abs=1.0)
+    # CBD anchor is at (_LAT, _LON) — within ~70 m of the cell centre.
+    assert out["dist_to_cbd_m"][0] == pytest.approx(0.0, abs=100.0)
     assert out["elevation_m"][0] == 61.0
     assert out["slope_deg_local"][0] == 1.5
     assert out["nearest_road_class"][0] == "residential"
-    assert out["dist_to_residential_m"][0] == pytest.approx(0.0, abs=1.0)
+    assert out["dist_to_residential_m"][0] == pytest.approx(0.0, abs=100.0)
     assert out["iso15_pop_count"][0] == 1234.0
-    assert out["is_heritage_object"][0] == 0  # ОКН ~55 м away > 50 m buffer
+    assert out["is_heritage_object"][0] == 0  # ОКН ~111 м away > 50 m buffer
     assert out["count_heritage_500m"][0] == 1
     assert out["inside_zouit"][0] == 1
     assert out["inside_water_protection"][0] == 1
