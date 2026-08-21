@@ -59,7 +59,50 @@ jobs:
                --prefix Kadatastr/models --dst data/models && \
              docker compose --profile scripts run --rm scripts scripts/download_file_from_s3.py \
                --key Kadatastr/raw/osm/kazan-agg-raions.geojsonseq \
-               --dst data/raw/osm/kazan-agg-raions.geojsonseq"
+               --dst data/raw/osm/kazan-agg-raions.geojsonseq && \
+             docker compose --profile scripts run --rm scripts scripts/download_file_from_s3.py \
+               --key Kadatastr/raw/osm/kazan-agg-water.geojsonseq \
+               --dst data/raw/osm/kazan-agg-water.geojsonseq"
+
+      - name: Rebuild road graph (ADR-0030)
+        run: |
+          # Fresh OSM pull with the extended bbox (+12 km slack) and the
+          # bridge=yes union, then edges.parquet with OSM tags and the
+          # water-crossing filter against kazan-agg-water.geojsonseq
+          # (downloaded above).
+          ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
+            ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
+            "cd ${{ env.DEPLOY_PATH }} && \
+             docker compose --profile scripts run --rm scripts scripts/download_walking_network.py --force && \
+             docker compose --profile scripts run --rm scripts scripts/build_road_graph_artifact.py"
+
+      - name: Rebuild graph-distance cell features (ADR-0030)
+        run: |
+          # Everything computed off the road graph must be refreshed:
+          # metro ЦОФ, walk_dist_to_* ЦОФ and the 15-min isochrone cache.
+          ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
+            ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
+            "cd ${{ env.DEPLOY_PATH }} && \
+             docker compose --profile scripts run --rm scripts scripts/build_cell_metro_features.py && \
+             docker compose --profile scripts run --rm scripts scripts/build_cell_graph_distance_features.py && \
+             docker compose --profile scripts run --rm scripts scripts/build_isochrone_cache_per_hex.py"
+
+      - name: Upload road graph + graph-distance features to S3
+        run: |
+          # silver/features was downloaded from S3 above, so re-uploading
+          # the whole prefix only replaces the rebuilt metro/walk_dist sets.
+          ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
+            ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
+            "cd ${{ env.DEPLOY_PATH }} && \
+             docker compose --profile scripts run --rm scripts scripts/upload_dir_to_s3.py \
+               --src data/silver/road_graph \
+               --prefix Kadatastr/silver/road_graph && \
+             docker compose --profile scripts run --rm scripts scripts/upload_dir_to_s3.py \
+               --src data/silver/features \
+               --prefix Kadatastr/silver/features && \
+             docker compose --profile scripts run --rm scripts scripts/upload_dir_to_s3.py \
+               --src data/silver/isochrone_cache \
+               --prefix Kadatastr/silver/isochrone_cache"
 
       - name: Rebuild object features
         run: |
