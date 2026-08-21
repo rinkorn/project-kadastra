@@ -350,7 +350,7 @@ dev → merge в dev-stage → push в dev-stage → CI → deploy-dev-stage →
 ```
 
 1. Слить feature-ветку в `dev` (через PR или локальный `merge --no-ff`).
-2. Влить `dev → dev-stage`: сначала `git checkout dev-stage && git merge --ff-only dev` (fast-forward — без лишнего merge-коммита в графе); `--no-ff` merge-коммит только если dev-stage реально расходится с dev (например, содержит свои коммиты). Запушить — CI прогонит lint+test, при успехе deploy-dev-stage задеплоит на VM.
+2. Влить `dev → dev-stage` через `merge --no-ff` (как раньше — отдельным merge-коммитом), запушить — CI прогонит lint+test, при успехе deploy-dev-stage задеплоит на VM.
 3. Проверить вручную на dev-stage.
 4. (когда подключим prod) PR `dev-stage → main` — deploy-prod бампит версию через PSR, генерирует tag.
 
