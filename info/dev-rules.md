@@ -242,6 +242,10 @@ checkout → SSH setup → rsync → generate .env on VM → docker compose up -
 4. **`docker compose up -d --build --remove-orphans`** на `docker-compose.dev-stage.yml` (project name `kadastra-dev-stage`).
 5. **Healthcheck** — 30 попыток с 5-секундным интервалом до `http://localhost:$DEV_STAGE_INTERNAL_PORT/health`. При фейле — выгружает `docker compose logs --tail=200` в stderr GHA.
 
+### Rebuild данных (rebuild-dev-stage-data)
+
+Принцип: **VM = хостинг, compute — вне VM**. Пересчёт данных (граф, cell ЦОФ, object features, hex aggregates) не должен занимать продажную машину — весь compute идёт на GitHub-hosted runner'е напрямую через `uv run` (без docker), входы/выходы ходят через S3. На VM по ssh остаётся только финал: забрать пересчитанные префиксы с S3 в `data/` (`docker compose --profile scripts run scripts scripts/download_dir_from_s3.py`), `restart` контейнера, chown `data/`, healthcheck. Исключение: silver-префиксы, пока не зеркалящиеся на S3 (DEM, road-class, heritage, ЗОУИТ, macro-EMISS), runner забирает с VM read-only rsync'ом — до разовой заливки их на S3.
+
 ### Окружения
 
 | Параметр | Local | Dev-Stage | Production |
