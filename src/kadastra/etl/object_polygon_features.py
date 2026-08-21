@@ -11,10 +11,13 @@ across-layer sums may).
 
 Implementation uses the **shapely 2.0 array API + STRtree + threads**:
 
-1. Per layer we ``unary_union`` projected polygons once and split the
-   result into a flat list of non-overlapping parts (so summed
-   intersection areas per buffer cannot double-count within a layer)
-   and build a single ``STRtree`` over those parts.
+1. Per layer the dissolved geometry (project + ``unary_union``) comes
+   from a ``DissolvedLayers`` cache — a fresh one per call by default,
+   or a caller-shared instance so repeat blocks/asset-class slices do
+   not redissolve the same layer — and is split into a flat list of
+   non-overlapping parts (so summed intersection areas per buffer
+   cannot double-count within a layer); one ``STRtree`` is built over
+   those parts.
 2. Per radius we issue one ``shapely.buffer`` over all N objects.
 3. The 16 (layer, radius) pairs run on a ``ThreadPoolExecutor``: each
    task does ``tree.query(buffers, predicate='intersects')``, then
@@ -46,18 +49,12 @@ import shapely
 from pyproj import Transformer
 from shapely.geometry import MultiPolygon, Polygon
 from shapely.geometry.base import BaseGeometry
-from shapely.ops import transform as shapely_transform
-from shapely.ops import unary_union
 
 from kadastra.etl.dissolved_layers import DissolvedLayers
 
 # UTM zone 39N — same projection used by the agglomeration boundary
 # build script; minimal area distortion (≤ 0.1 %) at Kazan latitude.
 _TO_UTM = Transformer.from_crs("EPSG:4326", "EPSG:32639", always_xy=True)
-
-
-def _project_lonlat(geom: BaseGeometry) -> BaseGeometry:
-    return shapely_transform(lambda x, y, z=None: _TO_UTM.transform(x, y), geom)
 
 
 def _flatten_to_parts(geom: BaseGeometry) -> list[BaseGeometry]:
@@ -116,14 +113,17 @@ def compute_object_polygon_features(
         buffers_by_r[r] = buffers
         buffer_areas_by_r[r] = np.asarray(shapely.area(buffers))
 
-    # Per-layer STRtree (None when the layer has no polygons).
+    # Per-layer STRtree (None when the layer has no polygons). The
+    # project+union dissolve goes through the shared cache when one is
+    # wired, so a layer dissolved for another feature block (or another
+    # asset-class slice) is not redissolved here.
+    cache = dissolved if dissolved is not None else DissolvedLayers()
     trees_by_layer: dict[str, tuple[shapely.STRtree, np.ndarray] | None] = {}
     for layer, polys in polygons_by_layer.items():
         if not polys:
             trees_by_layer[layer] = None
             continue
-        projected = [_project_lonlat(p) for p in polys]
-        merged = unary_union(projected)
+        merged = cache.dissolved(polys)
         parts = _flatten_to_parts(merged)
         if not parts:
             trees_by_layer[layer] = None
