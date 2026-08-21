@@ -7,6 +7,7 @@ import h3
 import numpy as np
 import polars as pl
 import pytest
+from shapely.geometry.base import BaseGeometry
 
 from kadastra.domain.asset_class import AssetClass
 from kadastra.etl.haversine import haversine_meters
@@ -1520,3 +1521,76 @@ def test_zouit_columns_absent_when_partition_missing(tmp_path) -> None:  # type:
     df = store.calls[0].df
     for col in ("inside_zouit", "zouit_types", "inside_water_protection"):
         assert col not in df.columns
+
+
+def test_shared_osm_layers_read_and_dissolved_once_per_execute(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Perf: the polygonal OSM layers are referenced by both
+    ``poly_area_layer_paths`` and ``geom_distance_layer_paths``. Within
+    one execute the pipeline must parse each GeoJSON-seq file once and
+    dissolve each layer once, however many feature blocks consume it —
+    profiling showed the per-block redissolve dominating runtime.
+    Values must stay identical to the per-block computation."""
+    import kadastra.etl.dissolved_layers as dissolved_layers_mod
+    import kadastra.etl.load_geometries as load_geometries_mod
+
+    water_path = tmp_path / "water.geojsonseq"
+    water_path.write_text(
+        '{"type":"Feature","properties":{},"geometry":{"type":"Polygon",'
+        '"coordinates":[[[49.10,55.78],[49.14,55.78],[49.14,55.80],[49.10,55.80],[49.10,55.78]]]}}\n'
+    )
+    school_path = tmp_path / "school.geojsonseq"
+    school_path.write_text(
+        '{"type":"Feature","properties":{},'
+        f'"geometry":{{"type":"Point","coordinates":[{KAZAN_LON},{KAZAN_LAT}]}}}}\n'
+    )
+
+    union_calls = [0]
+    real_union = dissolved_layers_mod.unary_union
+
+    def _counting_union(geoms: object) -> object:
+        union_calls[0] += 1
+        return real_union(geoms)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(dissolved_layers_mod, "unary_union", _counting_union)
+
+    loaded_paths: list[str] = []
+    real_load = load_geometries_mod.load_geojsonseq_geometries
+
+    def _counting_load(paths: dict[str, str]) -> dict[str, list[BaseGeometry]]:
+        loaded_paths.extend(paths.values())
+        return real_load(paths)
+
+    monkeypatch.setattr(load_geometries_mod, "load_geojsonseq_geometries", _counting_load)
+
+    initial = {
+        AssetClass.APARTMENT: _objects_for(AssetClass.APARTMENT),
+        AssetClass.HOUSE: _objects_for(AssetClass.HOUSE),
+    }
+    store = _FakeStore(initial)
+    raw = _FakeRawData(
+        stations=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        entrances=_stations_csv([(KAZAN_LAT, KAZAN_LON)]),
+        roads=_roads_json([]),
+    )
+
+    _usecase(
+        store,
+        raw,
+        poly_area_radii_m=[100, 800],
+        poly_area_layer_paths={"water": str(water_path)},
+        geom_distance_layer_paths={"water": str(water_path), "school": str(school_path)},
+    ).execute("RU-KAZAN-AGG", asset_classes=[AssetClass.APARTMENT, AssetClass.HOUSE])
+
+    # water feeds both the share and the distance blocks; school feeds
+    # distance only. Each layer dissolved exactly once for the whole run.
+    assert union_calls[0] == 2
+    # Each file parsed exactly once (no per-block reread of the water file).
+    assert sorted(loaded_paths) == sorted([str(water_path), str(school_path)])
+
+    df = next(c for c in store.calls if c.asset_class is AssetClass.APARTMENT).df
+    # KAZAN_LAT/KAZAN_LON is inside the water polygon.
+    assert df["water_share_100m"][0] > 0.99
+    assert df["water_share_800m"][0] > 0.99
+    assert float(df["dist_to_water_m"][0]) == 0.0
+    # School point sits exactly on the first object.
+    assert float(df["dist_to_school_m"][0]) < 1.0
