@@ -177,6 +177,18 @@ class Settings(BaseSettings):
     heritage_raw_geojson_path: Path = Path("data/raw/osm/kazan-agg-heritage.geojsonseq")
     heritage_silver_path: Path = Path("data/silver/heritage")
 
+    # ADR-0025 п. 3: ЗОУИТ — bulk dump of НСПД layer 36302 for
+    # Tatarstan (177 663 zone polygons, EPSG:3857). The ADR's
+    # hypothetical attrs.zouit_intersection field does not exist, so the
+    # features come from a real spatial join against the zone polygons.
+    # scripts/build_zouit_silver.py parses the page dump into
+    # zouit_silver_path (bbox-filtered to the region); scripts/
+    # build_zouit_features.py materializes the per-object table that
+    # BuildObjectFeatures LEFT JOINs (ADR-0022/0023/0024 pattern).
+    zouit_raw_dir: Path = Path("data/raw/nspd/zouit-tatarstan")
+    zouit_silver_path: Path = Path("data/silver/zouit_zones")
+    zouit_features_path: Path = Path("data/silver/zouit_per_object")
+
     road_graph_edges_path: Path = Path("data/silver/road_graph/edges.parquet")
     model_registry_path: Path = Path("data/models")
     # Per-hex aggregates (BuildHexAggregates output): consumed by the

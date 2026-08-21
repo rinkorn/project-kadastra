@@ -266,6 +266,7 @@ class Container:
             isochrone_cache_resolution=s.isochrone_cache_resolution,
             cbd_coords=s.cbd_coords,
             heritage_silver_path=s.heritage_silver_path,
+            zouit_features_path=s.zouit_features_path,
         )
 
     def build_object_synthetic_target(self) -> BuildObjectSyntheticTarget:

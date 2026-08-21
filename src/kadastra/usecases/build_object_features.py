@@ -30,6 +30,7 @@ from kadastra.etl.object_polygon_features import compute_object_polygon_features
 from kadastra.etl.object_road_class_features import join_road_class_features
 from kadastra.etl.object_road_features import compute_object_road_features
 from kadastra.etl.object_zonal_features import compute_object_zonal_features
+from kadastra.etl.object_zouit_features import join_zouit_features
 from kadastra.etl.relative_features import compute_relative_features
 from kadastra.ports.dem_sampler import DemSamplerPort
 from kadastra.ports.feature_reader import FeatureReaderPort
@@ -306,6 +307,16 @@ class BuildObjectFeatures:
             heritage = self._load_heritage_objects(region_code)
             if heritage is not None:
                 enriched = compute_object_heritage_features(enriched, heritage=heritage)
+        # ЗОУИТ features (ADR-0025 п. 3). LEFT JOIN from the per-object
+        # silver table materialized by scripts/build_zouit_features.py
+        # (spatial join of object points against the НСПД layer-36302
+        # zone polygons — the ADR's hypothetical attrs.zouit_intersection
+        # field does not exist; see «Аудит данных»). Opt-in: skipped
+        # when the silver partition does not exist for the region.
+        if self._zouit_features_path is not None:
+            zouit_features = self._load_zouit_features(region_code)
+            if zouit_features is not None:
+                enriched = join_zouit_features(enriched, zouit_features)
         # Filter feature_columns to those present (allows configuring a
         # superset in Settings — missing ones are simply skipped, not
         # errors, so per-class slices with different schemas don't crash).
@@ -328,6 +339,21 @@ class BuildObjectFeatures:
         as the road-class loader).
         """
         base = self._heritage_silver_path
+        if base is None:
+            return None
+        path = base / f"region={region_code}" / "data.parquet"
+        if not path.is_file():
+            return None
+        return pl.read_parquet(path)
+
+    def _load_zouit_features(self, region_code: str) -> pl.DataFrame | None:
+        """Load the silver per-object ЗОУИТ table for the region.
+
+        Returns ``None`` when the partition does not exist, so the
+        pipeline skips the join entirely (same opt-in contract as the
+        road-class loader).
+        """
+        base = self._zouit_features_path
         if base is None:
             return None
         path = base / f"region={region_code}" / "data.parquet"
