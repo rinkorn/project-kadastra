@@ -90,28 +90,33 @@ def _object(object_id: str, **overrides: object) -> dict[str, object]:
 
 
 def test_quantile_filter_drops_tails_and_adds_ask_column() -> None:
-    # 100 «нормальных» строк 1000..100_000 + 2 выброса в хвостах.
-    rows = [_listing(f"ok-{i}", price_per_sqm_rub=float(1000 * (i + 1))) for i in range(100)]
+    # 101 «нормальная» строка 1000..101_000 + 2 выброса в хвостах.
+    rows = [_listing(f"ok-{i}", price_per_sqm_rub=float(1000 * (i + 1))) for i in range(101)]
     rows.append(_listing("low-outlier", price_per_sqm_rub=10.0))
     rows.append(_listing("high-outlier", price_per_sqm_rub=10_000_000.0))
 
     result = clean_cian_listings(_listings(rows))
 
-    assert result.frame.height == 100
+    assert result.frame.height == 99
     assert "low-outlier" not in result.frame["listing_id"].to_list()
     assert "high-outlier" not in result.frame["listing_id"].to_list()
-    # Границы вычислены из данных, а не захардкожены.
-    assert result.price_per_m2_lower_bound == pytest.approx(2000.0)
-    assert result.price_per_m2_upper_bound == pytest.approx(100_000.0)
+    # Границы вычислены из данных (linear-интерполяция), не захардкожены.
+    assert result.price_per_m2_lower_bound == pytest.approx(1020.0)
+    assert result.price_per_m2_upper_bound == pytest.approx(100_980.0)
     # Контракт ADR-0031: ask_rub_per_m2 = очищенный price_per_sqm_rub.
     assert result.frame["ask_rub_per_m2"].to_list() == result.frame["price_per_sqm_rub"].to_list()
 
 
-def test_quantile_filter_keeps_rows_at_bounds() -> None:
-    rows = [_listing(f"ok-{i}", price_per_sqm_rub=float(1000 * (i + 1))) for i in range(100)]
+def test_quantile_bounds_are_inclusive() -> None:
+    # 101 значение: p1/p99 с linear-интерполяцией попадают точно на 2000
+    # и 100_000 — строки на границах сохраняются, режутся только хвосты.
+    rows = [_listing(f"ok-{i}", price_per_sqm_rub=float(1000 * (i + 1))) for i in range(101)]
     result = clean_cian_listings(_listings(rows))
-    # Без выбросов p1/p99 попадают на крайние значения — ничего не режется.
-    assert result.frame.height == 100
+    assert result.price_per_m2_lower_bound == pytest.approx(2000.0)
+    assert result.price_per_m2_upper_bound == pytest.approx(100_000.0)
+    assert result.frame.height == 99
+    assert result.frame["price_per_sqm_rub"].min() == 2000.0
+    assert result.frame["price_per_sqm_rub"].max() == 100_000.0
 
 
 # --- чистка: sanity-правила -----------------------------------------------

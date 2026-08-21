@@ -15,7 +15,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import polars as pl
+
 from kadastra.domain.asset_class import AssetClass
+from kadastra.etl.listings_target import clean_cian_listings, match_listings_to_objects
 
 
 @dataclass(frozen=True)
@@ -55,4 +58,30 @@ class BuildListingsTarget:
         source: str = "cian",
         city: str = "Казань",
     ) -> ListingsTargetStats:
-        raise NotImplementedError
+        listings = pl.read_parquet(self._listings_path).filter((pl.col("source") == source) & (pl.col("city") == city))
+        objects = pl.read_parquet(
+            self._valuation_objects_path / f"region={region_code}" / f"asset_class={asset_class.value}"
+        ).select(["object_id", "lat", "lon", "levels", "area_m2"])
+
+        cleaning = clean_cian_listings(listings, max_page=self._max_page)
+        matched, unmatched = match_listings_to_objects(cleaning.frame, objects, radius_m=self._match_radius_m)
+
+        partition = self._output_base_path / f"region={region_code}" / f"asset_class={asset_class.value}"
+        partition.mkdir(parents=True, exist_ok=True)
+        matched.write_parquet(partition / "matched.parquet")
+        unmatched.write_parquet(partition / "unmatched.parquet")
+
+        reasons: dict[str, int] = {}
+        if unmatched.height:
+            reasons = {
+                row["unmatched_reason"]: row["len"] for row in unmatched.group_by("unmatched_reason").len().to_dicts()
+            }
+        return ListingsTargetStats(
+            n_input=listings.height,
+            n_clean=cleaning.frame.height,
+            price_per_m2_lower_bound=cleaning.price_per_m2_lower_bound,
+            price_per_m2_upper_bound=cleaning.price_per_m2_upper_bound,
+            n_matched=matched.height,
+            n_unmatched=unmatched.height,
+            unmatched_reasons=reasons,
+        )
