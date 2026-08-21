@@ -4,12 +4,18 @@ on:
   workflow_dispatch:
 
 # Схема «VM = хостинг, compute — на GitHub-runner'е» (info/dev-rules.md):
-# весь compute (скачивание входов, пересчёт road graph / cell ЦОФ /
-# object features / hex aggregates, выгрузка результатов) идёт на
-# ubuntu-latest runner'е напрямую через `uv run` — без docker и без
-# занятой часами продажной машины. На VM по ssh остаётся только финал:
-# забрать пересчитанные префиксы с S3 в data/ (docker compose scripts +
-# download_dir_from_s3.py), restart контейнера, chown data/, healthcheck.
+# весь compute (скачивание входов, пересчёт cell ЦОФ / object features /
+# hex aggregates, выгрузка результатов) идёт на ubuntu-latest runner'е
+# напрямую через `uv run` — без docker и без занятой часами продажной
+# машины. На VM по ssh остаётся только финал: забрать пересчитанные
+# префиксы с S3 в data/ (docker compose scripts + download_dir_from_s3.py),
+# restart контейнера, chown data/, healthcheck.
+#
+# Исключение — road graph: overpass-api.de режет GitHub runner IP по
+# квоте (pull из CI = лотерея на 1,5+ часа), поэтому граф собирается
+# локально (download_walking_network.py + build_road_graph_artifact.py)
+# и заливается на S3 как ВХОД (Kadatastr/silver/road_graph). Для смены
+# графа сначала обнови этот префикс, потом запускай workflow.
 #
 # Идемпотентность: download_dir_from_s3/upload_dir_to_s3 пропускают
 # файлы с совпадающим размером, пересчёты детерминированы (raw-сброс
@@ -64,6 +70,11 @@ jobs:
           # - models: OOF artifacts the hex aggregates join (latest quartet
           #   run per class is picked; the whole prefix is mirrored so the
           #   workflow stays correct as new runs land)
+          # - silver/road_graph: walking-graph artifact (edges.parquet).
+          #   Собирается ВНЕ CI (локально: download_walking_network.py +
+          #   build_road_graph_artifact.py + upload_dir_to_s3.py), т.к.
+          #   overpass-api.de режет GitHub runner IP по квоте — pull из CI
+          #   превращается в лотерею на 1,5+ часа (2026-08-21/22).
           uv run python scripts/download_dir_from_s3.py \
             --prefix Kadatastr/gold/valuation_objects \
             --dst data/gold/valuation_objects
@@ -75,6 +86,8 @@ jobs:
             --prefix Kadatastr/silver/coverage --dst data/silver/coverage
           uv run python scripts/download_dir_from_s3.py \
             --prefix Kadatastr/models --dst data/models
+          uv run python scripts/download_dir_from_s3.py \
+            --prefix Kadatastr/silver/road_graph --dst data/silver/road_graph
 
       - name: Download raw OSM layers from S3
         run: |
@@ -111,21 +124,13 @@ jobs:
               --prefix "Kadatastr/silver/$d" --dst "data/silver/$d"
           done
 
-      - name: Rebuild road graph (ADR-0030)
-        run: |
-          set -euo pipefail
-          # Fresh OSM pull with the extended bbox (+12 km slack) and the
-          # bridge=yes union, then edges.parquet with OSM tags and the
-          # water-crossing filter against kazan-agg-water.geojsonseq
-          # (downloaded above).
-          uv run python scripts/download_walking_network.py --force
-          uv run python scripts/build_road_graph_artifact.py
-
       - name: Rebuild graph-distance cell features (ADR-0030)
         run: |
           set -euo pipefail
           # Everything computed off the road graph must be refreshed:
           # metro ЦОФ, walk_dist_to_* ЦОФ and the 15-min isochrone cache.
+          # Сам граф — вход с S3 (собирается локально, см. шаг
+          # "Download rebuild inputs"), в CI не пересчитывается.
           uv run python scripts/build_cell_metro_features.py
           uv run python scripts/build_cell_graph_distance_features.py
           uv run python scripts/build_isochrone_cache_per_hex.py
@@ -141,15 +146,13 @@ jobs:
           uv run python scripts/build_cell_polygon_features.py
           uv run python scripts/build_cell_geom_distance_features.py
 
-      - name: Upload road graph + graph-distance features to S3
+      - name: Upload graph-distance features to S3
         run: |
           set -euo pipefail
           # silver/features was downloaded from S3 above, so re-uploading
           # the whole prefix only replaces the rebuilt metro/walk_dist/
-          # polygon/geom-distance sets.
-          uv run python scripts/upload_dir_to_s3.py \
-            --src data/silver/road_graph \
-            --prefix Kadatastr/silver/road_graph
+          # polygon/geom-distance sets. road_graph не заливаем — он вход,
+          # а не продукт этого workflow.
           uv run python scripts/upload_dir_to_s3.py \
             --src data/silver/features \
             --prefix Kadatastr/silver/features
@@ -194,8 +197,9 @@ jobs:
         run: |
           # Compute уже отгрузил результаты на S3 — VM зеркалит их в свой
           # data/ тем же идемпотентным download_dir_from_s3 (size-match
-          # skip). Только пересчитанные префиксы: road graph, cell ЦОФ,
-          # isochrone cache, valuation_objects, hex_aggregates.
+          # skip). Cell ЦОФ, isochrone cache, valuation_objects,
+          # hex_aggregates — продукты этого workflow; road graph — вход,
+          # но VM тоже забирает его свежую версию с S3.
           ssh -i ~/.ssh/deploy_key -p ${{ vars.DEV_STAGE_PORT }} \
             ${{ vars.DEPLOY_USER }}@${{ vars.DEV_STAGE_HOST }} \
             "cd ${{ env.DEPLOY_PATH }} && \

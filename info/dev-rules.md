@@ -244,7 +244,9 @@ checkout → SSH setup → rsync → generate .env on VM → docker compose up -
 
 ### Rebuild данных (rebuild-dev-stage-data)
 
-Принцип: **VM = хостинг, compute — вне VM**. Пересчёт данных (граф, cell ЦОФ, object features, hex aggregates) не должен занимать продажную машину — весь compute идёт на GitHub-hosted runner'е напрямую через `uv run` (без docker), входы/выходы ходят через S3. На VM по ssh остаётся только финал: забрать пересчитанные префиксы с S3 в `data/` (`docker compose --profile scripts run scripts scripts/download_dir_from_s3.py`), `restart` контейнера, chown `data/`, healthcheck. Исключение: silver-префиксы, пока не зеркалящиеся на S3 (DEM, road-class, heritage, ЗОУИТ, macro-EMISS), runner забирает с VM read-only rsync'ом — до разовой заливки их на S3.
+Принцип: **VM = хостинг, compute — вне VM**. Пересчёт данных (cell ЦОФ, object features, hex aggregates) не должен занимать продажную машину — весь compute идёт на GitHub-hosted runner'е напрямую через `uv run` (без docker), входы/выходы ходят через S3. На VM по ssh остаётся только финал: забрать пересчитанные префиксы с S3 в `data/` (`docker compose --profile scripts run scripts scripts/download_dir_from_s3.py`), `restart` контейнера, chown `data/`, healthcheck.
+
+**Road graph — вход, а не продукт workflow.** overpass-api.de режет GitHub runner IP по квоте (429/очереди, pull из CI превращается в лотерею на 1,5+ часа), поэтому граф собирается локально: `scripts/download_walking_network.py --force` → `scripts/build_road_graph_artifact.py` → `scripts/upload_dir_to_s3.py --src data/silver/road_graph --prefix Kadatastr/silver/road_graph`. Workflow забирает граф с S3 вместе с остальными входами; для обновления графа сначала пересобери и залей его, потом запускай rebuild.
 
 ### Окружения
 
