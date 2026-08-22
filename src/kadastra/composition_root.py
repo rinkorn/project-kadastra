@@ -319,6 +319,7 @@ class Container:
             catboost_params=params,
             ebm_max_bins=s.ebm_max_bins,
             ebm_interactions=s.ebm_interactions,
+            ebm_interactions_exclude=tuple(s.ebm_interactions_exclude),
             grey_tree_max_depth=s.grey_tree_max_depth,
             n_splits=s.train_n_splits,
             parent_resolution=s.train_parent_resolution,

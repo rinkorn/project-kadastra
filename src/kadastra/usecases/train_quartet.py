@@ -73,12 +73,14 @@ class TrainQuartet:
         skip_final_simplifier_fits: bool = False,
         checkpoint_dir: Path | None = None,
         resume: bool = True,
+        ebm_interactions_exclude: tuple[str, ...] = (),
     ) -> None:
         self._reader = reader
         self._model_registry = model_registry
         self._catboost_params = catboost_params
         self._ebm_max_bins = ebm_max_bins
         self._ebm_interactions = ebm_interactions
+        self._ebm_interactions_exclude = ebm_interactions_exclude
         self._grey_tree_max_depth = grey_tree_max_depth
         self._n_splits = n_splits
         self._parent_resolution = parent_resolution
@@ -221,6 +223,7 @@ class TrainQuartet:
                 },
                 ebm_max_bins=self._ebm_max_bins,
                 ebm_interactions=self._ebm_interactions,
+                ebm_interactions_exclude=list(self._ebm_interactions_exclude),
                 grey_tree_max_depth=self._grey_tree_max_depth,
             ),
         )
@@ -266,6 +269,8 @@ class TrainQuartet:
                 self._ebm_max_bins,
                 self._ebm_interactions,
                 inner_threads,
+                full_feature_cols,
+                self._ebm_interactions_exclude,
             )
             for fold_id, (train_idx_list, val_idx_list) in enumerate(folds)
         ]
@@ -350,8 +355,14 @@ class TrainQuartet:
             wb_final = EbmQuartetModel(
                 max_bins=self._ebm_max_bins,
                 interactions=self._ebm_interactions,
+                interactions_exclude=self._ebm_interactions_exclude,
             )
-            wb_final.fit(X_full, y, cat_feature_indices=full_cat_idx or None)
+            wb_final.fit(
+                X_full,
+                y,
+                cat_feature_indices=full_cat_idx or None,
+                feature_names=full_feature_cols,
+            )
             ebm_blob = wb_final.serialize()
             checkpointer.save_stage("final_ebm", ebm_blob)
             _log(f"final ebm fit: {(time.perf_counter() - t_fit) / 60:.1f} min")
@@ -491,6 +502,8 @@ def _fit_pass1_fold(
     ebm_max_bins: int,
     ebm_interactions: int,
     inner_threads: int | None,
+    full_feature_cols: list[str] | None = None,
+    ebm_interactions_exclude: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """Train Black/White/Naive on one fold and return per-fold OOF
     predictions + metrics. Top-level function so joblib can pickle it
@@ -516,8 +529,14 @@ def _fit_pass1_fold(
         max_bins=ebm_max_bins,
         interactions=ebm_interactions,
         n_jobs=inner_threads,
+        interactions_exclude=ebm_interactions_exclude,
     )
-    wb.fit(X_full[train_idx], y[train_idx], cat_feature_indices=full_cat_idx or None)
+    wb.fit(
+        X_full[train_idx],
+        y[train_idx],
+        cat_feature_indices=full_cat_idx or None,
+        feature_names=full_feature_cols,
+    )
     ebm_pred = wb.predict(X_full[val_idx])
     ebm_metrics = regression_metrics(y[val_idx], ebm_pred)
     ebm_s = time.perf_counter() - t

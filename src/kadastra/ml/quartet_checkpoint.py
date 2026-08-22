@@ -109,6 +109,7 @@ def quartet_fingerprint(
     catboost_params: dict[str, Any],
     ebm_max_bins: int,
     ebm_interactions: int,
+    ebm_interactions_exclude: list[str],
     grey_tree_max_depth: int,
 ) -> dict[str, Any]:
     """Everything that must match for a checkpoint to be reusable.
@@ -128,5 +129,6 @@ def quartet_fingerprint(
         "catboost_params": catboost_params,
         "ebm_max_bins": ebm_max_bins,
         "ebm_interactions": ebm_interactions,
+        "ebm_interactions_exclude": ebm_interactions_exclude,
         "grey_tree_max_depth": grey_tree_max_depth,
     }

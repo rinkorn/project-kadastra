@@ -92,3 +92,45 @@ def test_ebm_explain_returns_intercept_and_terms() -> None:
     assert {t["feature"] for t in out["terms"]} == {"area_m2", "dist_metro_m"}
     total = out["intercept"] + sum(t["contribution"] for t in out["terms"])
     np.testing.assert_allclose(total, model.predict(X[:1])[0], rtol=1e-4)
+
+
+def test_ebm_interactions_exclude_bans_pairs_but_keeps_main() -> None:
+    """interactions_exclude must strip every PAIR containing the banned
+    feature while keeping its main effect term. High-cardinality
+    categoricals (vri, kadnum_quarter) explode the pair tensor and
+    overfit; their mains are informative and must stay."""
+    rng = np.random.default_rng(6)
+    n = 300
+    numeric = rng.normal(size=(n, 2))
+    cats = np.array([[f"c{i % 20}"] for i in range(n)], dtype=object)
+    X = np.hstack([numeric.astype(object), cats])
+    y = numeric[:, 0] + numeric[:, 1] * numeric[:, 0] + rng.normal(0, 0.01, n)
+    names = ["area_m2", "dist_metro_m", "vri"]
+
+    model = EbmQuartetModel(max_bins=32, interactions=5, interactions_exclude=("vri",))
+    model.fit(X, y, cat_feature_indices=[2], feature_names=names)
+
+    terms = model.term_feature_indices()
+    pair_terms = [t for t in terms if len(t) == 2]
+    # No pair touches the banned feature (index 2)…
+    assert all(2 not in t for t in pair_terms)
+    # …but its main effect term survives.
+    assert (2,) in terms
+
+
+def test_ebm_deserialize_accepts_legacy_3_tuple() -> None:
+    """Pre-interactions_exclude artifacts pickled a 3-tuple
+    (max_bins, interactions, model) — the inspector loads such runs,
+    so deserialize must stay backward compatible."""
+    import pickle
+
+    rng = np.random.default_rng(7)
+    X = rng.normal(size=(80, 2))
+    y = X[:, 0] + X[:, 1]
+    model = EbmQuartetModel(max_bins=32, interactions=0)
+    model.fit(X, y, cat_feature_indices=None)
+    # Rebuild the legacy layout from the current 4-tuple payload.
+    max_bins, interactions, _exclude, inner = pickle.loads(model.serialize())
+    legacy_blob = pickle.dumps((max_bins, interactions, inner))
+    restored = EbmQuartetModel.deserialize(legacy_blob)
+    np.testing.assert_allclose(model.predict(X), restored.predict(X))
