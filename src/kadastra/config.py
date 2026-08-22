@@ -288,6 +288,11 @@ class Settings(BaseSettings):
     # approximator of the Black Box rather than a competitor.
     ebm_max_bins: int = 256
     ebm_interactions: int = 10
+    # Features banned from EBM pair interactions (mains are kept).
+    # High-cardinality categoricals explode the interaction tensor
+    # (64 bins × 13k vri values ≈ 1M cells — hours per pair on landplot)
+    # and overfit on ~12 rows per category anyway.
+    ebm_interactions_exclude: list[str] = ["vri", "kadnum_quarter"]
     grey_tree_max_depth: int = 10
 
     mlflow_enabled: bool = False
