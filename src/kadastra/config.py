@@ -287,7 +287,11 @@ class Settings(BaseSettings):
     # depth = 10 keeps the tree shallow enough to be useful as an
     # approximator of the Black Box rather than a competitor.
     ebm_max_bins: int = 256
-    ebm_interactions: int = 10
+    # 5 pairs, not 10: the A/B on landplot fold-0 (50k rows) showed the
+    # first 5 pairs (all dist_metro_m × area/geometry) buy ~0.7pp WAPE
+    # and +0.003 Spearman for +24% fit time; pairs beyond 5 are
+    # unmeasured, so we don't pay for them.
+    ebm_interactions: int = 5
     # Features banned from EBM pair interactions (mains are kept).
     # High-cardinality categoricals explode the interaction tensor
     # (64 bins × 13k vri values ≈ 1M cells — hours per pair on landplot)
