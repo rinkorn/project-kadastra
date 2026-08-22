@@ -149,7 +149,7 @@ main ← dev-stage ← dev ← feature/xxx
 ```
 
 - **main** — production. Защищён, прямые коммиты запрещены. Мерж только через PR из `dev-stage` после прохождения CI. Push в main → CI (lint+test). Автодеплой prod ещё не подключён — сейчас только `dev-stage` задеплоен на VM.
-- **dev-stage** — staging. Защищён, прямые коммиты запрещены. Мерж только через PR/локальный merge из `dev`. **Push в dev-stage → deploy-dev-stage** (rsync + .env + `docker compose up -d --build` на VM).
+- **dev-stage** — staging. Защищён, прямые коммиты запрещены. Синк из `dev` — **fast-forward, когда возможно** (`git merge --ff-only origin/dev`); `merge --no-ff` — только если dev-stage разошёлся с dev (например, после экстренной правки). **Push в dev-stage → deploy-dev-stage** (rsync + .env + `docker compose up -d --build` на VM).
 - **dev** — интеграционная. Защищён, прямые коммиты запрещены. Мерж только из feature-веток (через PR или локальный merge + push). Push в dev → CI (lint+test).
 - **feature/xxx** — ветки под задачу, создаются от `dev`. Вся разработка только здесь, **включая инфра-фиксы и docs**. **НЕ удаляются после merge** без явной просьбы.
 - **Ребейз feature-ветки на свежий `dev` прямо перед мержем** (`git checkout feature/xxx && git rebase origin/dev`): merge-пузырь тогда ответвляется от текущей вершины dev, и петли в графе идут последовательно, без переплетения. Переписывать можно ТОЛЬКО свою feature-ветку (force-push допустим для неё); `dev`, `dev-stage`, `main` никогда не ребейзятся и не форс-пушатся.
@@ -356,7 +356,7 @@ dev → merge в dev-stage → push в dev-stage → CI → deploy-dev-stage →
 ```
 
 1. Слить feature-ветку в `dev` (через PR или локальный `merge --no-ff`).
-2. Влить `dev → dev-stage` через `merge --no-ff` (как раньше — отдельным merge-коммитом), запушить — CI прогонит lint+test, при успехе deploy-dev-stage задеплоит на VM.
+2. Влить `dev → dev-stage` fast-forward'ом (`git checkout dev-stage && git merge --ff-only origin/dev && git push`) — без merge-пузырей, история остаётся линейной. Если ff невозможен (dev-stage разошёлся с dev) — `merge --no-ff`. Push триггерит CI (lint+test), при успехе deploy-dev-stage задеплоит на VM.
 3. Проверить вручную на dev-stage.
 4. (когда подключим prod) PR `dev-stage → main` — deploy-prod бампит версию через PSR, генерирует tag.
 
