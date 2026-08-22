@@ -324,6 +324,8 @@ class Container:
             parent_resolution=s.train_parent_resolution,
             parallel_folds=s.quartet_parallel_folds,
             skip_final_simplifier_fits=s.quartet_skip_final_simplifier_fits,
+            checkpoint_dir=s.quartet_checkpoint_dir,
+            resume=s.quartet_resume,
         )
 
     def build_hex_aggregates(self) -> BuildHexAggregates:

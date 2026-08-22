@@ -19,11 +19,15 @@ from __future__ import annotations
 
 import io
 import json
+import pickle
+import time
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 import polars as pl
+import pytest
 from catboost import CatBoostRegressor
 
 from kadastra.domain.asset_class import AssetClass
@@ -251,3 +255,103 @@ def test_landplot_trains_on_identity_and_reports_wape() -> None:
     for model in ("catboost", "ebm", "grey_tree", "naive_linear"):
         assert "wape" in payload["models"][model]
         assert "rmse_log" not in payload["models"][model]
+
+
+class _CrashingRegistry(_FakeRegistry):
+    """log_run raises — simulates a kill right at the end of execute(),
+    leaving the checkpoint dir behind for a resumed run."""
+
+    def log_run(self, **kwargs: Any) -> str:
+        raise RuntimeError("simulated crash")
+
+
+def _make_usecase(
+    df: pl.DataFrame,
+    registry: _FakeRegistry,
+    checkpoint_dir: Path,
+    *,
+    resume: bool = True,
+) -> TrainQuartet:
+    return TrainQuartet(
+        reader=_FakeReader(df),
+        model_registry=registry,
+        catboost_params=CatBoostParams(iterations=40, learning_rate=0.1, depth=4, seed=42),
+        ebm_max_bins=32,
+        ebm_interactions=0,
+        grey_tree_max_depth=6,
+        n_splits=3,
+        parent_resolution=6,
+        checkpoint_dir=checkpoint_dir,
+        resume=resume,
+    )
+
+
+def test_checkpoints_resume_after_crash(tmp_path: Path) -> None:
+    """Crash recovery: a run killed before log_run leaves per-stage
+    checkpoints; a restarted run with the same data+params fingerprint
+    resumes finished stages (checkpoint files are NOT rewritten) and the
+    next successful run produces full artifacts and discards the dir."""
+    df = _synth_gold()
+    ckpt = tmp_path / "ckpt"
+
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        _make_usecase(df, _CrashingRegistry(), ckpt).execute("RU-KAZAN-AGG", AssetClass.APARTMENT)
+
+    stage_dir = ckpt / "quartet-object-apartment"
+    assert len(list(stage_dir.glob("pass1_fold_*.pkl"))) == 3
+    assert len(list(stage_dir.glob("pass2_fold_*.pkl"))) == 3
+    assert (stage_dir / "final_catboost.pkl").exists()
+    assert (stage_dir / "final_ebm.pkl").exists()
+    mtimes_before = {p.name: p.stat().st_mtime_ns for p in stage_dir.glob("*.pkl")}
+
+    # Second crash: every stage resumes — no checkpoint file is rewritten.
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        _make_usecase(df, _CrashingRegistry(), ckpt).execute("RU-KAZAN-AGG", AssetClass.APARTMENT)
+    for name, mtime in mtimes_before.items():
+        assert (stage_dir / name).stat().st_mtime_ns == mtime, f"stage {name} was recomputed"
+
+    # Successful run: full artifacts, checkpoints discarded.
+    registry = _FakeRegistry()
+    _make_usecase(df, registry, ckpt).execute("RU-KAZAN-AGG", AssetClass.APARTMENT)
+    artifacts = registry.runs[0]["artifacts"]
+    assert "quartet_metrics.json" in artifacts
+    assert "ebm_model.pkl" in artifacts
+    assert not stage_dir.exists()
+
+
+def test_fingerprint_mismatch_ignores_stale_checkpoints(tmp_path: Path) -> None:
+    """A checkpoint from a DIFFERENT dataset (target changed) must never
+    be resumed: the fingerprint mismatch invalidates it and stages are
+    recomputed — the checkpoint payload changes accordingly."""
+    df_a = _synth_gold()
+    ckpt = tmp_path / "ckpt"
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        _make_usecase(df_a, _CrashingRegistry(), ckpt).execute("RU-KAZAN-AGG", AssetClass.APARTMENT)
+    stage_dir = ckpt / "quartet-object-apartment"
+    with (stage_dir / "pass1_fold_0.pkl").open("rb") as fh:
+        stale_payload = pickle.load(fh)
+
+    # Same schema, shifted target → different fingerprint.
+    df_b = df_a.with_columns((pl.col("synthetic_target_rub_per_m2") * 1.5).alias("synthetic_target_rub_per_m2"))
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        _make_usecase(df_b, _CrashingRegistry(), ckpt).execute("RU-KAZAN-AGG", AssetClass.APARTMENT)
+
+    with (stage_dir / "pass1_fold_0.pkl").open("rb") as fh:
+        fresh_payload = pickle.load(fh)
+    assert not np.allclose(stale_payload["cb_pred"], fresh_payload["cb_pred"])
+
+
+def test_resume_false_recomputes_despite_checkpoints(tmp_path: Path) -> None:
+    """resume=False recomputes every stage even when valid checkpoints
+    exist (the script's --fresh flag deletes the dir up front instead)."""
+    df = _synth_gold()
+    ckpt = tmp_path / "ckpt"
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        _make_usecase(df, _CrashingRegistry(), ckpt).execute("RU-KAZAN-AGG", AssetClass.APARTMENT)
+    stage_dir = ckpt / "quartet-object-apartment"
+    mtime_before = (stage_dir / "pass1_fold_0.pkl").stat().st_mtime_ns
+
+    time.sleep(0.05)  # keep mtimes distinguishable on coarse filesystems
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        _make_usecase(df, _CrashingRegistry(), ckpt, resume=False).execute("RU-KAZAN-AGG", AssetClass.APARTMENT)
+    assert (stage_dir / "pass1_fold_0.pkl").stat().st_mtime_ns != mtime_before

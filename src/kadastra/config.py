@@ -274,6 +274,14 @@ class Settings(BaseSettings):
     quartet_parallel_folds: bool = True
     quartet_skip_final_simplifier_fits: bool = True
 
+    # Quartet crash recovery: per-stage checkpoints (per-fold pass1/pass2
+    # results + final-fit blobs) under this dir, keyed by a data+params
+    # fingerprint. A killed multi-hour run resumes finished stages
+    # instead of starting from zero. quartet_resume=False (or
+    # ``train_quartet.py --fresh``) ignores/rewrites checkpoints.
+    quartet_checkpoint_dir: Path = Path("data/models/_checkpoints")
+    quartet_resume: bool = True
+
     # Block 5 (ADR-0016) — White Box (EBM) and Grey Box (Decision
     # Tree) hyperparameters. EBM defaults from interpret-ml; Grey
     # depth = 10 keeps the tree shallow enough to be useful as an

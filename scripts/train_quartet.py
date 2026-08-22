@@ -19,6 +19,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
 
@@ -27,8 +28,12 @@ from kadastra.config import Settings
 from kadastra.domain.asset_class import AssetClass
 
 
-def _train_one(asset_class: AssetClass) -> None:
+def _train_one(asset_class: AssetClass, *, fresh: bool = False) -> None:
     settings = Settings()
+    if fresh:
+        # --fresh: drop crash-recovery checkpoints for this class so the
+        # run recomputes every stage instead of resuming.
+        shutil.rmtree(settings.quartet_checkpoint_dir / f"quartet-object-{asset_class.value}", ignore_errors=True)
     container = Container(settings)
     usecase = container.build_train_quartet()
     run_id = usecase.execute(settings.region_code, asset_class)
@@ -44,10 +49,16 @@ def main() -> None:
         "Without this flag, spawns one fresh subprocess per class "
         "so loky worker pools don't leak between classes.",
     )
+    parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Ignore crash-recovery checkpoints: delete the per-class "
+        "checkpoint dir first so every stage is recomputed.",
+    )
     args = parser.parse_args()
 
     if args.asset_class is not None:
-        _train_one(AssetClass(args.asset_class))
+        _train_one(AssetClass(args.asset_class), fresh=args.fresh)
         return
 
     settings = Settings()
@@ -71,10 +82,10 @@ def main() -> None:
     )
 
     for asset_class in classes:
-        result = subprocess.run(
-            [sys.executable, __file__, "--asset-class", asset_class.value],
-            check=False,
-        )
+        cmd = [sys.executable, __file__, "--asset-class", asset_class.value]
+        if args.fresh:
+            cmd.append("--fresh")
+        result = subprocess.run(cmd, check=False)
         if result.returncode != 0:
             sys.exit(result.returncode)
 
