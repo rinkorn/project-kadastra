@@ -248,6 +248,8 @@ checkout → SSH setup → rsync → generate .env on VM → docker compose up -
 
 **Road graph — вход, а не продукт workflow.** overpass-api.de режет GitHub runner IP по квоте (429/очереди, pull из CI превращается в лотерею на 1,5+ часа), поэтому граф собирается локально: `scripts/download_walking_network.py --force` → `scripts/build_road_graph_artifact.py` → `scripts/upload_dir_to_s3.py --src data/silver/road_graph --prefix Kadatastr/silver/road_graph`. Workflow забирает граф с S3 вместе с остальными входами; для обновления графа сначала пересобери и залей его, потом запускай rebuild.
 
+**Режимы (input `mode` при workflow_dispatch):** `full` — весь пересчёт, нужен только когда изменились raw-слои, граф или silver-входы (~4,5 ч); `hex-only` — переобучены модели или пересобраны `valuation_objects`, а cell-фичи не тронуты: пересчитываются только hex aggregates (~минуты); `pull-only` — артефакты посчитаны локально и уже залиты на S3: runner ничего не считает, VM забирает префиксы + restart + healthcheck. Правило выбора: не запускай `full`, если изменился только хвост цепочки — пересчёт идемпотентен, но стоит часы runner'а.
+
 ### Окружения
 
 | Параметр | Local | Dev-Stage | Production |

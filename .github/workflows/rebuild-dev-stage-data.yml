@@ -2,6 +2,21 @@ name: Rebuild dev-stage data
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: >-
+          full — весь пересчёт (изменились raw-слои/граф/silver-входы);
+          hex-only — только hex_aggregates (переобучены модели или
+          пересобраны valuation_objects, cell-фичи не тронуты);
+          pull-only — артефакты уже на S3 (посчитано локально), runner
+          ничего не считает: только VM pull + restart + healthcheck.
+        type: choice
+        options:
+          - full
+          - hex-only
+          - pull-only
+        default: full
+        required: true
 
 # Схема «VM = хостинг, compute — на GitHub-runner'е» (info/dev-rules.md):
 # весь compute (скачивание входов, пересчёт cell ЦОФ / object features /
@@ -21,6 +36,12 @@ on:
 # файлы с совпадающим размером, пересчёты детерминированы (raw-сброс
 # схемы в BuildObjectFeatures и т.п.) — повторный запуск даёт тот же
 # результат.
+#
+# Режимы (input `mode`): полный пересчёт нужен только когда изменились
+# raw-слои, граф или silver-входы. Переобучение моделей затрагивает
+# только hex_aggregates (objects + OOF) — для этого `hex-only` (~минуты
+# вместо часов full). Если артефакты посчитаны локально и залиты на S3 —
+# `pull-only`: runner вообще не считает, VM просто забирает префиксы.
 
 jobs:
   rebuild:
@@ -43,6 +64,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
 
       - name: Install dependencies
+        if: ${{ github.event.inputs.mode != 'pull-only' }}
         run: uv sync --frozen
 
       - name: Setup SSH
@@ -57,6 +79,7 @@ jobs:
           printf 'Host *\n  ServerAliveInterval 30\n  ServerAliveCountMax 40\n' >> ~/.ssh/config
 
       - name: Download rebuild inputs from S3
+        if: ${{ github.event.inputs.mode != 'pull-only' }}
         run: |
           set -euo pipefail
           # Everything build_object_features (CELL_TSORF_ENABLED=true) and
@@ -75,6 +98,9 @@ jobs:
           #   build_road_graph_artifact.py + upload_dir_to_s3.py), т.к.
           #   overpass-api.de режет GitHub runner IP по квоте — pull из CI
           #   превращается в лотерею на 1,5+ часа (2026-08-21/22).
+          # В режиме hex-only реально нужны только valuation_objects и
+          # models, но префиксы качаются идемпотентно (size-skip) — проще
+          # зеркалить всё, чем дробить шаг.
           uv run python scripts/download_dir_from_s3.py \
             --prefix Kadatastr/gold/valuation_objects \
             --dst data/gold/valuation_objects
@@ -90,6 +116,7 @@ jobs:
             --prefix Kadatastr/silver/road_graph --dst data/silver/road_graph
 
       - name: Download raw OSM layers from S3
+        if: ${{ github.event.inputs.mode == 'full' }}
         run: |
           set -euo pipefail
           # - raions: intra-city raion polygons (build_object_features)
@@ -112,6 +139,7 @@ jobs:
           done
 
       - name: Download ADR-0022..0025 inputs from S3
+        if: ${{ github.event.inputs.mode == 'full' }}
         run: |
           set -euo pipefail
           # Opt-in входы build_object_features (ADR-0022..0025): DEM-растры,
@@ -125,6 +153,7 @@ jobs:
           done
 
       - name: Rebuild graph-distance cell features (ADR-0030)
+        if: ${{ github.event.inputs.mode == 'full' }}
         run: |
           set -euo pipefail
           # Everything computed off the road graph must be refreshed:
@@ -136,6 +165,7 @@ jobs:
           uv run python scripts/build_isochrone_cache_per_hex.py
 
       - name: Rebuild polygon/geom-distance cell features (ADR-0019/0032)
+        if: ${{ github.event.inputs.mode == 'full' }}
         run: |
           set -euo pipefail
           # water_share_* / dist_to_water_m и остальные polygon/geom ЦОФ
@@ -147,6 +177,7 @@ jobs:
           uv run python scripts/build_cell_geom_distance_features.py
 
       - name: Upload graph-distance features to S3
+        if: ${{ github.event.inputs.mode == 'full' }}
         run: |
           set -euo pipefail
           # silver/features was downloaded from S3 above, so re-uploading
@@ -161,27 +192,32 @@ jobs:
             --prefix Kadatastr/silver/isochrone_cache
 
       - name: Rebuild object features
+        if: ${{ github.event.inputs.mode == 'full' }}
         env:
           CELL_TSORF_ENABLED: "true"
         run: uv run python scripts/build_object_features.py
 
       - name: Rebuild hex aggregates
+        if: ${{ github.event.inputs.mode != 'pull-only' }}
         run: uv run python scripts/build_hex_aggregates.py
 
       - name: Upload valuation_objects to S3
+        if: ${{ github.event.inputs.mode == 'full' }}
         run: |
           uv run python scripts/upload_dir_to_s3.py \
             --src data/gold/valuation_objects \
             --prefix Kadatastr/gold/valuation_objects
 
       - name: Upload hex_aggregates to S3
+        if: ${{ github.event.inputs.mode != 'pull-only' }}
         run: |
           uv run python scripts/upload_dir_to_s3.py \
             --src data/gold/hex_aggregates \
             --prefix Kadatastr/gold/hex_aggregates
 
       # --- Дальше только VM (хостинг): pull пересчитанных префиксов с S3,
-      #     restart контейнера, chown, healthcheck. Compute на VM нет. ---
+      #     restart контейнера, chown, healthcheck. Compute на VM нет.
+      #     Эти шаги выполняются во всех режимах, включая pull-only. ---
 
       - name: Build scripts image on VM
         run: |
