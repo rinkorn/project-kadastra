@@ -38,6 +38,7 @@ from shapely.geometry import mapping
 
 from kadastra.domain.asset_class import AssetClass
 from kadastra.domain.feature_descriptions import describe_feature, feature_label
+from kadastra.usecases.get_cell_explanation import GetCellExplanation
 from kadastra.usecases.get_cell_tsorf import (
     CELL_TSORF_FEATURE_SETS,
     GetCellTsorf,
@@ -95,6 +96,7 @@ def make_api_router(
     market_reference_year: int,
     get_cell_tsorf: GetCellTsorf,
     get_cell_valuation: GetCellValuation,
+    get_cell_explanation: GetCellExplanation,
 ) -> APIRouter:
     router = APIRouter(prefix="/api")
 
@@ -407,6 +409,30 @@ def make_api_router(
             "asset_class": ac.value,
             "h3_index": h3_index,
             "data": data,
+        }
+
+    @router.get("/cell_valuation/{h3_index}/explain")
+    def cell_valuation_explain(
+        h3_index: str,
+        asset_class: str = Query(...),
+    ) -> dict[str, Any]:
+        """On-demand FULL locational EBM decomposition for one cell:
+        ``{intercept, location_score, terms}`` with every locational term
+        (the stored cell_valuation rows keep only the top-15). Powers the
+        inspector's «Показать все термы» toggle."""
+        ac = _parse_asset_class(asset_class)
+        explanation = get_cell_explanation.explain(region_code, ac, h3_index)
+        if explanation is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"no cell explanation for h3_index={h3_index!r} asset_class={ac.value!r}",
+            )
+        return {
+            "region": region_code,
+            "asset_class": ac.value,
+            "h3_index": h3_index,
+            "model": "ebm",
+            "data": explanation,
         }
 
     return router

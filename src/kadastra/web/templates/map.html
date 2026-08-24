@@ -1243,6 +1243,17 @@ async function fetchCellValuationDetail(h3Index, assetClass) {
   return (await r.json()).data;
 }
 
+// On-demand FULL locational EBM decomposition for one cell — the
+// precomputed rows keep only the top-15 terms; this recomputes all of
+// them server-side (mirrors fetchObjectExplanation for objects).
+async function fetchCellExplanation(h3Index, assetClass) {
+  const r = await fetch(
+    `/api/cell_valuation/${encodeURIComponent(h3Index)}/explain?asset_class=${assetClass}`
+  );
+  if (!r.ok) return null;
+  return (await r.json()).data;
+}
+
 // Populate the ВРИ selector from feature_options for the active asset
 // class. The wrap stays hidden unless the class has real alternatives
 // (landplot; the other classes only ever have «default»). Returns
@@ -1749,41 +1760,88 @@ async function showCellValuationInspector(hex, payload) {
     `<h2>Cell valuation — ${escapeHtml(payload.asset_class)} · h3 ${escapeHtml(hex.hex)}</h2>`,
     renderCellValuationSections(detail),
   ];
-  const terms = cellTermsSection(detail);
+  const termsCtx = { h3: hex.hex, assetClass: payload.asset_class };
+  const terms = cellTermsSection(detail, termsCtx);
   if (terms) sections.push(terms);
   if (tsorf && Object.keys(tsorf).length) {
     sections.push(`<h2>ЦОФ ячейки</h2>`);
     sections.push(renderCellTsorfSections(tsorf));
   }
   panel.innerHTML = sections.join('');
+  wireCellTermsToggle(detail, termsCtx);
 }
 
-// «Why this location score»: top locational EBM term contributions.
+// «Why this location score»: locational EBM term contributions.
 // Stored on the «default» variant only — the decomposition is
 // variant-independent. Row markup shared with explanationSection.
 //
-// The score itself sums ALL locational terms, but only the top-N are
-// stored per cell (build_cell_valuation._TOP_TERMS_N). The closing
-// head row «среднее + остальные термы» = score − Σ(shown) absorbs the
-// baseline plus the unstored tail, so the block always reconciles with
-// the location_score shown in the variant section above.
-function cellTermsSection(detail) {
-  const holder = detail.default || Object.values(detail).find(v => v && v.top_terms);
-  const terms = (holder && holder.top_terms) || [];
-  if (!terms.length) return '';
+// Two views over the same block:
+// - collapsed (default): the stored top-N terms. The score itself sums
+//   ALL locational terms, so a closing «среднее + остальные термы»
+//   head row (= score − Σ shown) keeps the block reconciled.
+// - expanded: every locational term, fetched on demand from
+//   /api/cell_valuation/{h3}/explain (the store keeps only the top-N —
+//   build_cell_valuation._TOP_TERMS_N). intercept + Σ all terms == the
+//   score exactly, so the closing row is replaced by «среднее».
+function cellTermsCollapsedHtml(holder) {
+  const terms = holder.top_terms || [];
   const total = holder.location_score_rub_per_m2;
   const maxAbs = Math.max(...terms.map(t => Math.abs(t.contribution))) || 1;
   const shown = terms.reduce((s, t) => s + t.contribution, 0);
   const rest = total - shown;
   const totalTip = 'Итоговый локационный скор: среднее + Σ всех локационных вкладов (₽/м²). Объектные термы в скор не входят.';
-  const restTip = `Среднее по классу плюс суммарный вклад локационных термов, не вошедших в топ-${terms.length}. Хранится только топ — иначе каждая ячейка таскала бы полный список термов.`;
+  const restTip = `Среднее по классу плюс суммарный вклад локационных термов, не вошедших в топ-${terms.length}. Полный список — по кнопке «Показать все термы».`;
   const head = (total === null || total === undefined) ? ''
     : expHeadRow('location score', total, totalTip)
       + expHeadRow('среднее + остальные термы', rest, restTip);
-  const rowsHtml = terms.map(t => expFeatureRow(t.feature, t.contribution, maxAbs)).join('');
+  return head + terms.map(t => expFeatureRow(t.feature, t.contribution, maxAbs)).join('');
+}
+
+function cellTermsFullHtml(full) {
+  const terms = full.terms || [];
+  const maxAbs = Math.max(...terms.map(t => Math.abs(t.contribution))) || 1;
+  const totalTip = 'Итоговый локационный скор: среднее + Σ всех локационных вкладов (₽/м²). Здесь показаны ВСЕ термы — сумма сходится точно.';
+  const baseTip = 'Среднее (intercept) — базовая средняя цена за м² по этому классу, от которой отталкиваются локационные признаки.';
+  return expHeadRow('location score', full.location_score, totalTip)
+    + expHeadRow('среднее', full.intercept, baseTip)
+    + terms.map(t => expFeatureRow(t.feature, t.contribution, maxAbs)).join('');
+}
+
+function cellTermsSection(detail, ctx) {
+  const holder = detail.default || Object.values(detail).find(v => v && v.top_terms);
+  const terms = (holder && holder.top_terms) || [];
+  if (!terms.length) return '';
   return `<h2>Почему такой location score</h2>`
     + `<div class="exp-legend">Каждый вклад — насколько локационный признак двигает скор (₽/м²): <span class="exp-contrib pos">зелёный</span> прибавляет, <span class="exp-contrib neg">красный</span> убавляет. Показан топ-${terms.length} по модулю.</div>`
-    + `<div class="exp-list">${head}${rowsHtml}</div>`;
+    + `<div class="exp-list" id="cell-exp-list">${cellTermsCollapsedHtml(holder)}</div>`
+    + `<button class="exp-toggle" id="cell-exp-toggle" type="button">Показать все термы</button>`;
+}
+
+// Lazy expand/collapse for the cell terms block. The full decomposition
+// is fetched once, then toggling is local. Must run after the panel's
+// innerHTML is set (showCellValuationInspector).
+function wireCellTermsToggle(detail, ctx) {
+  const btn = document.getElementById('cell-exp-toggle');
+  const list = document.getElementById('cell-exp-list');
+  if (!btn || !list) return;
+  const holder = detail.default || Object.values(detail).find(v => v && v.top_terms);
+  let full = null;
+  let expanded = false;
+  btn.addEventListener('click', async () => {
+    if (!full) {
+      btn.disabled = true;
+      btn.textContent = 'Загрузка…';
+      full = await fetchCellExplanation(ctx.h3, ctx.assetClass);
+      btn.disabled = false;
+      if (!full || !full.terms || !full.terms.length) {
+        btn.textContent = 'Полная декомпозиция недоступна';
+        return;
+      }
+    }
+    expanded = !expanded;
+    list.innerHTML = expanded ? cellTermsFullHtml(full) : cellTermsCollapsedHtml(holder);
+    btn.textContent = expanded ? 'Свернуть' : 'Показать все термы';
+  });
 }
 
 // «default» first (the class reference object), then ВРИ alternatives

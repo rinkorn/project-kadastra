@@ -20,6 +20,7 @@ from kadastra.adapters.s3_raw_data import S3RawData
 from kadastra.api.auth import BearerAuthMiddleware
 from kadastra.api.routes import make_api_router
 from kadastra.config import Settings
+from kadastra.domain.asset_class import AssetClass
 from kadastra.etl.object_road_class_features import (
     parse_major_road_ways,
     parse_minor_road_ways,
@@ -61,6 +62,7 @@ from kadastra.usecases.build_object_synthetic_target import BuildObjectSynthetic
 from kadastra.usecases.build_region_coverage import BuildRegionCoverage
 from kadastra.usecases.build_representativeness_report import BuildRepresentativenessReport
 from kadastra.usecases.build_valuation_objects import BuildValuationObjects
+from kadastra.usecases.get_cell_explanation import GetCellExplanation
 from kadastra.usecases.get_cell_tsorf import GetCellTsorf
 from kadastra.usecases.get_cell_valuation import GetCellValuation
 from kadastra.usecases.get_hex_aggregates import GetHexAggregates
@@ -371,6 +373,20 @@ class Container:
         s = self._settings
         return GetCellValuation(ParquetCellValuationStore(s.cell_valuation_store_path))
 
+    def build_get_cell_explanation(self) -> GetCellExplanation:
+        s = self._settings
+        return GetCellExplanation(
+            cell_feature_reader=ParquetFeatureStore(s.feature_store_path),
+            object_reader=ParquetValuationObjectStore(s.valuation_object_store_path),
+            ebm_loader=LocalEbmModelLoader(s.model_registry_path),
+            asset_classes=list(AssetClass),
+            cell_feature_sets=CELL_VALUATION_FEATURE_SETS,
+            resolution=s.cell_tsorf_resolution,
+            relative_parent_resolutions=s.relative_feature_parent_resolutions,
+            relative_feature_columns=s.relative_feature_columns,
+            current_year=s.current_year_for_age_features,
+        )
+
     def build_representativeness_report(self) -> BuildRepresentativenessReport:
         s = self._settings
         return BuildRepresentativenessReport(
@@ -440,6 +456,7 @@ def create_app(settings: Settings) -> FastAPI:
             market_reference_year=settings.emiss_market_reference_year,
             get_cell_tsorf=container.build_get_cell_tsorf(),
             get_cell_valuation=container.build_get_cell_valuation(),
+            get_cell_explanation=container.build_get_cell_explanation(),
         )
     )
     app.include_router(make_web_router(templates_dir))
