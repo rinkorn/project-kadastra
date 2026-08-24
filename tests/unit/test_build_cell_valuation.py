@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import h3
@@ -138,6 +139,7 @@ def test_output_schema_and_rows() -> None:
         "reference_variant",
         "reference_rub_per_m2",
         "location_score_rub_per_m2",
+        "top_terms_json",
         "n_sample_objects",
         "sample_covered",
     ]
@@ -166,6 +168,17 @@ def test_location_score_excludes_object_terms() -> None:
     assert row_a["location_score_rub_per_m2"][0] == pytest.approx(99_000.0)
     row_b = out.filter(pl.col("h3_index") == _CELL_B)
     assert row_b["location_score_rub_per_m2"][0] == pytest.approx(75_000.0)
+
+
+def test_top_terms_json_keeps_only_locational_terms() -> None:
+    store = FakeStore()
+    _usecase(store).execute("RU-KAZAN-AGG", [AssetClass.HOUSE])
+    out = store.saved[AssetClass.HOUSE]
+    row_a = out.filter(pl.col("h3_index") == _CELL_A)
+    # Only dist_to_cbd_m is locational; area/materials are object terms.
+    assert json.loads(row_a["top_terms_json"][0]) == [{"feature": "dist_to_cbd_m", "contribution": -1_000.0}]
+    row_b = out.filter(pl.col("h3_index") == _CELL_B)
+    assert json.loads(row_b["top_terms_json"][0]) == [{"feature": "dist_to_cbd_m", "contribution": -25_000.0}]
 
 
 def test_sample_coverage_flags() -> None:

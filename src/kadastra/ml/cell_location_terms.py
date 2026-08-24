@@ -68,3 +68,41 @@ def sum_location_terms(
         dtype=bool,
     )
     return intercept + term_values[:, locational_mask].sum(axis=1)
+
+
+def top_location_terms(
+    term_values: np.ndarray,
+    term_features: list[tuple[str, ...]],
+    top_n: int,
+) -> list[list[dict[str, object]]]:
+    """Per-sample top-``top_n`` locational terms by |contribution|.
+
+    Same eligibility rule as :func:`sum_location_terms` (locational
+    terms only). Returns one list per row — ``[{"feature", "contribution"}]``
+    dicts sorted by descending |contribution|, contributions rounded to
+    0.1 ₽/м². Pair names join with ``" × "``. Feeds the cell inspector's
+    «why this location score» block (ADR-0029).
+    """
+    loc_idx = np.array(
+        [i for i, term in enumerate(term_features) if not any(is_object_feature(name) for name in term)],
+        dtype=int,
+    )
+    if loc_idx.size == 0:
+        return [[] for _ in range(term_values.shape[0])]
+    sub = term_values[:, loc_idx]
+    k = min(top_n, sub.shape[1])
+    part = np.argpartition(-np.abs(sub), kth=k - 1, axis=1)[:, :k]
+    out: list[list[dict[str, object]]] = []
+    for row_i in range(sub.shape[0]):
+        cols = part[row_i]
+        ordered = cols[np.argsort(-np.abs(sub[row_i, cols]))]
+        out.append(
+            [
+                {
+                    "feature": " × ".join(term_features[loc_idx[c]]),
+                    "contribution": round(float(sub[row_i, c]), 1),
+                }
+                for c in ordered
+            ]
+        )
+    return out

@@ -9,6 +9,7 @@ from kadastra.adapters.ebm_quartet_model import EbmQuartetModel
 from kadastra.ml.cell_location_terms import (
     is_object_feature,
     sum_location_terms,
+    top_location_terms,
 )
 
 
@@ -48,6 +49,36 @@ def test_sum_location_terms_excludes_object_and_mixed_terms() -> None:
     scores = sum_location_terms(term_values, term_features, intercept=5.0)
     assert scores[0] == pytest.approx(5.0 + 1.0 + 1000.0)
     assert scores[1] == pytest.approx(5.0 + 2.0 + 2000.0)
+
+
+def test_top_location_terms_ranks_filters_and_joins_pair_names() -> None:
+    term_values = np.array(
+        [
+            [1.0, 10.0, 100.0, 1000.0, 3.0],
+            [2.0, 20.0, 200.0, 2000.0, 4.0],
+        ]
+    )
+    term_features = [
+        ("dist_to_cbd_m",),  # locational
+        ("area_m2",),  # object → excluded
+        ("levels", "dist_to_cbd_m"),  # mixed → excluded
+        ("count_p7",),  # locational
+        ("dist_metro_m", "walk_dist_to_school_m"),  # locational pair
+    ]
+    top = top_location_terms(term_values, term_features, top_n=2)
+    assert top[0] == [
+        {"feature": "count_p7", "contribution": 1000.0},
+        {"feature": "dist_metro_m × walk_dist_to_school_m", "contribution": 3.0},
+    ]
+    assert top[1][0] == {"feature": "count_p7", "contribution": 2000.0}
+    # top_n above the eligible count → all eligible terms.
+    top_all = top_location_terms(term_values, term_features, top_n=10)
+    assert len(top_all[0]) == 3
+
+
+def test_top_location_terms_without_locational_terms_returns_empty() -> None:
+    top = top_location_terms(np.ones((2, 1)), [("area_m2",)], top_n=5)
+    assert top == [[], []]
 
 
 def _fit_small_ebm() -> tuple[EbmQuartetModel, np.ndarray, list[str]]:

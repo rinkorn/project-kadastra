@@ -9,6 +9,7 @@ cell-valuation store layout.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import polars as pl
@@ -169,6 +170,25 @@ def test_get_cell_detail_returns_metrics_across_variants(tmp_path: Path) -> None
             "sample_covered": False,
         },
     }
+
+
+def test_get_cell_detail_parses_top_terms_from_default_variant(tmp_path: Path) -> None:
+    """top_terms_json (stored on the «default» rows) leaves the usecase
+    as a parsed ``top_terms`` list; variants without it get no key."""
+    base = tmp_path / "cell_valuation"
+    rows = _rows("default", [("8a", 10_000.0, 9_000.0, True)]) + _rows(
+        "Садоводство", [("8a", 12_000.0, 9_500.0, False)]
+    )
+    rows[0]["top_terms_json"] = json.dumps([{"feature": "dist_metro_m", "contribution": 123.5}])
+    rows[1]["top_terms_json"] = None
+    _write_partition(base, AssetClass.LANDPLOT, rows)
+    usecase = GetCellValuation(ParquetCellValuationStore(base))
+
+    detail = usecase.get_cell_detail(_REGION, AssetClass.LANDPLOT, "8a")
+
+    assert detail["default"]["top_terms"] == [{"feature": "dist_metro_m", "contribution": 123.5}]
+    assert "top_terms_json" not in detail["default"]
+    assert "top_terms" not in detail["Садоводство"]
 
 
 def test_get_cell_detail_returns_empty_when_cell_absent(tmp_path: Path) -> None:
