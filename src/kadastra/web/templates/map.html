@@ -1760,26 +1760,30 @@ async function showCellValuationInspector(hex, payload) {
 
 // «Why this location score»: top locational EBM term contributions.
 // Stored on the «default» variant only — the decomposition is
-// variant-independent. Diverging bars reuse the object-explanation CSS.
+// variant-independent. Row markup shared with explanationSection.
+//
+// The score itself sums ALL locational terms, but only the top-N are
+// stored per cell (build_cell_valuation._TOP_TERMS_N). The closing
+// head row «среднее + остальные термы» = score − Σ(shown) absorbs the
+// baseline plus the unstored tail, so the block always reconciles with
+// the location_score shown in the variant section above.
 function cellTermsSection(detail) {
   const holder = detail.default || Object.values(detail).find(v => v && v.top_terms);
   const terms = (holder && holder.top_terms) || [];
   if (!terms.length) return '';
+  const total = holder.location_score_rub_per_m2;
   const maxAbs = Math.max(...terms.map(t => Math.abs(t.contribution))) || 1;
-  const rowsHtml = terms.map(t => {
-    const half = Math.round((Math.abs(t.contribution) / maxAbs) * 50);
-    const pos = t.contribution >= 0;
-    const tooltip = labelTip(t.feature);
-    const barStyle = pos ? `left:50%;width:${half}%` : `right:50%;width:${half}%`;
-    return `<div class="exp-row" data-tip="${escapeHtml(tooltip)}">
-        <span class="exp-key">${escapeHtml(labelFeature(t.feature) || t.feature)}</span>
-        <span class="exp-contrib ${pos ? 'pos' : 'neg'}">${escapeHtml(formatDelta(t.contribution))}</span>
-        <span class="exp-bar-track"><span class="exp-bar-zero"></span><span class="exp-bar ${pos ? 'pos' : 'neg'}" style="${barStyle}"></span></span>
-      </div>`;
-  }).join('');
+  const shown = terms.reduce((s, t) => s + t.contribution, 0);
+  const rest = total - shown;
+  const totalTip = 'Итоговый локационный скор: среднее + Σ всех локационных вкладов (₽/м²). Объектные термы в скор не входят.';
+  const restTip = `Среднее по классу плюс суммарный вклад локационных термов, не вошедших в топ-${terms.length}. Хранится только топ — иначе каждая ячейка таскала бы полный список термов.`;
+  const head = (total === null || total === undefined) ? ''
+    : expHeadRow('location score', total, totalTip)
+      + expHeadRow('среднее + остальные термы', rest, restTip);
+  const rowsHtml = terms.map(t => expFeatureRow(t.feature, t.contribution, maxAbs)).join('');
   return `<h2>Почему такой location score</h2>`
-    + `<p class="empty" style="margin:2px 0 6px">location score = среднее + Σ локационных вкладов; показан топ-${terms.length} по модулю. Объектные термы в скор не входят.</p>`
-    + rowsHtml;
+    + `<div class="exp-legend">Каждый вклад — насколько локационный признак двигает скор (₽/м²): <span class="exp-contrib pos">зелёный</span> прибавляет, <span class="exp-contrib neg">красный</span> убавляет. Показан топ-${terms.length} по модулю.</div>`
+    + `<div class="exp-list">${head}${rowsHtml}</div>`;
 }
 
 // «default» first (the class reference object), then ВРИ alternatives
@@ -1973,7 +1977,38 @@ function quartetSection(quartet, marketRef) {
 // EBM (White Box) explanation: top feature contributions as diverging
 // bars (zero at the track centre — green grows right, red grows left).
 // intercept + Σ contribution == the EBM prediction for the object.
+//
+// Row builders are shared with cellTermsSection (the cell location-score
+// block) — one markup, one tooltip convention for every EBM
+// decomposition the inspector renders.
 const EXP_TOP_N = 25;
+
+// One signed contribution row with a diverging bar.
+function expRowHtml(label, tip, contribution, maxAbs) {
+  const half = Math.round((Math.abs(contribution) / maxAbs) * 50);
+  const pos = contribution >= 0;
+  const barStyle = pos ? `left:50%;width:${half}%` : `right:50%;width:${half}%`;
+  return `<div class="exp-row" data-tip="${escapeHtml(tip)}">
+      <span class="exp-key">${escapeHtml(label)}</span>
+      <span class="exp-contrib ${pos ? 'pos' : 'neg'}">${escapeHtml(formatDelta(contribution))}</span>
+      <span class="exp-bar-track"><span class="exp-bar-zero"></span><span class="exp-bar ${pos ? 'pos' : 'neg'}" style="${barStyle}"></span></span>
+    </div>`;
+}
+
+// Contribution row for a named feature: Russian label + raw-name tooltip.
+function expFeatureRow(feature, contribution, maxAbs) {
+  return expRowHtml(labelFeature(feature) || feature, labelTip(feature), contribution, maxAbs);
+}
+
+// Neutral head row (no sign, no bar) — totals and baselines sit above
+// the signed contributions.
+function expHeadRow(label, value, tip) {
+  return `<div class="exp-row exp-row-base" data-tip="${escapeHtml(tip)}">
+      <span class="exp-key">${escapeHtml(label)}</span>
+      <span class="exp-contrib exp-neutral">${escapeHtml(formatValue(value))}</span>
+      <span class="exp-bar-track"><span class="exp-bar-zero"></span></span>
+    </div>`;
+}
 
 function explanationSection(explanation) {
   if (!explanation || !explanation.terms || !explanation.terms.length) return '';
@@ -1981,17 +2016,7 @@ function explanationSection(explanation) {
   const terms = [...explanation.terms].sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution));
   const maxAbs = Math.max(...terms.map(t => Math.abs(t.contribution))) || 1;
   const total = intercept + terms.reduce((s, t) => s + t.contribution, 0);
-  const rowsHtml = (list) => list.map(t => {
-    const half = Math.round((Math.abs(t.contribution) / maxAbs) * 50);
-    const pos = t.contribution >= 0;
-    const tooltip = labelTip(t.feature);
-    const barStyle = pos ? `left:50%;width:${half}%` : `right:50%;width:${half}%`;
-    return `<div class="exp-row" data-tip="${escapeHtml(tooltip)}">
-        <span class="exp-key">${escapeHtml(labelFeature(t.feature) || t.feature)}</span>
-        <span class="exp-contrib ${pos ? 'pos' : 'neg'}">${escapeHtml(formatDelta(t.contribution))}</span>
-        <span class="exp-bar-track"><span class="exp-bar-zero"></span><span class="exp-bar ${pos ? 'pos' : 'neg'}" style="${barStyle}"></span></span>
-      </div>`;
-  }).join('');
+  const rowsHtml = (list) => list.map(t => expFeatureRow(t.feature, t.contribution, maxAbs)).join('');
   const top = terms.slice(0, EXP_TOP_N);
   const more = terms.length - top.length;
   const toggle = more > 0
@@ -2002,16 +2027,7 @@ function explanationSection(explanation) {
   const yPredTip = 'Итоговый прогноз: y_pred = среднее + Σ всех вкладов. То, что модель предсказала для этого объекта (₽/м²).';
   // Neutral head rows — y_pred (total) then среднее (baseline) — no sign,
   // no green/red, both with the centre line the diverging bars reference.
-  const head = `<div class="exp-row exp-row-base" data-tip="${escapeHtml(yPredTip)}">
-      <span class="exp-key">y_pred</span>
-      <span class="exp-contrib exp-neutral">${escapeHtml(formatValue(total))}</span>
-      <span class="exp-bar-track"><span class="exp-bar-zero"></span></span>
-    </div>
-    <div class="exp-row exp-row-base" data-tip="${escapeHtml(baseTip)}">
-      <span class="exp-key">среднее</span>
-      <span class="exp-contrib exp-neutral">${escapeHtml(formatValue(intercept))}</span>
-      <span class="exp-bar-track"><span class="exp-bar-zero"></span></span>
-    </div>`;
+  const head = expHeadRow('y_pred', total, yPredTip) + expHeadRow('среднее', intercept, baseTip);
   return `<h2>Объяснение цены (EBM)</h2>
     <div class="exp-base" data-tip="${escapeHtml(baseTip)}">y_pred = среднее + Σ вкладов = ${escapeHtml(formatValue(intercept))} + (${escapeHtml(formatDelta(net))})</div>
     <div class="exp-legend">Каждый вклад — насколько признак двигает цену от среднего (₽/м²): <span class="exp-contrib pos">зелёный</span> прибавляет, <span class="exp-contrib neg">красный</span> убавляет.</div>
