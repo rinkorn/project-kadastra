@@ -71,6 +71,73 @@ def _infer_literal_dtype(value: object) -> pl.DataType | type[pl.DataType]:
     return pl.Float64
 
 
+def load_cell_feature_frame(
+    cell_feature_reader: FeatureReaderPort,
+    region_code: str,
+    resolution: int,
+    feature_sets: tuple[str, ...],
+) -> pl.DataFrame:
+    """Join all Слой 1 feature sets on ``h3_index`` and add lat/lon.
+
+    Shared by :class:`BuildCellValuation` (batch scoring) and
+    :class:`~kadastra.usecases.get_cell_explanation.GetCellExplanation`
+    (on-demand single-cell decomposition) so both see the same frame.
+    """
+    cells: pl.DataFrame | None = None
+    for feature_set in feature_sets:
+        part = cell_feature_reader.load(region_code, resolution, feature_set)
+        if "resolution" in part.columns:
+            part = part.drop("resolution")
+        cells = part if cells is None else cells.join(part, on="h3_index", how="full", coalesce=True)
+    if cells is None:
+        raise ValueError("load_cell_feature_frame: no cell feature sets configured")
+    coords = h3_cells_to_latlng(cells["h3_index"].to_list())
+    return cells.with_columns(
+        pl.Series("lat", [c[0] for c in coords], dtype=pl.Float64),
+        pl.Series("lon", [c[1] for c in coords], dtype=pl.Float64),
+    )
+
+
+def assemble_cell_frame(
+    cells: pl.DataFrame,
+    template: ReferenceObject,
+    gold_schema: pl.Schema,
+    aggregates: pl.DataFrame,
+    *,
+    parent_resolutions: list[int],
+    rel_columns: list[str],
+    numeric_cols: list[str],
+    categorical_cols: list[str],
+) -> pl.DataFrame:
+    """Cell location features + template object attributes + rel features.
+
+    Every model feature column is guaranteed present: missing ones
+    (e.g. a feature set the region lacks) are added as nulls with
+    the dtype the gold training frame carried.
+    """
+    frame = cells
+    for col, value in template.attributes.items():
+        dtype = gold_schema.get(col) or _infer_literal_dtype(value)
+        if col in frame.columns:
+            frame = frame.drop(col)
+        frame = frame.with_columns(pl.lit(value, dtype=dtype).alias(col))
+    present_rel = [c for c in rel_columns if c in frame.columns]
+    if present_rel:
+        frame = join_relative_features(
+            frame,
+            aggregates,
+            parent_resolutions=parent_resolutions,
+            feature_columns=present_rel,
+        )
+    for col in numeric_cols:
+        if col not in frame.columns:
+            frame = frame.with_columns(pl.lit(None, dtype=pl.Float64).alias(col))
+    for col in categorical_cols:
+        if col not in frame.columns:
+            frame = frame.with_columns(pl.lit(None, dtype=pl.Utf8).alias(col))
+    return frame
+
+
 @dataclass(frozen=True)
 class CellValuationClassResult:
     """Per-class summary of a build run (for _meta.json / sanity report)."""
@@ -199,19 +266,11 @@ class BuildCellValuation:
         return results
 
     def _load_cell_frame(self, region_code: str) -> pl.DataFrame:
-        """Join all Слой 1 feature sets on ``h3_index`` and add lat/lon."""
-        cells: pl.DataFrame | None = None
-        for feature_set in self._cell_feature_sets:
-            part = self._cell_feature_reader.load(region_code, self._resolution, feature_set)
-            if "resolution" in part.columns:
-                part = part.drop("resolution")
-            cells = part if cells is None else cells.join(part, on="h3_index", how="full", coalesce=True)
-        if cells is None:
-            raise ValueError("BuildCellValuation: no cell feature sets configured")
-        coords = h3_cells_to_latlng(cells["h3_index"].to_list())
-        return cells.with_columns(
-            pl.Series("lat", [c[0] for c in coords], dtype=pl.Float64),
-            pl.Series("lon", [c[1] for c in coords], dtype=pl.Float64),
+        return load_cell_feature_frame(
+            self._cell_feature_reader,
+            region_code,
+            self._resolution,
+            self._cell_feature_sets,
         )
 
     def _assemble_cell_frame(
@@ -224,34 +283,16 @@ class BuildCellValuation:
         numeric_cols: list[str],
         categorical_cols: list[str],
     ) -> pl.DataFrame:
-        """Cell location features + template object attributes + rel features.
-
-        Every model feature column is guaranteed present: missing ones
-        (e.g. a feature set the region lacks) are added as nulls with
-        the dtype the gold training frame carried.
-        """
-        frame = cells
-        gold_schema = class_gold.schema
-        for col, value in template.attributes.items():
-            dtype = gold_schema.get(col) or _infer_literal_dtype(value)
-            if col in frame.columns:
-                frame = frame.drop(col)
-            frame = frame.with_columns(pl.lit(value, dtype=dtype).alias(col))
-        present_rel = [c for c in rel_columns if c in frame.columns]
-        if present_rel:
-            frame = join_relative_features(
-                frame,
-                aggregates,
-                parent_resolutions=self._relative_parent_resolutions,
-                feature_columns=present_rel,
-            )
-        for col in numeric_cols:
-            if col not in frame.columns:
-                frame = frame.with_columns(pl.lit(None, dtype=pl.Float64).alias(col))
-        for col in categorical_cols:
-            if col not in frame.columns:
-                frame = frame.with_columns(pl.lit(None, dtype=pl.Utf8).alias(col))
-        return frame
+        return assemble_cell_frame(
+            cells,
+            template,
+            class_gold.schema,
+            aggregates,
+            parent_resolutions=self._relative_parent_resolutions,
+            rel_columns=rel_columns,
+            numeric_cols=numeric_cols,
+            categorical_cols=categorical_cols,
+        )
 
     def _join_sample_coverage(self, out: pl.DataFrame, class_gold: pl.DataFrame) -> pl.DataFrame:
         """Per-cell training-sample coverage flags (ADR-0028 linkage)."""
