@@ -435,17 +435,13 @@
       <span class="reverse" id="legend-reverse" title="Reverse palette">⇄ reverse</span>
       <span class="reverse" id="legend-oor-mode"
             title="Out-of-range mode: clamp / dim / hide">oor: clamp</span>
+      <span class="reverse active" id="legend-dim-uncovered" style="display:none"
+            title="Ячейки без объектов-образцов (sample_covered=false) — чистая экстраполяция модели. Клик переключает: приглушить / полный цвет.">dim: on</span>
     </div>
     <div class="opacity-row" id="legend-opacity-row" style="display:none">
       <span class="label" title="Fill opacity">α</span>
       <input id="legend-alpha" type="range" min="0" max="255" step="1" value="170" />
       <span class="val" id="legend-alpha-val">170</span>
-    </div>
-    <div class="opacity-row" id="legend-dim-row" style="display:none"
-      title="Ячейки без объектов-образцов (sample_covered=false) — чистая экстраполяция модели. Снимите галочку, чтобы красить их полным цветом, как ячейки с объектами.">
-      <label style="display:flex; align-items:center; gap:4px; cursor:pointer">
-        <input type="checkbox" id="val_dim_uncovered" checked>приглушать ячейки без объектов
-      </label>
     </div>
     <div class="palette-picker" id="legend-palette-picker"></div>
   </div>
@@ -465,7 +461,7 @@ const TIPS = {
     model: 'Какой моделью оценивать стоимость и считать ошибку.\n\nВ системе обучены 4 модели разной природы — от простой линейной (для baseline) до CatBoost (максимальная точность, но «чёрный ящик»). Выбор модели меняет: out-of-fold прогноз (y_pred_oof), остаток (residual) и медианные агрегаты прогноза/остатка по гексам.\n\nИспользуйте: для проверки качества → CatBoost; для понимания вклада признаков → EBM или grey_tree.',
     scale: 'Как числовое значение признака переводится в цвет.\n\n• «linear (p2–p98)» — линейная шкала, обрезанная по 2-му и 98-му перцентилям. Выбросы не «съедают» всю цветовую гамму. Дефолт.\n• «log» — логарифмическая шкала от min до max. Полезна, когда значения растянуты на несколько порядков (цены, расстояния).\n• «linear» — простой линейный мап от min до max. Чувствителен к выбросам, но точно отражает шкалу.',
     basemap: 'Подложка под слоем данных.\n\n• «OSM» — карта OpenStreetMap (улицы, здания, ориентиры).\n• «off» — прозрачный фон, виден только слой данных. Удобно для скриншотов и презентаций.',
-    val_metric: 'Какую метрику слоя cell valuation (ADR-0029) кодирует цвет.\n\n• «reference» — предсказанная цена ₽/м² типового (эталонного) объекта класса в ячейке: ЦОФ местности + типовые характеристики объекта.\n• «location score» — чистый локационный скор ₽/м²: вклад только места, без характеристик объекта.\n\nЯчейки без объектов-образцов (sample_covered=false) показаны приглушённо — там работает чистая экстраполяция модели. Отключается чекбоксом «приглушать ячейки без объектов» в легенде (под ползунком α).',
+    val_metric: 'Какую метрику слоя cell valuation (ADR-0029) кодирует цвет.\n\n• «reference» — предсказанная цена ₽/м² типового (эталонного) объекта класса в ячейке: ЦОФ местности + типовые характеристики объекта.\n• «location score» — чистый локационный скор ₽/м²: вклад только места, без характеристик объекта.\n\nЯчейки без объектов-образцов (sample_covered=false) показаны приглушённо — там работает чистая экстраполяция модели. Переключается чипом «dim» в легенде (рядом с reverse/oor).',
     val_variant: 'Вариант разрешённого использования (ВРИ) эталонного участка — только для landplot (ADR-0029). Цена м² участка сильно зависит от того, что на нём разрешено строить: ИЖС, садоводство, гараж и т.п. Для остальных классов эталон один («default»), селектор скрыт.',
   },
   options: {
@@ -1313,7 +1309,7 @@ function renderHex(payload) {
       if (oorMode === 'dim' && oorFlag(d)) c[3] = Math.round(c[3] * 0.25);
       // «Стоимость типового объекта»: cells without sample objects are
       // pure model extrapolation — dim them so coverage reads at a glance.
-      // Toggleable via the «приглушать без объектов» checkbox.
+      // Toggleable via the «dim» chip in the legend.
       if (dimUncoveredCells && payload.dim_uncovered && d.covered === false) c[3] = Math.round(c[3] * 0.35);
       return c;
     };
@@ -1330,6 +1326,7 @@ function renderHex(payload) {
       getFillColor: [seqPaletteId, seqReverse, isCategorical,
                      customLo, customHi, userFillAlpha,
                      seqColorFrom, seqColorTo, oorMode,
+                     dimUncoveredCells,
                      document.getElementById('scale').value],
     },
     stroked: true,
@@ -2377,7 +2374,6 @@ function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
     }).join('');
     document.getElementById('legend-palette-controls').style.display = 'none';
     document.getElementById('legend-opacity-row').style.display = 'none';
-    document.getElementById('legend-dim-row').style.display = 'none';
     renderPalettePicker(null);
     return;
   }
@@ -2405,9 +2401,9 @@ function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
   const alphaSlider = document.getElementById('legend-alpha');
   const alphaVal = document.getElementById('legend-alpha-val');
   document.getElementById('legend-opacity-row').style.display = '';
-  // «приглушать ячейки без объектов» — только слой cell valuation.
-  document.getElementById('legend-dim-row').style.display =
-    (lastDataset && lastDataset.payload && lastDataset.payload.valuation) ? '' : 'none';
+  // «dim» chip — только слой cell valuation (ячейки без образцов).
+  document.getElementById('legend-dim-uncovered').style.display =
+    (payload && payload.valuation) ? '' : 'none';
   if (document.activeElement !== alphaSlider) alphaSlider.value = String(userFillAlpha);
   alphaVal.textContent = String(userFillAlpha);
   renderPalettePicker(kind);
@@ -2609,9 +2605,14 @@ function recolor() {
   document.getElementById(id).addEventListener('change', recolor)
 );
 
-// «приглушать без объектов» checkbox — recolor only, no refetch.
-document.getElementById('val_dim_uncovered').addEventListener('change', (ev) => {
-  dimUncoveredCells = ev.target.checked;
+// «dim» chip (legend, cell-valuation only): dim cells without sample
+// objects (pure extrapolation) vs full colour. dimUncoveredCells is in
+// the hex layer's updateTriggers, so recolor() repaints immediately.
+const dimChip = document.getElementById('legend-dim-uncovered');
+dimChip.addEventListener('click', () => {
+  dimUncoveredCells = !dimUncoveredCells;
+  dimChip.textContent = `dim: ${dimUncoveredCells ? 'on' : 'off'}`;
+  dimChip.classList.toggle('active', dimUncoveredCells);
   recolor();
 });
 
