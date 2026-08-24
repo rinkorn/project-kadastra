@@ -6,7 +6,7 @@ no tooltip and no failing test — silent UX regression.
 
 from __future__ import annotations
 
-from kadastra.domain.feature_descriptions import describe_feature
+from kadastra.domain.feature_descriptions import describe_feature, feature_label
 from kadastra.usecases.get_hex_aggregates import (
     CATEGORICAL_FEATURES,
     NUMERIC_FEATURES,
@@ -113,3 +113,51 @@ def test_admin_categorical_features_have_descriptions() -> None:
         "age_years_sq",
     ):
         assert describe_feature(f) is not None, f
+
+
+# --- feature_label: короткие русские подписи для UI ---
+
+
+def test_label_explicit_dict() -> None:
+    assert feature_label("area_m2") == "Площадь, м²"
+    assert feature_label("median_target_rub_per_m2") == "Медианная цена, ₽/м²"
+    assert feature_label("location_score_rub_per_m2") == "Локационный скор, ₽/м²"
+
+
+def test_label_dist_to_uses_genitive() -> None:
+    assert feature_label("dist_to_secondary_m") == "До районной улицы, м"
+    assert feature_label("dist_to_cbd_m") == "До центра (CBD), м"
+    assert feature_label("walk_dist_to_school_m") == "Пешком до школы, м"
+
+
+def test_label_mean_prefix() -> None:
+    assert feature_label("mean_dist_to_park_m") == "До парка, м (среднее)"
+
+
+def test_label_share_within_count() -> None:
+    assert feature_label("park_share_500m") == "Доля «парк» в 500 м"
+    assert feature_label("school_within_500m") == "Школа в 500 м"
+    assert feature_label("count_school_2km") == "Школа в 2 км"
+
+
+def test_label_relative_and_count_p() -> None:
+    assert feature_label("road_length_500m__rel_p7_diff_med") == ("Дороги в 500 м, м — к медиане p7 (отклонение)")
+    assert feature_label("count_p7") == "Объектов в гексе p7"
+
+
+def test_label_pair_terms_split_per_side() -> None:
+    assert feature_label("dist_to_cbd_m × polygon_area_m2") == ("До центра (CBD), м × Площадь контура, м²")
+    assert feature_label("area_m2 & levels") == "Площадь, м² × Этажность"
+
+
+def test_label_unknown_falls_back_to_humanized() -> None:
+    assert feature_label("weird_future_feature") == "Weird future feature"
+
+
+def test_every_known_feature_has_label() -> None:
+    """Label never returns None and never the raw snake_case name."""
+    known = list(NUMERIC_FEATURES) + list(CATEGORICAL_FEATURES) + list(OBJECT_FEATURE_COLUMNS)
+    for f in known:
+        label = feature_label(f)
+        assert label, f
+        assert "_" not in label, f"{f} -> {label!r} still looks raw"

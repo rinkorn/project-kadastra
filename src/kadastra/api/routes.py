@@ -37,7 +37,7 @@ from fastapi import APIRouter, HTTPException, Query
 from shapely.geometry import mapping
 
 from kadastra.domain.asset_class import AssetClass
-from kadastra.domain.feature_descriptions import describe_feature
+from kadastra.domain.feature_descriptions import describe_feature, feature_label
 from kadastra.usecases.get_cell_tsorf import (
     CELL_TSORF_FEATURE_SETS,
     GetCellTsorf,
@@ -305,6 +305,10 @@ def make_api_router(
             # reads this dict and falls back to nothing if a key is
             # missing — see domain/feature_descriptions.py.
             "feature_descriptions": {name: describe_feature(name) for name in all_feature_names},
+            # Short Russian display labels (feature_label) — the UI shows
+            # these instead of raw column names; raw names stay in the
+            # tooltip via describe_feature.
+            "feature_labels": {name: feature_label(name) for name in all_feature_names},
         }
 
     @router.get("/cell_tsorf")

@@ -504,6 +504,9 @@ const TIPS = {
 // (single source of truth lives in domain/feature_descriptions.py).
 // Populated by loadFeatureOptions, read by applyFeatureOptionTooltips.
 let featureDescriptions = {};
+// Short Russian display labels (feature_label) — shown instead of raw
+// column names in inspectors; the raw name stays in the tooltip.
+let featureLabels = {};
 
 // English POI tokens → Russian, mirroring domain/feature_descriptions.py
 // so non-curated radii/POIs in the EBM explanation get the same wording.
@@ -614,6 +617,33 @@ function describeFeature(name) {
   const countp = name.match(/^count_p(\d+)$/);
   if (countp) return `Сколько объектов этого класса в родительском гексе H3 разрешения ${countp[1]}. Укрупнённый счётчик плотности.`;
   return null;
+}
+
+// Short Russian label for display (mirrors domain feature_label). The
+// API dict covers every known feature; the fallbacks below handle
+// dynamic names formed at explain time (pairs, relative features).
+function labelFeature(name) {
+  if (featureLabels[name]) return featureLabels[name];
+  for (const sep of [' × ', ' & ']) {
+    if (name.includes(sep)) return name.split(sep).map(labelFeature).join(' × ');
+  }
+  const rel = name.match(/^(.+)__rel_p(\d+)_(diff_med|ratio_med|z_iqr)$/);
+  if (rel) {
+    const statRu = { diff_med: 'отклонение', ratio_med: 'отношение', z_iqr: 'z-скор' }[rel[3]];
+    return `${labelFeature(rel[1])} — к медиане p${rel[2]} (${statRu})`;
+  }
+  return null;
+}
+
+// Inspector display row: Russian label for the human, raw column name +
+// long description in the tooltip. Falls back to the raw name for the
+// uncurated tail.
+function labelTip(raw) {
+  const desc = describeFeature(raw);
+  return desc ? `${raw}\n${desc}` : raw;
+}
+function featureRow(key, value) {
+  return [labelFeature(key) || key, value, key];
 }
 
 function applyStaticTooltips() {
@@ -1066,6 +1096,7 @@ async function loadFeatureOptions() {
   const r = await fetch('/api/feature_options');
   featureOptions = await r.json();
   featureDescriptions = featureOptions.feature_descriptions || {};
+  featureLabels = featureOptions.feature_labels || {};
   // Unified «Сетка» feature dropdown: aggregates (Слой 2) and cell ЦОФ
   // (Слой 1) in one list, grouped by optgroup. Option values carry the
   // source prefix — ``agg:<name>`` reads /api/hex_aggregates,
@@ -1640,8 +1671,8 @@ function renderHexDetailSections(detail) {
   return hexGroupedKeys(detail)
     .map(g => {
       const rows = g.keys.map(k => {
-        const label = ADMIN_KEY_LABELS[k];
-        return label ? [label, formatValue(detail[k]), k] : [k, formatValue(detail[k])];
+        const label = ADMIN_KEY_LABELS[k] || labelFeature(k) || k;
+        return [label, formatValue(detail[k]), k];
       });
       return `<h2>${g.title}</h2>` + rowsSection(g.title === 'Сводка' ? 'summary' : '', rows);
     })
@@ -1689,7 +1720,7 @@ function renderCellTsorfSections(detail) {
   ];
   return ordered.map(fs => {
     const label = CELL_TSORF_SET_LABELS[fs] || fs;
-    const rows = Object.keys(detail[fs]).sort().map(f => [f, formatValue(detail[fs][f])]);
+    const rows = Object.keys(detail[fs]).sort().map(f => featureRow(f, formatValue(detail[fs][f])));
     return `<h2>${escapeHtml(label)}</h2>` + rowsSection('cell', rows);
   }).join('');
 }
@@ -1738,10 +1769,10 @@ function cellTermsSection(detail) {
   const rowsHtml = terms.map(t => {
     const half = Math.round((Math.abs(t.contribution) / maxAbs) * 50);
     const pos = t.contribution >= 0;
-    const tooltip = describeFeature(t.feature) || t.feature;
+    const tooltip = labelTip(t.feature);
     const barStyle = pos ? `left:50%;width:${half}%` : `right:50%;width:${half}%`;
     return `<div class="exp-row" data-tip="${escapeHtml(tooltip)}">
-        <span class="exp-key">${escapeHtml(t.feature)}</span>
+        <span class="exp-key">${escapeHtml(labelFeature(t.feature) || t.feature)}</span>
         <span class="exp-contrib ${pos ? 'pos' : 'neg'}">${escapeHtml(formatDelta(t.contribution))}</span>
         <span class="exp-bar-track"><span class="exp-bar-zero"></span><span class="exp-bar ${pos ? 'pos' : 'neg'}" style="${barStyle}"></span></span>
       </div>`;
@@ -1759,10 +1790,10 @@ function renderCellValuationSections(detail) {
   return variants.map(v => {
     const d = detail[v];
     const rows = [
-      ['reference_rub_per_m2', formatValue(d.reference_rub_per_m2)],
-      ['location_score_rub_per_m2', formatValue(d.location_score_rub_per_m2)],
-      ['n_sample_objects', formatValue(d.n_sample_objects)],
-      ['sample_covered', d.sample_covered ? 'true' : 'false — нет объектов-образцов (экстраполяция)'],
+      featureRow('reference_rub_per_m2', formatValue(d.reference_rub_per_m2)),
+      featureRow('location_score_rub_per_m2', formatValue(d.location_score_rub_per_m2)),
+      featureRow('n_sample_objects', formatValue(d.n_sample_objects)),
+      featureRow('sample_covered', d.sample_covered ? 'да' : 'нет — нет объектов-образцов (экстраполяция)'),
     ];
     const title = v === 'default' ? 'default (эталон класса)' : `ВРИ: ${v}`;
     return `<h2>${escapeHtml(title)}</h2>` + rowsSection('cell', rows);
@@ -1802,10 +1833,7 @@ async function showObjectInspector(obj, assetClass) {
     'y_true', 'y_pred_oof', 'residual', 'fold_id'];
   const summaryRows = summary
     .filter(k => detail[k] !== undefined)
-    .map(k => {
-      const label = ADMIN_KEY_LABELS[k];
-      return label ? [label, formatValue(detail[k]), k] : [k, formatValue(detail[k])];
-    });
+    .map(k => [ADMIN_KEY_LABELS[k] || labelFeature(k) || k, formatValue(detail[k]), k]);
   // Surface a one-line geometry status so the user knows whether the
   // map highlight comes from a real polygon or just a fallback dot.
   summaryRows.push([
@@ -1840,7 +1868,7 @@ async function showObjectInspector(obj, assetClass) {
   const rest = Object.keys(detail)
     .filter(k => !summary.includes(k) && !GEOMETRY_FIELDS.includes(k))
     .sort()
-    .map(k => [k, formatValue(detail[k])]);
+    .map(k => featureRow(k, formatValue(detail[k])));
   if (rest.length) {
     sections.push(`<h2>All features</h2>`);
     sections.push(rowsSection('all', rest));
@@ -1880,7 +1908,7 @@ function objectGroupedKeys(detail) {
 function renderGeometrySection(detail) {
   const present = GEOMETRY_FIELDS.filter(k => k in detail);
   if (!present.length) return '';
-  const rows = present.map(k => [k, formatGeometryValue(k, detail[k])]);
+  const rows = present.map(k => featureRow(k, formatGeometryValue(k, detail[k])));
   return rowsSection('geometry', rows);
 }
 
@@ -1900,7 +1928,7 @@ function formatGeometryValue(key, v) {
 function rowsSection(cls, rows) {
   return `<div class="section ${cls}">` + rows.map(r => {
     const k = r[0], v = r[1], tipKey = r.length > 2 ? r[2] : k;
-    const tip = describeFeature(tipKey) || tipKey;
+    const tip = labelTip(tipKey);
     return `<div class="row"><span class="key" data-tip="${escapeHtml(tip)}">${escapeHtml(k)}</span><span class="val">${escapeHtml(String(v))}</span></div>`;
   }).join('') + `</div>`;
 }
@@ -1956,10 +1984,10 @@ function explanationSection(explanation) {
   const rowsHtml = (list) => list.map(t => {
     const half = Math.round((Math.abs(t.contribution) / maxAbs) * 50);
     const pos = t.contribution >= 0;
-    const tooltip = describeFeature(t.feature) || t.feature;
+    const tooltip = labelTip(t.feature);
     const barStyle = pos ? `left:50%;width:${half}%` : `right:50%;width:${half}%`;
     return `<div class="exp-row" data-tip="${escapeHtml(tooltip)}">
-        <span class="exp-key">${escapeHtml(t.feature)}</span>
+        <span class="exp-key">${escapeHtml(labelFeature(t.feature) || t.feature)}</span>
         <span class="exp-contrib ${pos ? 'pos' : 'neg'}">${escapeHtml(formatDelta(t.contribution))}</span>
         <span class="exp-bar-track"><span class="exp-bar-zero"></span><span class="exp-bar ${pos ? 'pos' : 'neg'}" style="${barStyle}"></span></span>
       </div>`;
@@ -2250,7 +2278,7 @@ function comparisonTable(da, db, kind) {
   for (const g of groups) {
     out.push(`<div class="cmp-section">${escapeHtml(g.title)}</div>`);
     for (const k of g.keys) {
-      const label = ADMIN_KEY_LABELS[k] || k;
+      const label = ADMIN_KEY_LABELS[k] || labelFeature(k) || k;
       out.push(comparisonRow(label, da[k], db[k], k));
     }
   }
@@ -2276,7 +2304,7 @@ function comparisonCellTable(da, db) {
     const aFeats = da[fs] || {};
     const bFeats = (db && db[fs]) || {};
     for (const f of Object.keys(aFeats).sort()) {
-      out.push(comparisonRow(f, aFeats[f], bFeats[f], f));
+      out.push(comparisonRow(labelFeature(f) || f, aFeats[f], bFeats[f], f));
     }
   }
   return out.join('');
@@ -2293,7 +2321,7 @@ function comparisonRow(key, va, vb, tipKey) {
     const cls = delta > 0 ? 'pos' : (delta < 0 ? 'neg' : '');
     deltaCell = `<span class="cmp-delta ${cls}">${formatDelta(delta)}</span>`;
   }
-  const tip = describeFeature(tipKey || key) || (tipKey || key);
+  const tip = labelTip(tipKey || key);
   // data-tip goes on the .cmp-row container, not the .cmp-key/.cmp-val
   // spans: those have overflow:hidden (for ellipsis) which clips the
   // ::after tooltip. The row is the smallest non-clipping ancestor.
