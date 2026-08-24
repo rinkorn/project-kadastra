@@ -355,10 +355,6 @@
     <label id="val-variant-wrap" style="display:none">ВРИ
       <select id="val_variant"></select>
     </label>
-    <label id="val-dim-wrap" style="display:none; flex-direction:row; align-items:center; gap:4px"
-      title="Ячейки без объектов-образцов (sample_covered=false) — чистая экстраполяция модели. Снимите галочку, чтобы красить их полным цветом, как ячейки с объектами.">
-      <input type="checkbox" id="val_dim_uncovered" checked>приглушать без объектов
-    </label>
     <label id="object-mode-wrap" style="display:none">Mode
       <select id="object_mode">
         <optgroup label="prediction" id="object-mode-core-group">
@@ -445,6 +441,12 @@
       <input id="legend-alpha" type="range" min="0" max="255" step="1" value="170" />
       <span class="val" id="legend-alpha-val">170</span>
     </div>
+    <div class="opacity-row" id="legend-dim-row" style="display:none"
+      title="Ячейки без объектов-образцов (sample_covered=false) — чистая экстраполяция модели. Снимите галочку, чтобы красить их полным цветом, как ячейки с объектами.">
+      <label style="display:flex; align-items:center; gap:4px; cursor:pointer">
+        <input type="checkbox" id="val_dim_uncovered" checked>приглушать ячейки без объектов
+      </label>
+    </div>
     <div class="palette-picker" id="legend-palette-picker"></div>
   </div>
 
@@ -463,7 +465,7 @@ const TIPS = {
     model: 'Какой моделью оценивать стоимость и считать ошибку.\n\nВ системе обучены 4 модели разной природы — от простой линейной (для baseline) до CatBoost (максимальная точность, но «чёрный ящик»). Выбор модели меняет: out-of-fold прогноз (y_pred_oof), остаток (residual) и медианные агрегаты прогноза/остатка по гексам.\n\nИспользуйте: для проверки качества → CatBoost; для понимания вклада признаков → EBM или grey_tree.',
     scale: 'Как числовое значение признака переводится в цвет.\n\n• «linear (p2–p98)» — линейная шкала, обрезанная по 2-му и 98-му перцентилям. Выбросы не «съедают» всю цветовую гамму. Дефолт.\n• «log» — логарифмическая шкала от min до max. Полезна, когда значения растянуты на несколько порядков (цены, расстояния).\n• «linear» — простой линейный мап от min до max. Чувствителен к выбросам, но точно отражает шкалу.',
     basemap: 'Подложка под слоем данных.\n\n• «OSM» — карта OpenStreetMap (улицы, здания, ориентиры).\n• «off» — прозрачный фон, виден только слой данных. Удобно для скриншотов и презентаций.',
-    val_metric: 'Какую метрику слоя cell valuation (ADR-0029) кодирует цвет.\n\n• «reference» — предсказанная цена ₽/м² типового (эталонного) объекта класса в ячейке: ЦОФ местности + типовые характеристики объекта.\n• «location score» — чистый локационный скор ₽/м²: вклад только места, без характеристик объекта.\n\nЯчейки без объектов-образцов (sample_covered=false) показаны приглушённо — там работает чистая экстраполяция модели. Отключается чекбоксом «приглушать без объектов».',
+    val_metric: 'Какую метрику слоя cell valuation (ADR-0029) кодирует цвет.\n\n• «reference» — предсказанная цена ₽/м² типового (эталонного) объекта класса в ячейке: ЦОФ местности + типовые характеристики объекта.\n• «location score» — чистый локационный скор ₽/м²: вклад только места, без характеристик объекта.\n\nЯчейки без объектов-образцов (sample_covered=false) показаны приглушённо — там работает чистая экстраполяция модели. Отключается чекбоксом «приглушать ячейки без объектов» в легенде (под ползунком α).',
     val_variant: 'Вариант разрешённого использования (ВРИ) эталонного участка — только для landplot (ADR-0029). Цена м² участка сильно зависит от того, что на нём разрешено строить: ИЖС, садоводство, гараж и т.п. Для остальных классов эталон один («default»), селектор скрыт.',
   },
   options: {
@@ -2375,6 +2377,7 @@ function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
     }).join('');
     document.getElementById('legend-palette-controls').style.display = 'none';
     document.getElementById('legend-opacity-row').style.display = 'none';
+    document.getElementById('legend-dim-row').style.display = 'none';
     renderPalettePicker(null);
     return;
   }
@@ -2402,6 +2405,9 @@ function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
   const alphaSlider = document.getElementById('legend-alpha');
   const alphaVal = document.getElementById('legend-alpha-val');
   document.getElementById('legend-opacity-row').style.display = '';
+  // «приглушать ячейки без объектов» — только слой cell valuation.
+  document.getElementById('legend-dim-row').style.display =
+    (lastDataset && lastDataset.payload && lastDataset.payload.valuation) ? '' : 'none';
   if (document.activeElement !== alphaSlider) alphaSlider.value = String(userFillAlpha);
   alphaVal.textContent = String(userFillAlpha);
   renderPalettePicker(kind);
@@ -2564,7 +2570,6 @@ async function refresh() {
   // «Стоимость типового объекта»: metric always, ВРИ only when the
   // class has real variants (populateValVariants toggles its wrap).
   document.getElementById('val-metric-wrap').style.display = isVal ? '' : 'none';
-  document.getElementById('val-dim-wrap').style.display = isVal ? '' : 'none';
   if (!isVal) document.getElementById('val-variant-wrap').style.display = 'none';
   else populateValVariants();
   const stat = document.getElementById('stat');
