@@ -11,6 +11,8 @@ the pure location score, dimming cells without sample coverage
 
 from __future__ import annotations
 
+import json
+
 import polars as pl
 
 from kadastra.adapters.parquet_cell_valuation_store import ParquetCellValuationStore
@@ -30,11 +32,15 @@ _METRIC_COLUMNS: dict[str, str] = {
 
 # Per-cell detail payload: everything except the identity columns
 # (h3_index / lat / lon / reference_variant — the latter is the dict key).
+# ``top_terms_json`` is parsed into a ``top_terms`` list before the
+# payload leaves the usecase; older parquets without the column degrade
+# to no-terms gracefully.
 _DETAIL_COLUMNS: tuple[str, ...] = (
     "reference_rub_per_m2",
     "location_score_rub_per_m2",
     "n_sample_objects",
     "sample_covered",
+    "top_terms_json",
 )
 
 
@@ -89,8 +95,10 @@ class GetCellValuation:
         h3_index: str,
     ) -> dict[str, dict[str, object]]:
         """``{variant: {reference_rub_per_m2, location_score_rub_per_m2,
-        n_sample_objects, sample_covered}}`` for one cell — every variant
-        (landplot's ВРИ alternatives included) side by side.
+        n_sample_objects, sample_covered, top_terms?}}`` for one cell —
+        every variant (landplot's ВРИ alternatives included) side by side.
+        ``top_terms`` (top locational EBM contributions) is stored on the
+        «default» variant only — the decomposition is variant-independent.
 
         Feeds the cell inspector panel when clicking on a hex in
         «Стоимость типового объекта» mode. Missing partition →
@@ -98,7 +106,15 @@ class GetCellValuation:
         """
         df = self._store.load(region_code, asset_class)
         rows = df.filter(pl.col("h3_index") == h3_index)
-        return {r["reference_variant"]: {c: r[c] for c in _DETAIL_COLUMNS} for r in rows.iter_rows(named=True)}
+        columns = [c for c in _DETAIL_COLUMNS if c in df.columns]
+        out: dict[str, dict[str, object]] = {}
+        for r in rows.iter_rows(named=True):
+            entry = {c: r[c] for c in columns}
+            raw_terms = entry.pop("top_terms_json", None)
+            if raw_terms:
+                entry["top_terms"] = json.loads(str(raw_terms))
+            out[str(r["reference_variant"])] = entry
+        return out
 
     def _list_variants(self, region_code: str, asset_class: AssetClass) -> list[str]:
         try:

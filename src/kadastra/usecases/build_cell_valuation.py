@@ -21,6 +21,7 @@ with per-cell sample-coverage flags (ADR-0028 linkage).
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import cast
 
@@ -31,7 +32,7 @@ from kadastra.domain.asset_class import AssetClass
 from kadastra.etl.cell_reference_object import ReferenceObject, build_reference_objects
 from kadastra.etl.h3_coverage import add_h3_index, h3_cells_to_latlng
 from kadastra.etl.relative_features import compute_parent_aggregates, join_relative_features
-from kadastra.ml.cell_location_terms import sum_location_terms
+from kadastra.ml.cell_location_terms import sum_location_terms, top_location_terms
 from kadastra.ml.object_feature_columns import select_object_feature_columns
 from kadastra.ml.object_feature_matrix import build_object_feature_matrix
 from kadastra.ports.cell_valuation_store import CellValuationStorePort
@@ -40,6 +41,11 @@ from kadastra.ports.feature_reader import FeatureReaderPort
 from kadastra.ports.valuation_object_reader import ValuationObjectReaderPort
 
 _TARGET_COLUMN = "synthetic_target_rub_per_m2"
+
+# How many locational EBM terms per cell are kept for the inspector's
+# «why this location score» block (ADR-0029). Stored as JSON on the
+# «default» variant rows only — the decomposition is variant-independent.
+_TOP_TERMS_N = 15
 
 # Слой 1 sets joined for scoring: the six ADR-0027 sets plus the
 # ADR-0029 ``enrichment`` set (ADR-0021..0025 features per cell).
@@ -135,6 +141,7 @@ class BuildCellValuation:
             )
 
             location_score: np.ndarray | None = None
+            top_terms_json: list[str | None] | None = None
             variant_frames: list[pl.DataFrame] = []
             for template in templates:
                 frame = self._assemble_cell_frame(
@@ -156,11 +163,23 @@ class BuildCellValuation:
                     terms = np.asarray(model.eval_terms(X), dtype=np.float64)
                     term_features = [tuple(feature_names[i] for i in idxs) for idxs in model.term_feature_indices()]
                     location_score = sum_location_terms(terms, term_features, model.intercept())
+                    # Locational terms don't touch template attributes, so
+                    # the decomposition is identical across reference
+                    # variants — store it once, on the «default» rows.
+                    top_terms_json = [
+                        json.dumps(t, ensure_ascii=False)
+                        for t in top_location_terms(terms, term_features, _TOP_TERMS_N)
+                    ]
                 variant_frames.append(
                     cells.select("h3_index", "lat", "lon").with_columns(
                         pl.lit(template.variant, dtype=pl.Utf8).alias("reference_variant"),
                         pl.Series("reference_rub_per_m2", preds, dtype=pl.Float64),
                         pl.Series("location_score_rub_per_m2", location_score, dtype=pl.Float64),
+                        pl.Series(
+                            "top_terms_json",
+                            top_terms_json if template.variant == "default" else [None] * cells.height,
+                            dtype=pl.Utf8,
+                        ),
                     )
                 )
 

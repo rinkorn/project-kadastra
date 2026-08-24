@@ -355,6 +355,10 @@
     <label id="val-variant-wrap" style="display:none">ВРИ
       <select id="val_variant"></select>
     </label>
+    <label id="val-dim-wrap" style="display:none; flex-direction:row; align-items:center; gap:4px"
+      title="Ячейки без объектов-образцов (sample_covered=false) — чистая экстраполяция модели. Снимите галочку, чтобы красить их полным цветом, как ячейки с объектами.">
+      <input type="checkbox" id="val_dim_uncovered" checked>приглушать без объектов
+    </label>
     <label id="object-mode-wrap" style="display:none">Mode
       <select id="object_mode">
         <optgroup label="prediction" id="object-mode-core-group">
@@ -459,7 +463,7 @@ const TIPS = {
     model: 'Какой моделью оценивать стоимость и считать ошибку.\n\nВ системе обучены 4 модели разной природы — от простой линейной (для baseline) до CatBoost (максимальная точность, но «чёрный ящик»). Выбор модели меняет: out-of-fold прогноз (y_pred_oof), остаток (residual) и медианные агрегаты прогноза/остатка по гексам.\n\nИспользуйте: для проверки качества → CatBoost; для понимания вклада признаков → EBM или grey_tree.',
     scale: 'Как числовое значение признака переводится в цвет.\n\n• «linear (p2–p98)» — линейная шкала, обрезанная по 2-му и 98-му перцентилям. Выбросы не «съедают» всю цветовую гамму. Дефолт.\n• «log» — логарифмическая шкала от min до max. Полезна, когда значения растянуты на несколько порядков (цены, расстояния).\n• «linear» — простой линейный мап от min до max. Чувствителен к выбросам, но точно отражает шкалу.',
     basemap: 'Подложка под слоем данных.\n\n• «OSM» — карта OpenStreetMap (улицы, здания, ориентиры).\n• «off» — прозрачный фон, виден только слой данных. Удобно для скриншотов и презентаций.',
-    val_metric: 'Какую метрику слоя cell valuation (ADR-0029) кодирует цвет.\n\n• «reference» — предсказанная цена ₽/м² типового (эталонного) объекта класса в ячейке: ЦОФ местности + типовые характеристики объекта.\n• «location score» — чистый локационный скор ₽/м²: вклад только места, без характеристик объекта.\n\nЯчейки без объектов-образцов (sample_covered=false) показаны приглушённо — там работает чистая экстраполяция модели.',
+    val_metric: 'Какую метрику слоя cell valuation (ADR-0029) кодирует цвет.\n\n• «reference» — предсказанная цена ₽/м² типового (эталонного) объекта класса в ячейке: ЦОФ местности + типовые характеристики объекта.\n• «location score» — чистый локационный скор ₽/м²: вклад только места, без характеристик объекта.\n\nЯчейки без объектов-образцов (sample_covered=false) показаны приглушённо — там работает чистая экстраполяция модели. Отключается чекбоксом «приглушать без объектов».',
     val_variant: 'Вариант разрешённого использования (ВРИ) эталонного участка — только для landplot (ADR-0029). Цена м² участка сильно зависит от того, что на нём разрешено строить: ИЖС, садоводство, гараж и т.п. Для остальных классов эталон один («default»), селектор скрыт.',
   },
   options: {
@@ -839,6 +843,10 @@ const PALETTE_FILL_ALPHA = { transparent: 0 };
 // scatter fills honour this. Outline alpha stays at full so a low
 // fill never erases the polygon shape.
 let userFillAlpha = 170;
+
+// «Стоимость типового объекта»: dim cells without sample objects
+// (pure extrapolation) — user-toggleable; unchecked = full colour.
+let dimUncoveredCells = true;
 
 // Diverging ramps for residuals (signed, centered at 0). 7 stops with
 // neutral mid; ColorBrewer-derived classics so left/right asymmetry
@@ -1303,7 +1311,8 @@ function renderHex(payload) {
       if (oorMode === 'dim' && oorFlag(d)) c[3] = Math.round(c[3] * 0.25);
       // «Стоимость типового объекта»: cells without sample objects are
       // pure model extrapolation — dim them so coverage reads at a glance.
-      if (payload.dim_uncovered && d.covered === false) c[3] = Math.round(c[3] * 0.35);
+      // Toggleable via the «приглушать без объектов» checkbox.
+      if (dimUncoveredCells && payload.dim_uncovered && d.covered === false) c[3] = Math.round(c[3] * 0.35);
       return c;
     };
   }
@@ -1695,14 +1704,52 @@ async function showCellValuationInspector(hex, payload) {
   redrawWithSelection();
   const panel = document.getElementById('panel-content');
   panel.innerHTML = `<h2>Loading cell ${escapeHtml(hex.hex)}…</h2>`;
-  const detail = await fetchCellValuationDetail(hex.hex, payload.asset_class);
+  // Two parallel requests: valuation rows across reference variants and
+  // the cell's Слой 1 ЦОФ store (the «ЦОФ-сетка» inspector's source).
+  const resolution = (featureOptions || {}).cell_tsorf_resolution || 10;
+  const [detail, tsorf] = await Promise.all([
+    fetchCellValuationDetail(hex.hex, payload.asset_class),
+    fetchCellDetail(hex.hex, resolution),
+  ]);
   if (!detail || Object.keys(detail).length === 0) {
     panel.innerHTML = `<h2>Cell inspector</h2><p class="empty">No cell valuation for ${escapeHtml(hex.hex)}.</p>`;
     return;
   }
-  panel.innerHTML =
-    `<h2>Cell valuation — ${escapeHtml(payload.asset_class)} · h3 ${escapeHtml(hex.hex)}</h2>` +
-    renderCellValuationSections(detail);
+  const sections = [
+    `<h2>Cell valuation — ${escapeHtml(payload.asset_class)} · h3 ${escapeHtml(hex.hex)}</h2>`,
+    renderCellValuationSections(detail),
+  ];
+  const terms = cellTermsSection(detail);
+  if (terms) sections.push(terms);
+  if (tsorf && Object.keys(tsorf).length) {
+    sections.push(`<h2>ЦОФ ячейки</h2>`);
+    sections.push(renderCellTsorfSections(tsorf));
+  }
+  panel.innerHTML = sections.join('');
+}
+
+// «Why this location score»: top locational EBM term contributions.
+// Stored on the «default» variant only — the decomposition is
+// variant-independent. Diverging bars reuse the object-explanation CSS.
+function cellTermsSection(detail) {
+  const holder = detail.default || Object.values(detail).find(v => v && v.top_terms);
+  const terms = (holder && holder.top_terms) || [];
+  if (!terms.length) return '';
+  const maxAbs = Math.max(...terms.map(t => Math.abs(t.contribution))) || 1;
+  const rowsHtml = terms.map(t => {
+    const half = Math.round((Math.abs(t.contribution) / maxAbs) * 50);
+    const pos = t.contribution >= 0;
+    const tooltip = describeFeature(t.feature) || t.feature;
+    const barStyle = pos ? `left:50%;width:${half}%` : `right:50%;width:${half}%`;
+    return `<div class="exp-row" data-tip="${escapeHtml(tooltip)}">
+        <span class="exp-key">${escapeHtml(t.feature)}</span>
+        <span class="exp-contrib ${pos ? 'pos' : 'neg'}">${escapeHtml(formatDelta(t.contribution))}</span>
+        <span class="exp-bar-track"><span class="exp-bar-zero"></span><span class="exp-bar ${pos ? 'pos' : 'neg'}" style="${barStyle}"></span></span>
+      </div>`;
+  }).join('');
+  return `<h2>Почему такой location score</h2>`
+    + `<p class="empty" style="margin:2px 0 6px">location score = среднее + Σ локационных вкладов; показан топ-${terms.length} по модулю. Объектные термы в скор не входят.</p>`
+    + rowsHtml;
 }
 
 // «default» first (the class reference object), then ВРИ alternatives
@@ -2517,6 +2564,7 @@ async function refresh() {
   // «Стоимость типового объекта»: metric always, ВРИ only when the
   // class has real variants (populateValVariants toggles its wrap).
   document.getElementById('val-metric-wrap').style.display = isVal ? '' : 'none';
+  document.getElementById('val-dim-wrap').style.display = isVal ? '' : 'none';
   if (!isVal) document.getElementById('val-variant-wrap').style.display = 'none';
   else populateValVariants();
   const stat = document.getElementById('stat');
@@ -2555,6 +2603,12 @@ function recolor() {
 ['object_mode', 'scale'].forEach(id =>
   document.getElementById(id).addEventListener('change', recolor)
 );
+
+// «приглушать без объектов» checkbox — recolor only, no refetch.
+document.getElementById('val_dim_uncovered').addEventListener('change', (ev) => {
+  dimUncoveredCells = ev.target.checked;
+  recolor();
+});
 
 // Basemap toggle: flip the OSM raster layer's visibility. `off` makes
 // the underlying canvas transparent so deck.gl polygons and hexes
