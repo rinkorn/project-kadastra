@@ -11,12 +11,16 @@
     * { box-sizing: border-box; }
     body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #0b1220; color: #e5e7eb; }
     .topbar {
-      position: fixed; top: 0; left: 0; right: 0; height: 56px;
-      display: flex; align-items: center; gap: 12px;
-      padding: 0 16px;
+      position: fixed; top: 0; left: 0; right: 0; height: auto; min-height: 56px;
+      display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px;
+      padding: 6px 16px;
       background: #1f2937; color: #fff; z-index: 20;
       border-bottom: 1px solid #374151;
     }
+    /* Narrow viewports: dense modes (Рынок) overflow one row — selects
+       clamp their width so the bar wraps into a second row instead of
+       pushing the toggle buttons past the right edge. */
+    .topbar select { max-width: 170px; }
     .topbar strong { font-size: 16px; }
     .topbar label { font-size: 12px; display: inline-flex; flex-direction: column; gap: 2px; opacity: 0.85; }
     .topbar select, .topbar input {
@@ -50,10 +54,10 @@
       pointer-events: none;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
     }
-    :root { --panel-width: 380px; }
-    #map { position: fixed; top: 56px; bottom: 0; left: 0; right: var(--panel-width); transition: right 0.22s ease; }
+    :root { --panel-width: 380px; --topbar-h: 56px; }
+    #map { position: fixed; top: var(--topbar-h); bottom: 0; left: 0; right: var(--panel-width); transition: right 0.22s ease; }
     .panel {
-      position: fixed; top: 56px; bottom: 0; right: 0; width: var(--panel-width);
+      position: fixed; top: var(--topbar-h); bottom: 0; right: 0; width: var(--panel-width);
       background: #111827; border-left: 1px solid #374151;
       z-index: 10;
       font-size: 12px;
@@ -760,6 +764,18 @@ function savedPanelWidth() {
 
 function applyPanelWidth() {
   document.documentElement.style.setProperty('--panel-width', savedPanelWidth() + 'px');
+}
+
+// The topbar wraps into a second row on narrow viewports (dense modes
+// like «Рынок» carry the most controls). Everything anchored under it
+// (#map, .panel) reads --topbar-h; keep it in sync with the real bar
+// height, including mode switches that show/hide controls.
+function initTopbarHeightSync() {
+  const bar = document.querySelector('.topbar');
+  if (!bar || typeof ResizeObserver === 'undefined') return;
+  const sync = () => document.documentElement.style.setProperty('--topbar-h', bar.offsetHeight + 'px');
+  new ResizeObserver(sync).observe(bar);
+  sync();
 }
 
 function setPanelWidth(width) {
@@ -2902,6 +2918,7 @@ map.on('load', async () => {
   applyStaticTooltips();
   initTooltipToggle();
   applyPanelWidth();
+  initTopbarHeightSync();
   initPanelToggle();
   initPanelResizer();
   initCompareToggle();
