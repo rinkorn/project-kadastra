@@ -22,6 +22,11 @@ services:
       # Stage uses a named volume so data survives `docker compose
       # down`. Cold-start pulls from S3 when PULL_DATA_ON_START=true.
       - kadastra_data:/app/data
+      # Templates from the host: rsync delivers fresh sources before
+      # `up`, so a UI-only change reaches the container on plain
+      # `restart` — no image rebuild needed. Read-only; the image copy
+      # remains the fallback for builds without the host sources.
+      - ./src/kadastra/web/templates:/app/src/kadastra/web/templates:ro
     networks:
       - kadastra_net
     healthcheck:
