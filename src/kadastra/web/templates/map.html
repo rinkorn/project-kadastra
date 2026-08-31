@@ -661,7 +661,10 @@ function labelTip(raw) {
   return desc ? `${raw}\n${desc}` : raw;
 }
 function featureRow(key, value) {
-  return [labelFeature(key) || key, value, key];
+  // Display label for any inspector key: administrative display names
+  // win (Округ / Район города / Населённый пункт), then the API's
+  // Russian feature label, then the raw key.
+  return [ADMIN_KEY_LABELS[key] || labelFeature(key) || key, value, key];
 }
 
 function applyStaticTooltips() {
@@ -1913,12 +1916,14 @@ async function showObjectInspector(obj, assetClass) {
     .map(k => [ADMIN_KEY_LABELS[k] || labelFeature(k) || k, formatValue(detail[k]), k]);
   // Surface a one-line geometry status so the user knows whether the
   // map highlight comes from a real polygon or just a fallback dot.
-  summaryRows.push([
-    'geometry',
-    selectedItem.geometry
-      ? `Polygon (${selectedItem.geometry.coordinates[0].length - 1} vertices)`
-      : '— (no silver polygon)',
-  ]);
+  summaryRows.push(
+    featureRow(
+      'geometry',
+      selectedItem.geometry
+        ? `Polygon (${selectedItem.geometry.coordinates[0].length - 1} vertices)`
+        : '— (no silver polygon)',
+    ),
+  );
   sections.push(rowsSection('summary', summaryRows));
   // Geometry-derived ZOFs (ADR-0018) — promote to a dedicated section
   // so the human can read «компактность 0.78, ориентация 75°» without
