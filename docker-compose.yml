@@ -19,6 +19,9 @@ services:
       # parquets / models / raw files don't require a rebuild. Dev-Stage
       # uses a named volume in docker-compose.dev-stage.yml instead.
       - ./data:/app/data
+      # Web templates from the host: editing map.html shows up on
+      # container restart, no image rebuild needed. Read-only.
+      - ./src/kadastra/web/templates:/app/src/kadastra/web/templates:ro
     networks:
       - kadastra_net
     restart: unless-stopped
