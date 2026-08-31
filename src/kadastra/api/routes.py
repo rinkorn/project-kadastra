@@ -288,6 +288,31 @@ def make_api_router(
         # gets everything in one round-trip; empty for sets not yet built.
         cell_tsorf = get_cell_tsorf.feature_set_map(region_code, _CELL_TSORF_RESOLUTION)
         all_feature_names += [f for feats in cell_tsorf.values() for f in feats]
+        # Inspector bookkeeping keys — not model features, but they
+        # render in the object/hex/cell inspectors (summary rows,
+        # valuation variants), so their labels ship in the same dict.
+        all_feature_names += [
+            "y_true",
+            "y_pred_oof",
+            "residual",
+            "fold_id",
+            "object_id",
+            "asset_class",
+            "lat",
+            "lon",
+            "cad_num",
+            "readable_address",
+            "mun_source",
+            "geometry",
+            "h3_index",
+            "resolution",
+            "reference_variant",
+            "reference_rub_per_m2",
+            "location_score_rub_per_m2",
+            "n_sample_objects",
+            "sample_covered",
+            "top_terms_json",
+        ]
         return {
             "asset_classes": list(ASSET_CLASS_VALUES),
             "numeric_features": list(NUMERIC_FEATURES),
