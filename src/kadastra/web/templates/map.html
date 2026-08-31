@@ -2214,25 +2214,34 @@ function h3Center(h3Index) {
 }
 
 function hexSelection(hex, payload) {
-  const isVal = !!payload.valuation;
-  const isGrid = payload.asset_class === 'grid';
   return {
-    // Valuation and ЦОФ details share the {group: {metric: value}}
-    // shape — kind 'cell' makes compare-mode render both via
-    // comparisonCellTable.
-    kind: (isGrid || isVal) ? 'cell' : 'hex',
+    // Unified compare: like the unified inspector, a selected hex
+    // carries EVERY family present for the cell (aggregates, EBM
+    // valuation, raw ЦОФ) — mode-independent, so comparing from any
+    // layer shows the same full picture.
+    kind: 'unified',
     label: hex.hex,
     geometry: h3BoundaryGeometry(hex.hex),
     center: h3Center(hex.hex),
-    // Cells from ЦОФ (cell:*) features and from the valuation layer have
-    // no hex_aggregates partition — fetch their own detail endpoints
-    // instead so compare-mode works the same way single-inspector does.
-    fetch: isVal
-      ? () => fetchCellValuationDetail(hex.hex, payload.asset_class)
-      : isGrid
-        ? () => fetchCellDetail(hex.hex, payload.resolution)
-        : () => fetchHexDetail(hex.hex, payload.resolution, payload.asset_class),
+    fetch: () => fetchUnifiedHexDetail(hex.hex, payload),
   };
+}
+
+// All data families for one cell (same assembly as showHexInspector):
+// {agg, val, tsorf} with nulls where the family is unavailable for the
+// current class context.
+async function fetchUnifiedHexDetail(h3, payload) {
+  const ac = payload.asset_class;
+  const hasAgg = ac && ac !== 'grid';
+  const hasClass = ac && ac !== 'grid' && ac !== 'all';
+  const cellRes = (featureOptions || {}).cell_tsorf_resolution || 10;
+  const [agg, val, tsorf] = await Promise.all([
+    hasAgg ? fetchHexDetail(h3, payload.resolution, ac) : Promise.resolve(null),
+    hasClass ? fetchCellValuationDetail(h3, ac) : Promise.resolve(null),
+    fetchCellDetail(h3, cellRes),
+  ]);
+  if (!agg && !val && !tsorf) return null;
+  return { agg, val, tsorf };
 }
 
 function objectSelection(obj, assetClass) {
@@ -2366,6 +2375,7 @@ function comparisonHeader(a, b) {
 }
 
 function comparisonTable(da, db, kind) {
+  if (kind === 'unified') return comparisonUnifiedTable(da, db);
   if (kind === 'cell') return comparisonCellTable(da, db);
   const groups = kind === 'hex' ? hexGroupedKeys(da) : objectGroupedKeys(da);
   const out = [];
@@ -2375,6 +2385,29 @@ function comparisonTable(da, db, kind) {
       const label = ADMIN_KEY_LABELS[k] || labelFeature(k) || k;
       out.push(comparisonRow(label, da[k], db[k], k));
     }
+  }
+  return out.join('');
+}
+
+// Unified hex compare: every family present for the cell renders in
+// the fixed inspector order. Aggregates keep their grouped layout;
+// valuation variants and raw ЦОФ reuse the {group: {key: value}}
+// sectioned table.
+function comparisonUnifiedTable(da, db) {
+  const out = [];
+  if (da.agg) {
+    for (const g of hexGroupedKeys(da.agg)) {
+      out.push(`<div class="cmp-section">${escapeHtml(g.title)}</div>`);
+      for (const k of g.keys) {
+        out.push(comparisonRow(ADMIN_KEY_LABELS[k] || labelFeature(k) || k, da.agg[k], (db.agg || {})[k], k));
+      }
+    }
+  }
+  if (da.val) {
+    out.push(`<div class="cmp-section">Стоимость (EBM)</div>`, comparisonCellTable(da.val, (db || {}).val || {}));
+  }
+  if (da.tsorf) {
+    out.push(`<div class="cmp-section">ЦОФ местности</div>`, comparisonCellTable(da.tsorf, (db || {}).tsorf || {}));
   }
   return out.join('');
 }
