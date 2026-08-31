@@ -442,8 +442,6 @@
       <span class="reverse" id="legend-reverse" title="Reverse palette">⇄ reverse</span>
       <span class="reverse" id="legend-oor-mode"
             title="Out-of-range mode: clamp / dim / hide">oor: clamp</span>
-      <span class="reverse active" id="legend-dim-uncovered" style="display:none"
-            title="Ячейки без объектов-образцов (sample_covered=false) — чистая экстраполяция модели. Клик переключает: приглушить / полный цвет.">dim: on</span>
     </div>
     <div class="opacity-row" id="legend-opacity-row" style="display:none">
       <span class="label" title="Fill opacity">α</span>
@@ -452,7 +450,7 @@
     </div>
     <div class="opacity-row" id="legend-dim-alpha-row" style="display:none">
       <span class="label"
-            title="Прозрачность dim-ячеек (0–255), независимо от основного α. Dim-ячейки — без объектов-образцов, чистая экстраполяция модели.">α dim</span>
+            title="Прозрачность ячеек без объектов-образцов (0–255), независимо от основного α — там работает чистая экстраполяция модели. Действует постоянно: поставить на уровень основного α = отключить приглушение, 0 = скрыть такие ячейки.">α dim</span>
       <input id="legend-dim-alpha" type="range" min="0" max="255" step="1" value="60" />
       <span class="val" id="legend-dim-alpha-val">60</span>
     </div>
@@ -888,13 +886,10 @@ const PALETTE_FILL_ALPHA = { transparent: 0 };
 // fill never erases the polygon shape.
 let userFillAlpha = 170;
 // Fill alpha for dimmed (uncovered / extrapolation) cells — its own
-// legend slider, independent of userFillAlpha. Default ≈ the old
-// hard-coded 0.35 × 170.
+// legend slider, independent of userFillAlpha, always on in valuation
+// mode (no on/off chip: setting it equal to the main α removes the
+// dimming effect). Default ≈ the old hard-coded 0.35 × 170.
 let dimFillAlpha = 60;
-
-// «Стоимость типового объекта»: dim cells without sample objects
-// (pure extrapolation) — user-toggleable; unchecked = full colour.
-let dimUncoveredCells = true;
 
 // Diverging ramps for residuals (signed, centered at 0). 7 stops with
 // neutral mid; ColorBrewer-derived classics so left/right asymmetry
@@ -1390,9 +1385,10 @@ function renderHex(payload) {
       if (oorMode === 'dim' && oorFlag(d)) c[3] = Math.round(c[3] * 0.25);
       // «Стоимость (EBM)»: cells without sample objects are pure model
       // extrapolation — dim them so coverage reads at a glance. Their
-      // fill alpha is its own slider (α dim, 0–255), independent of the
-      // main α; the «dim» chip in the legend toggles dimming entirely.
-      if (dimUncoveredCells && payload.dim_uncovered && d.covered === false) c[3] = dimFillAlpha;
+      // fill alpha is its own always-on slider (α dim, 0–255),
+      // independent of the main α; dragging it up to the main α value
+      // removes the dimming effect entirely.
+      if (payload.dim_uncovered && d.covered === false) c[3] = dimFillAlpha;
       return c;
     };
   }
@@ -1408,7 +1404,7 @@ function renderHex(payload) {
       getFillColor: [seqPaletteId, seqReverse, isCategorical,
                      customLo, customHi, userFillAlpha,
                      seqColorFrom, seqColorTo, oorMode,
-                     dimUncoveredCells, dimFillAlpha,
+                     dimFillAlpha,
                      document.getElementById('scale').value],
     },
     stroked: true,
@@ -2559,10 +2555,7 @@ function setLegend({ payload, isCategorical, isDiverging, values } = {}) {
   const alphaSlider = document.getElementById('legend-alpha');
   const alphaVal = document.getElementById('legend-alpha-val');
   document.getElementById('legend-opacity-row').style.display = '';
-  // «dim» chip — только слой cell valuation (ячейки без образцов).
-  document.getElementById('legend-dim-uncovered').style.display =
-    (payload && payload.valuation) ? '' : 'none';
-  // The α-dim slider lives next to the «dim» chip: valuation mode only.
+  // The α-dim slider — valuation mode only (cells without samples).
   document.getElementById('legend-dim-alpha-row').style.display =
     (payload && payload.valuation) ? '' : 'none';
   const dimAlphaSlider = document.getElementById('legend-dim-alpha');
@@ -2784,17 +2777,6 @@ document.getElementById('cell_feature_set').addEventListener('change', () => {
 ['object_mode', 'scale'].forEach(id =>
   document.getElementById(id).addEventListener('change', recolor)
 );
-
-// «dim» chip (legend, cell-valuation only): dim cells without sample
-// objects (pure extrapolation) vs full colour. dimUncoveredCells is in
-// the hex layer's updateTriggers, so recolor() repaints immediately.
-const dimChip = document.getElementById('legend-dim-uncovered');
-dimChip.addEventListener('click', () => {
-  dimUncoveredCells = !dimUncoveredCells;
-  dimChip.textContent = `dim: ${dimUncoveredCells ? 'on' : 'off'}`;
-  dimChip.classList.toggle('active', dimUncoveredCells);
-  recolor();
-});
 
 // Basemap toggle: flip the OSM raster layer's visibility. `off` makes
 // the underlying canvas transparent so deck.gl polygons and hexes
