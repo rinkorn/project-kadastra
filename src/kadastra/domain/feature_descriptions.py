@@ -396,6 +396,14 @@ def _cap(s: str) -> str:
 
 
 _LABEL_EXPLICIT: dict[str, str] = {
+    # Служебные ключи инспектора (не модельные фичи, но рендерятся в
+    # сводках/вариантах — labels едут в /api/feature_options).
+    # Object inspector core keys live in their own block below.
+    "h3_index": "Ячейка H3",
+    "resolution": "Разрешение сетки",
+    "geometry": "Контур объекта",
+    "reference_variant": "Вариант эталона (ВРИ)",
+    "top_terms_json": "Топ термы (JSON)",
     # Объектные атрибуты.
     "area_m2": "Площадь, м²",
     "levels": "Этажность",
