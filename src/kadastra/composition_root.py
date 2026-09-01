@@ -351,7 +351,10 @@ class Container:
 
     def build_get_hex_aggregates(self) -> GetHexAggregates:
         s = self._settings
-        return GetHexAggregates(s.hex_aggregates_base_path)
+        return GetHexAggregates(
+            s.hex_aggregates_base_path,
+            coverage=ParquetCoverageStore(s.coverage_store_path),
+        )
 
     def build_get_market_reference(self) -> GetMarketReference:
         s = self._settings

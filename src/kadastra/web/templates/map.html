@@ -906,6 +906,10 @@ let userFillAlpha = 170;
 // mode (no on/off chip: setting it equal to the main α removes the
 // dimming effect). Default ≈ the old hard-coded 0.35 × 170.
 let dimFillAlpha = 60;
+// Neutral fill for full-coverage «Рынок» cells that hold no objects
+// (ADR: the region grid ships every cell; empty ones render grey so
+// data gaps read as gaps, not as missing map).
+const EMPTY_CELL_COLOR = [100, 116, 139, 90];
 
 // Diverging ramps for residuals (signed, centered at 0). 7 stops with
 // neutral mid; ColorBrewer-derived classics so left/right asymmetry
@@ -1392,10 +1396,13 @@ function renderHex(payload) {
     data = data.filter(d => !d.on_water);
   }
   if (isCategorical) {
-    getFillColor = d => categoryColor(String(d.value));
+    getFillColor = d => (d.covered === false ? EMPTY_CELL_COLOR : categoryColor(String(d.value)));
   } else {
+    // Cells without objects (covered=false, full-coverage «Рынок»
+    // payloads) carry a null value — keep them out of the colour-scale
+    // statistics so the ramp reflects real data only.
     const scaler = buildScaler(
-      data.map(d => d.value),
+      data.filter(d => d.covered !== false).map(d => d.value),
       document.getElementById('scale').value,
       { lo: customLo, hi: customHi },
     );
@@ -1406,6 +1413,9 @@ function renderHex(payload) {
     if (oorMode === 'hide') data = data.filter(d => !oorFlag(d));
     const alpha = PALETTE_FILL_ALPHA[seqPaletteId] ?? userFillAlpha;
     getFillColor = d => {
+      // Region grid cell with no objects (full-coverage «Рынок») —
+      // neutral grey, pickable («нет объектов»), out of the ramp.
+      if (d.covered === false) return EMPTY_CELL_COLOR;
       const c = rampColor(activeSeqRamp(), scaler.normalize(d.value), alpha);
       if (oorMode === 'dim' && oorFlag(d)) c[3] = Math.round(c[3] * 0.25);
       // «Стоимость (EBM)»: cells without sample objects are pure model
@@ -1446,10 +1456,16 @@ function renderHex(payload) {
     layers: [layer, ...selectionOverlayLayers()],
     getTooltip: ({ object }) => object &&
       `${labelFeature(payload.feature) || payload.feature}: ${formatValue(object.value)}` +
-      (object.covered === false ? '\nнет объектов-образцов (экстраполяция)' : ''),
+      (object.covered === false
+        ? (payload.valuation ? '\nнет объектов-образцов (экстраполяция)' : '\nнет объектов в гексе')
+        : ''),
   });
   stat.textContent = `${data.length.toLocaleString()} hexes (${labelFeature(payload.feature) || payload.feature}, ${payload.asset_class})`;
-  setLegend({ payload, isCategorical, values: payload.data.map(d => d.value) });
+  setLegend({
+    payload,
+    isCategorical,
+    values: payload.data.filter(d => d.covered !== false).map(d => d.value),
+  });
 }
 
 function renderObjects(payload) {

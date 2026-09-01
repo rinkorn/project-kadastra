@@ -17,6 +17,8 @@ from typing import Any
 
 import polars as pl
 
+from kadastra.adapters.parquet_coverage_store import ParquetCoverageStore
+
 # Numeric metrics → linear/log gradient on the map.
 # Base market/model metrics + per-object descriptor means only —
 # Слой-1 ЦОФ (dist/share/within/count/road/metro) are served by
@@ -50,8 +52,15 @@ ASSET_CLASS_VALUES: tuple[str, ...] = (
 
 
 class GetHexAggregates:
-    def __init__(self, base_path: Path) -> None:
+    def __init__(self, base_path: Path, coverage: ParquetCoverageStore | None = None) -> None:
         self._base_path = base_path
+        # Optional region coverage (Слой 1 cell set per resolution).
+        # When wired, the response spans EVERY region cell: cells with
+        # no aggregate row come back as ``covered: False`` with a null
+        # value so the map shows the region shape and data gaps instead
+        # of a scatter of lone hexes. None → legacy behaviour (only
+        # aggregate rows).
+        self._coverage = coverage
 
     def execute(
         self,
@@ -76,7 +85,20 @@ class GetHexAggregates:
 
         filtered = df.filter(pl.col("asset_class") == asset_class)
         slim = filtered.select(["h3_index", pl.col(feature).alias("value")]).drop_nulls("value")
-        return [{"hex": row["h3_index"], "value": row["value"]} for row in slim.iter_rows(named=True)]
+        rows: dict[str, object | None] = {row["h3_index"]: row["value"] for row in slim.iter_rows(named=True)}
+        # Full coverage: cells of the region grid without an aggregate
+        # row ship as covered=False / null value. The feature set itself
+        # only exists where objects live, so unwired coverage (tests,
+        # legacy) keeps the old scatter-only behaviour.
+        if self._coverage is not None:
+            try:
+                cells = self._coverage.load(region_code, resolution)
+            except FileNotFoundError:
+                cells = None
+            if cells is not None:
+                for h3_index in cells["h3_index"].to_list():
+                    rows.setdefault(h3_index, None)
+        return [{"hex": h3_index, "value": value, "covered": value is not None} for h3_index, value in rows.items()]
 
     def get_detail(
         self,
