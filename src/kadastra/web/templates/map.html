@@ -1400,9 +1400,11 @@ function renderHex(payload) {
   } else {
     // Cells without objects (covered=false, full-coverage «Рынок»
     // payloads) carry a null value — keep them out of the colour-scale
-    // statistics so the ramp reflects real data only.
+    // statistics so the ramp reflects real data only. Valuation
+    // uncovered cells are extrapolated but real values — they stay in
+    // the domain (as before full coverage existed).
     const scaler = buildScaler(
-      data.filter(d => d.covered !== false).map(d => d.value),
+      data.filter(d => payload.valuation || d.covered !== false).map(d => d.value),
       document.getElementById('scale').value,
       { lo: customLo, hi: customHi },
     );
@@ -1415,7 +1417,10 @@ function renderHex(payload) {
     getFillColor = d => {
       // Region grid cell with no objects (full-coverage «Рынок») —
       // neutral grey, pickable («нет объектов»), out of the ramp.
-      if (d.covered === false) return EMPTY_CELL_COLOR;
+      // Valuation payloads also carry covered:false (uncovered =
+      // extrapolation) — those must fall through to the α dim path
+      // below, so grey is market-only.
+      if (!payload.valuation && d.covered === false) return EMPTY_CELL_COLOR;
       const c = rampColor(activeSeqRamp(), scaler.normalize(d.value), alpha);
       if (oorMode === 'dim' && oorFlag(d)) c[3] = Math.round(c[3] * 0.25);
       // «Стоимость (EBM)»: cells without sample objects are pure model
@@ -1464,7 +1469,7 @@ function renderHex(payload) {
   setLegend({
     payload,
     isCategorical,
-    values: payload.data.filter(d => d.covered !== false).map(d => d.value),
+    values: payload.data.filter(d => payload.valuation || d.covered !== false).map(d => d.value),
   });
 }
 
