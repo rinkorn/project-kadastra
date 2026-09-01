@@ -14,6 +14,7 @@ import pytest
 
 from kadastra.adapters.parquet_feature_store import ParquetFeatureStore
 from kadastra.usecases.get_cell_tsorf import (
+    API_FEATURE_SETS,
     CELL_TSORF_FEATURE_SETS,
     GetCellTsorf,
 )
@@ -123,8 +124,11 @@ def test_feature_set_map_covers_all_sets_and_skips_missing(tmp_path: Path) -> No
 
     m = usecase.feature_set_map("RU-KAZAN-AGG", 10)
 
-    # Every documented set is a key, even unbuilt ones.
-    assert set(m.keys()) == set(CELL_TSORF_FEATURE_SETS)
+    # Every documented set is a key, even unbuilt ones — including the
+    # ADR-0029 enrichment set (API surface spans it; the report stays
+    # on the historical six).
+    assert set(m.keys()) == set(API_FEATURE_SETS)
+    assert "enrichment" in m and set(CELL_TSORF_FEATURE_SETS) < set(m.keys())
     assert m["road_density"] == ["road_length_500m"]
     assert m["walk_dist"] == []
 
