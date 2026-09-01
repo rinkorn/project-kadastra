@@ -154,6 +154,10 @@ class Settings(BaseSettings):
     # mirrors the valuation-object store (region=/asset_class= partitions).
     cell_valuation_store_path: Path = Path("data/gold/cell_valuation")
     landplot_vri_top_n: int = 5
+    # ADR-0029 addendum: OSM water polygons for the per-cell water-land
+    # share (cells mostly covered by water get on_water=True and are
+    # hidden on the price layers — no land object can exist there).
+    cell_water_layer_path: Path = Path("data/raw/osm/kazan-agg-water.geojsonseq")
 
     nspd_silver_store_path: Path = Path("data/silver/nspd")
     nspd_buildings_raw_dir: Path = Path("data/raw/nspd/buildings-kazan")

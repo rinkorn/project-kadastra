@@ -201,6 +201,16 @@ jobs:
         if: ${{ github.event.inputs.mode != 'pull-only' }}
         run: uv run python scripts/build_hex_aggregates.py
 
+      - name: Rebuild cell valuation (ADR-0029)
+        if: ${{ github.event.inputs.mode == 'full' }}
+        run: |
+          set -euo pipefail
+          # Reference price + location_score per cell + водная маска
+          # (cell_water_share / on_water, ADR-0029 addendum). Входы:
+          # пересобранные valuation_objects (parent aggregates), Слой 1,
+          # models, water-слой — поэтому только full.
+          uv run python scripts/build_cell_valuation.py
+
       - name: Upload valuation_objects to S3
         if: ${{ github.event.inputs.mode == 'full' }}
         run: |
@@ -214,6 +224,13 @@ jobs:
           uv run python scripts/upload_dir_to_s3.py \
             --src data/gold/hex_aggregates \
             --prefix Kadatastr/gold/hex_aggregates
+
+      - name: Upload cell_valuation to S3
+        if: ${{ github.event.inputs.mode == 'full' }}
+        run: |
+          uv run python scripts/upload_dir_to_s3.py \
+            --src data/gold/cell_valuation \
+            --prefix Kadatastr/gold/cell_valuation
 
       # --- Дальше только VM (хостинг): pull пересчитанных префиксов с S3,
       #     restart контейнера, chown, healthcheck. Compute на VM нет.
@@ -248,7 +265,9 @@ jobs:
              docker compose --profile scripts run --rm scripts scripts/download_dir_from_s3.py \
                --prefix Kadatastr/gold/valuation_objects --dst data/gold/valuation_objects && \
              docker compose --profile scripts run --rm scripts scripts/download_dir_from_s3.py \
-               --prefix Kadatastr/gold/hex_aggregates --dst data/gold/hex_aggregates"
+               --prefix Kadatastr/gold/hex_aggregates --dst data/gold/hex_aggregates && \
+             docker compose --profile scripts run --rm scripts scripts/download_dir_from_s3.py \
+               --prefix Kadatastr/gold/cell_valuation --dst data/gold/cell_valuation"
 
       - name: Restart dev-stage container to cold-pull fresh data
         run: |

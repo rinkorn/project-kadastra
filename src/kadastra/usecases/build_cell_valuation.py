@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import cast
 
 import numpy as np
@@ -30,7 +31,9 @@ import polars as pl
 
 from kadastra.domain.asset_class import AssetClass
 from kadastra.etl.cell_reference_object import ReferenceObject, build_reference_objects
+from kadastra.etl.cell_water_mask import ON_WATER_SHARE_THRESHOLD, compute_cell_water_share
 from kadastra.etl.h3_coverage import add_h3_index, h3_cells_to_latlng
+from kadastra.etl.load_geometries import load_geojsonseq_geometries
 from kadastra.etl.relative_features import compute_parent_aggregates, join_relative_features
 from kadastra.ml.cell_location_terms import sum_location_terms, top_location_terms
 from kadastra.ml.object_feature_columns import select_object_feature_columns
@@ -147,6 +150,7 @@ class CellValuationClassResult:
     reference_objects: list[ReferenceObject]
     cbd_correlation: float | None
     covered_share: float
+    on_water_share: float
 
 
 class BuildCellValuation:
@@ -163,6 +167,7 @@ class BuildCellValuation:
         relative_feature_columns: list[str],
         current_year: int,
         landplot_vri_top_n: int = 5,
+        water_layer_path: Path | None = None,
     ) -> None:
         self._cell_feature_reader = cell_feature_reader
         self._object_reader = object_reader
@@ -174,6 +179,7 @@ class BuildCellValuation:
         self._relative_feature_columns = relative_feature_columns
         self._current_year = current_year
         self._landplot_vri_top_n = landplot_vri_top_n
+        self._water_layer_path = water_layer_path
 
     def execute(
         self,
@@ -181,6 +187,12 @@ class BuildCellValuation:
         asset_classes: list[AssetClass],
     ) -> dict[AssetClass, CellValuationClassResult]:
         cells = self._load_cell_frame(region_code)
+        # ADR-0029 addendum: water-land share per cell. Computed once —
+        # the flag is cell-level, variant-independent (like
+        # location_score, a conscious denormalization across variants).
+        water_share = self._compute_water_share(cells)
+        cells = cells.with_columns(pl.Series("cell_water_share", water_share, dtype=pl.Float64))
+        cells = cells.with_columns((pl.col("cell_water_share") >= ON_WATER_SHARE_THRESHOLD).alias("on_water"))
 
         # Training-scope gold: same drop-nulls filter TrainQuartet used.
         gold = {
@@ -238,7 +250,7 @@ class BuildCellValuation:
                         for t in top_location_terms(terms, term_features, _TOP_TERMS_N)
                     ]
                 variant_frames.append(
-                    cells.select("h3_index", "lat", "lon").with_columns(
+                    cells.select("h3_index", "lat", "lon", "cell_water_share", "on_water").with_columns(
                         pl.lit(template.variant, dtype=pl.Utf8).alias("reference_variant"),
                         pl.Series("reference_rub_per_m2", preds, dtype=pl.Float64),
                         pl.Series("location_score_rub_per_m2", location_score, dtype=pl.Float64),
@@ -256,14 +268,28 @@ class BuildCellValuation:
 
             assert location_score is not None  # at least the default template exists
             covered_mean = out["sample_covered"].mean()
+            on_water_mean = out["on_water"].mean()
             results[ac] = CellValuationClassResult(
                 asset_class=ac,
                 n_cells=cells.height,
                 reference_objects=templates,
                 cbd_correlation=self._cbd_correlation(cells, location_score),
                 covered_share=float(cast("float", covered_mean)) if covered_mean is not None else 0.0,
+                on_water_share=float(cast("float", on_water_mean)) if on_water_mean is not None else 0.0,
             )
         return results
+
+    def _compute_water_share(self, cells: pl.DataFrame) -> np.ndarray:
+        """Water-land fraction per cell from the OSM water layer.
+
+        Missing/unconfigured layer degrades to all zeros — the flag then
+        never fires and the layer builds exactly as before (revert path
+        for the water masking decision).
+        """
+        if self._water_layer_path is None or not self._water_layer_path.is_file():
+            return np.zeros(cells.height, dtype=np.float64)
+        layers = load_geojsonseq_geometries({"water": str(self._water_layer_path)})
+        return compute_cell_water_share(cells["h3_index"].to_list(), layers.get("water", []))
 
     def _load_cell_frame(self, region_code: str) -> pl.DataFrame:
         return load_cell_feature_frame(
