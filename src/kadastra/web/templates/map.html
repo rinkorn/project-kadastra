@@ -1748,20 +1748,23 @@ async function showHexInspector(hex, payload) {
     : mode === 'valuation' ? ['valuation', 'agg', 'tsorf']
     : ['agg', 'valuation', 'tsorf'];
   const parts = [`<h2>Cell inspector — h3 ${escapeHtml(hex.hex)}</h2>`];
+  let termsCtx = null;
   if (agg && order.includes('agg')) {
     parts.push(`<h2>Рынок и модель</h2>`, renderHexDetailSections(agg));
   }
   if (hasVal && order.includes('valuation')) {
     parts.push(`<h2>Стоимость (EBM)</h2>`, renderCellValuationSections(val));
-    const termsCtx = { h3: hex.hex, assetClass: ac };
+    termsCtx = { h3: hex.hex, assetClass: ac };
     const terms = cellTermsSection(val, termsCtx);
     if (terms) parts.push(terms);
-    wireCellTermsToggle(val, termsCtx);
   }
   if (hasTsorf && order.includes('tsorf')) {
     parts.push(`<h2>ЦОФ местности</h2>`, renderCellTsorfSections(tsorf));
   }
   panel.innerHTML = parts.join('');
+  // wireCellTermsToggle looks the button up by id — it must run only
+  // after the panel markup above is actually in the DOM.
+  if (termsCtx) wireCellTermsToggle(val, termsCtx);
 }
 
 // Group the full aggregate row into readable sections. Naming-convention
@@ -1856,7 +1859,7 @@ function cellTermsCollapsedHtml(holder) {
   const restTip = `Среднее по классу плюс суммарный вклад локационных термов, не вошедших в топ-${terms.length}. Полный список — по кнопке «Показать все термы».`;
   const head = (total === null || total === undefined) ? ''
     : expHeadRow('location score', total, totalTip)
-      + expHeadRow('среднее + остальные термы', rest, restTip);
+      + expHeadRow(`среднее + термы вне топ-${terms.length}`, rest, restTip);
   return head + terms.map(t => expFeatureRow(t.feature, t.contribution, maxAbs)).join('');
 }
 
