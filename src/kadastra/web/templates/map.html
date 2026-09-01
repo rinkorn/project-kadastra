@@ -478,7 +478,7 @@ const TIPS = {
     model: 'Какой моделью оценивать стоимость и считать ошибку.\n\nВ системе обучены 4 модели разной природы — от простой линейной (для baseline) до CatBoost (максимальная точность, но «чёрный ящик»). Выбор модели меняет: out-of-fold прогноз (y_pred_oof), остаток (residual) и медианные агрегаты прогноза/остатка по гексам.\n\nИспользуйте: для проверки качества → CatBoost; для понимания вклада признаков → EBM или grey_tree.',
     scale: 'Как числовое значение признака переводится в цвет.\n\n• «linear (p2–p98)» — линейная шкала, обрезанная по 2-му и 98-му перцентилям. Выбросы не «съедают» всю цветовую гамму. Дефолт.\n• «log» — логарифмическая шкала от min до max. Полезна, когда значения растянуты на несколько порядков (цены, расстояния).\n• «linear» — простой линейный мап от min до max. Чувствителен к выбросам, но точно отражает шкалу.',
     basemap: 'Подложка под слоем данных.\n\n• «OSM» — карта OpenStreetMap (улицы, здания, ориентиры).\n• «off» — прозрачный фон, виден только слой данных. Удобно для скриншотов и презентаций.',
-    val_metric: 'Какую метрику слоя cell valuation (ADR-0029) кодирует цвет.\n\n• «reference» — предсказанная цена ₽/м² типового (эталонного) объекта класса в ячейке: ЦОФ местности + типовые характеристики объекта.\n• «location score» — чистый локационный скор ₽/м²: вклад только места, без характеристик объекта.\n\nЯчейки без объектов-образцов (sample_covered=false) показаны приглушённо — там работает чистая экстраполяция модели. Переключается чипом «dim» в легенде (рядом с reverse/oor).',
+    val_metric: 'Какую метрику слоя cell valuation (ADR-0029) кодирует цвет.\n\n• «reference» — предсказанная цена ₽/м² типового (эталонного) объекта класса в ячейке: ЦОФ местности + типовые характеристики объекта.\n• «location score» — чистый локационный скор ₽/м²: вклад только места, без характеристик объекта.\n\nЯчейки без объектов-образцов (sample_covered=false) показаны приглушённо — там работает чистая экстраполяция модели; прозрачность регулируется слайдером «α dim». Ячейки акваторий (больше половины площади под водой) скрыты — цена там не существует.',
     val_variant: 'Вариант разрешённого использования (ВРИ) эталонного участка — только для landplot (ADR-0029). Цена м² участка сильно зависит от того, что на нём разрешено строить: ИЖС, садоводство, гараж и т.п. Для остальных классов эталон один («default»), селектор скрыт.',
     cell_feature_set: 'Группа ценообразующих факторов местности (Слой 1, res 10).\n\n• «Дистанции (прямые)» — расстояние по прямой до школ, остановок, парков и др.\n• «Доли площади в буфере» — какая доля площади вокруг ячейки занята парком/водой/застройкой.\n• «Зональная плотность» — сколько объектов каждого класса вокруг.\n• «Дорожная плотность» — суммарная длина дорог в радиусе.\n• «Метро» — расстояние и время до станций.\n• «Пешеходные дистанции» — расстояние по пешеходному графу (точнее прямой).\n• «Обогащение» — рельеф, класс дорог, изохроны, охранные зоны, территориальные коды.',
     cell_feature: 'Конкретный фактор внутри выбранного сета — его значение кодируется цветом ячейки. Факторы рассчитаны на самой ячейке сетки и не зависят от объектов: одна и та же карта ЦОФ для любого класса недвижимости.',
@@ -1381,7 +1381,16 @@ function renderHex(payload) {
   const isCategorical = payload.is_categorical;
   let getFillColor;
   let oorFlag = () => false;
+  // Water mask (ADR-0029 addendum): cells mostly covered by water
+  // cannot host a land object — their price is meaningless. Excluded
+  // from both the layer and the colour-scale statistics. One-constant
+  // revert path while the decision settles (backend keeps building
+  // the flag either way).
+  const HIDE_ON_WATER = true;
   let data = payload.data;
+  if (HIDE_ON_WATER && payload.valuation && data.some(d => d.on_water)) {
+    data = data.filter(d => !d.on_water);
+  }
   if (isCategorical) {
     getFillColor = d => categoryColor(String(d.value));
   } else {
@@ -1403,8 +1412,11 @@ function renderHex(payload) {
       // extrapolation — dim them so coverage reads at a glance. Their
       // fill alpha is its own always-on slider (α dim, 0–255),
       // independent of the main α; dragging it up to the main α value
-      // removes the dimming effect entirely.
-      if (payload.dim_uncovered && d.covered === false) c[3] = dimFillAlpha;
+      // removes the dimming effect entirely. Clamped to 1/255 at the
+      // bottom: a fully transparent fragment is not pickable in
+      // deck.gl, while 1/255 is byte-exact for picking and visually
+      // indistinguishable from 0 — hidden cells stay clickable.
+      if (payload.dim_uncovered && d.covered === false) c[3] = Math.max(dimFillAlpha, 1);
       return c;
     };
   }
@@ -1887,6 +1899,10 @@ function renderCellValuationSections(detail) {
       featureRow('n_sample_objects', formatValue(d.n_sample_objects)),
       featureRow('sample_covered', d.sample_covered ? 'да' : 'нет — нет объектов-образцов (экстраполяция)'),
     ];
+    if (d.cell_water_share != null) {
+      rows.push(featureRow('cell_water_share', `${Math.round(d.cell_water_share * 100)}%`));
+      rows.push(featureRow('on_water', d.on_water ? 'да — акватория, цена не существует' : 'нет'));
+    }
     const title = v === 'default' ? 'default (эталон класса)' : `ВРИ: ${v}`;
     return `<h2>${escapeHtml(title)}</h2>` + rowsSection('cell', rows);
   }).join('');

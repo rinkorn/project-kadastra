@@ -60,9 +60,11 @@ def test_execute_returns_hex_value_covered_for_default_variant(tmp_path: Path) -
 
     out = usecase.execute(_REGION, AssetClass.APARTMENT, "default", "reference")
 
+    # on_water absent from the parquet → graceful False (water mask is
+    # optional for pre-addendum stores).
     assert out == [
-        {"hex": "8a", "value": 80_000.0, "covered": True},
-        {"hex": "8b", "value": 50_000.0, "covered": False},
+        {"hex": "8a", "value": 80_000.0, "covered": True, "on_water": False},
+        {"hex": "8b", "value": 50_000.0, "covered": False, "on_water": False},
     ]
 
 
@@ -77,7 +79,7 @@ def test_execute_location_score_metric_picks_location_column(tmp_path: Path) -> 
 
     out = usecase.execute(_REGION, AssetClass.HOUSE, "default", "location_score")
 
-    assert out == [{"hex": "8a", "value": 55_500.0, "covered": True}]
+    assert out == [{"hex": "8a", "value": 55_500.0, "covered": True, "on_water": False}]
 
 
 def test_execute_filters_to_requested_vri_variant(tmp_path: Path) -> None:
@@ -88,7 +90,7 @@ def test_execute_filters_to_requested_vri_variant(tmp_path: Path) -> None:
 
     out = usecase.execute(_REGION, AssetClass.LANDPLOT, "Садоводство", "reference")
 
-    assert out == [{"hex": "8a", "value": 12_000.0, "covered": True}]
+    assert out == [{"hex": "8a", "value": 12_000.0, "covered": True, "on_water": False}]
 
 
 def test_execute_unknown_variant_raises_keyerror_with_available(tmp_path: Path) -> None:

@@ -40,6 +40,10 @@ _DETAIL_COLUMNS: tuple[str, ...] = (
     "location_score_rub_per_m2",
     "n_sample_objects",
     "sample_covered",
+    # Water mask (ADR-0029 addendum) — optional, older parquets
+    # predate it.
+    "cell_water_share",
+    "on_water",
     "top_terms_json",
 )
 
@@ -74,10 +78,14 @@ class GetCellValuation:
                 "h3_index",
                 pl.col(column).alias("value"),
                 pl.col("sample_covered").alias("covered"),
+                # Optional (older parquets predate the water mask) — the
+                # frontend treats a missing flag as False.
+                pl.col("on_water") if "on_water" in df.columns else pl.lit(False).alias("on_water"),
             ]
         )
         return [
-            {"hex": r["h3_index"], "value": r["value"], "covered": r["covered"]} for r in slim.iter_rows(named=True)
+            {"hex": r["h3_index"], "value": r["value"], "covered": r["covered"], "on_water": r["on_water"]}
+            for r in slim.iter_rows(named=True)
         ]
 
     def variant_map(self, region_code: str) -> dict[str, list[str]]:
