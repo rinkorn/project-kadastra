@@ -136,6 +136,8 @@ def test_output_schema_and_rows() -> None:
         "h3_index",
         "lat",
         "lon",
+        "cell_water_share",
+        "on_water",
         "reference_variant",
         "reference_rub_per_m2",
         "location_score_rub_per_m2",
@@ -143,6 +145,10 @@ def test_output_schema_and_rows() -> None:
         "n_sample_objects",
         "sample_covered",
     ]
+    # Water mask defaults to dry: no water layer wired in tests → all
+    # zeros / False (the revert path for the masking decision).
+    assert out["cell_water_share"].to_list() == [0.0, 0.0]
+    assert out["on_water"].to_list() == [False, False]
     assert out.height == 2
     assert out["reference_variant"].to_list() == ["default", "default"]
 

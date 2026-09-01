@@ -431,6 +431,7 @@ class Container:
             relative_feature_columns=s.relative_feature_columns,
             current_year=s.current_year_for_age_features,
             landplot_vri_top_n=s.landplot_vri_top_n,
+            water_layer_path=s.cell_water_layer_path,
         )
 
 
