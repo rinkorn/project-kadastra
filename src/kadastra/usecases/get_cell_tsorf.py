@@ -15,10 +15,9 @@ import polars as pl
 
 from kadastra.adapters.parquet_feature_store import ParquetFeatureStore
 
-# The six Слой 1 feature sets built by BuildCell*Features. Drives the
-# frontend's feature_set selector. Listed here (not introspected from
-# the store) so a missing partition reads as an empty set rather than
-# silently disappearing from the UI.
+# The six Слой 1 feature sets built by BuildCell*Features. Listed here
+# (not introspected from the store) so a missing partition reads as an
+# empty set rather than silently disappearing from the UI.
 CELL_TSORF_FEATURE_SETS: tuple[str, ...] = (
     "geom_distance",
     "poly_area",
@@ -27,6 +26,15 @@ CELL_TSORF_FEATURE_SETS: tuple[str, ...] = (
     "metro",
     "walk_dist",
 )
+
+# ADR-0029 added the per-cell enrichment set (DEM, road-class,
+# isochrones, heritage/ЗОУИТ, ОКТМО-macro, territorial codes) as the
+# 7th Слой 1 set. The API surface — the Сет selector, the cell detail
+# and /api/feature_options label coverage — spans it too. The
+# representativeness report (ADR-0028) deliberately keeps its
+# historical six-set scope and still imports CELL_TSORF_FEATURE_SETS.
+ENRICHMENT_FEATURE_SET = "enrichment"
+API_FEATURE_SETS: tuple[str, ...] = (*CELL_TSORF_FEATURE_SETS, ENRICHMENT_FEATURE_SET)
 
 
 class GetCellTsorf:
@@ -68,7 +76,7 @@ class GetCellTsorf:
     def feature_set_map(self, region_code: str, resolution: int) -> dict[str, list[str]]:
         """``{feature_set: [features]}`` for every Слой 1 set — one call
         to populate the frontend's two-level (set → feature) selector."""
-        return {fs: self.list_features(region_code, resolution, fs) for fs in CELL_TSORF_FEATURE_SETS}
+        return {fs: self.list_features(region_code, resolution, fs) for fs in API_FEATURE_SETS}
 
     def get_cell_detail(
         self,
@@ -83,7 +91,7 @@ class GetCellTsorf:
         sets, an empty dictionary is returned.
         """
         detail: dict[str, dict[str, object]] = {}
-        for fs in CELL_TSORF_FEATURE_SETS:
+        for fs in API_FEATURE_SETS:
             try:
                 df = self._feature_store.load(region_code, resolution, fs)
             except FileNotFoundError:

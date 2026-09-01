@@ -312,6 +312,14 @@ def make_api_router(
             "n_sample_objects",
             "sample_covered",
             "top_terms_json",
+            # Raw gold/etl bookkeeping columns surfaced in the EBM
+            # explanation and object detail.
+            "synthetic_target_rub_per_m2",
+            "cost_value_rub",
+            "is_new_construction",
+            "parent_h3_p7",
+            "parent_h3_p8",
+            "polygon_wkt_3857",
         ]
         return {
             "asset_classes": list(ASSET_CLASS_VALUES),
