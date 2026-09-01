@@ -12,6 +12,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
+from kadastra.adapters.parquet_coverage_store import ParquetCoverageStore
 from kadastra.usecases.get_hex_aggregates import (
     NUMERIC_FEATURES,
     GetHexAggregates,
@@ -71,11 +72,32 @@ def _write_aggregates(
     df.write_parquet(path)
 
 
-def test_filters_by_asset_class(tmp_path: Path) -> None:
+def _write_coverage(tmp_path: Path, region: str, resolution: int, cells: list[str]) -> ParquetCoverageStore:
+    store = ParquetCoverageStore(tmp_path / "coverage")
+    store.save(region, [(c, resolution) for c in cells])
+    return store
+
+
+def test_filters_by_asset_class_without_coverage(tmp_path: Path) -> None:
     _write_aggregates(tmp_path, "RU-KAZAN-AGG", 8)
     out = GetHexAggregates(tmp_path).execute("RU-KAZAN-AGG", 8, asset_class="apartment", feature="count")
     hexes = sorted(str(r["hex"]) for r in out)
     assert hexes == ["8a", "8b"]
+    assert all(r["covered"] for r in out)
+
+
+def test_full_coverage_adds_empty_grid_cells(tmp_path: Path) -> None:
+    _write_aggregates(tmp_path, "RU-KAZAN-AGG", 8)
+    coverage = _write_coverage(tmp_path, "RU-KAZAN-AGG", 8, ["8a", "8b", "8c", "8d"])
+    out = GetHexAggregates(tmp_path, coverage=coverage).execute(
+        "RU-KAZAN-AGG", 8, asset_class="apartment", feature="count"
+    )
+    by_hex = {r["hex"]: r for r in out}
+    assert set(by_hex) == {"8a", "8b", "8c", "8d"}
+    assert by_hex["8a"]["covered"] and by_hex["8b"]["covered"]
+    assert by_hex["8a"]["value"] == 10
+    assert by_hex["8c"]["covered"] is False and by_hex["8c"]["value"] is None
+    assert by_hex["8d"]["covered"] is False and by_hex["8d"]["value"] is None
 
 
 def test_returns_numeric_value_for_numeric_feature(tmp_path: Path) -> None:
